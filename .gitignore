@@ -1,0 +1,12 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Backend
+backend/.env
+backend/node_modules
+
+# Frontend
+frontend/.env
+frontend/node_modules
