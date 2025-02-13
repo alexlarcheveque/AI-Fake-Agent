@@ -7,6 +7,13 @@ const sequelize = new Sequelize({
   host: process.env.DB_HOST,
   port: 5432,
   dialect: "postgres",
+  logging: false, // Disable SQL query logging
+  pool: {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000,
+  },
 });
 
 // Test the connection
