@@ -1,4 +1,5 @@
 const Lead = require("../models/Lead");
+const logger = require("../utils/logger");
 
 // Get all leads
 const getAllLeads = async (req, res) => {
@@ -6,6 +7,21 @@ const getAllLeads = async (req, res) => {
     const leads = await Lead.findAll();
     res.json(leads);
   } catch (error) {
+    logger.error("Error fetching leads:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get a single lead
+const getLead = async (req, res) => {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+    res.json(lead);
+  } catch (error) {
+    logger.error("Error fetching lead:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -16,7 +32,7 @@ const createLead = async (req, res) => {
     const lead = await Lead.create(req.body);
     res.status(201).json(lead);
   } catch (error) {
-    console.error("Error creating lead:", error);
+    logger.error("Error creating lead:", error);
 
     // Handle Sequelize validation errors
     if (error.name === "SequelizeValidationError") {
@@ -44,7 +60,57 @@ const createLead = async (req, res) => {
   }
 };
 
+// Update a lead
+const updateLead = async (req, res) => {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+
+    // Update lead properties
+    await lead.update(req.body);
+
+    res.json(lead);
+  } catch (error) {
+    logger.error("Error updating lead:", error);
+
+    // Handle validation errors
+    if (error.name === "SequelizeValidationError") {
+      const validationErrors = error.errors.map((err) => ({
+        field: err.path,
+        message: err.message,
+      }));
+      return res.status(400).json({
+        error: "Validation failed",
+        details: validationErrors,
+      });
+    }
+
+    res.status(500).json({ error: "Failed to update lead" });
+  }
+};
+
+// Delete a lead
+const deleteLead = async (req, res) => {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+    if (!lead) {
+      return res.status(404).json({ error: "Lead not found" });
+    }
+
+    await lead.destroy();
+    res.json({ message: "Lead deleted successfully" });
+  } catch (error) {
+    logger.error("Error deleting lead:", error);
+    res.status(500).json({ error: "Failed to delete lead" });
+  }
+};
+
 module.exports = {
   getAllLeads,
+  getLead,
   createLead,
+  updateLead,
+  deleteLead,
 };

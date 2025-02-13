@@ -39,6 +39,11 @@ const leadApi = {
     const response = await axios.put(`${API_URL}/leads/${id}`, lead);
     return response.data;
   },
+
+  // Delete a lead
+  async deleteLead(id: number): Promise<void> {
+    await axios.delete(`${API_URL}/leads/${id}`);
+  },
 };
 
 export default leadApi;

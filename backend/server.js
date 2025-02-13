@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // Routes
-app.use("/api", leadRoutes);
+app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 
 const PORT = process.env.PORT || 3000;

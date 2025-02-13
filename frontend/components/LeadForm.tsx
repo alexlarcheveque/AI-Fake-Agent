@@ -1,5 +1,5 @@
 import { useState } from "react";
-import leadApi from "../src/api/leadApi";
+import leadApi, { Lead } from "../src/api/leadApi";
 import React from "react";
 
 interface FormErrors {
@@ -19,7 +19,11 @@ interface ApiError {
   details?: ValidationError[];
 }
 
-const LeadForm = () => {
+interface LeadFormProps {
+  onLeadCreated?: (newLead: Lead) => void;
+}
+
+const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   const [lead, setLead] = useState({
     name: "",
     email: "",
@@ -66,9 +70,10 @@ const LeadForm = () => {
 
     try {
       setIsSubmitting(true);
-      await leadApi.createLead(lead);
+      const newLead = await leadApi.createLead(lead);
       setLead({ name: "", email: "", phoneNumber: "", status: "new" });
       setErrors({});
+      onLeadCreated?.(newLead);
     } catch (error) {
       if ((error as ApiError).details) {
         const apiError = error as ApiError;
