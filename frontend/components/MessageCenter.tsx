@@ -8,6 +8,8 @@ const MessagesCenter: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Fetch leads on component mount
   useEffect(() => {
@@ -15,8 +17,9 @@ const MessagesCenter: React.FC = () => {
       try {
         setIsLoading(true);
         setError(null);
-        const fetchedLeads = await leadApi.getLeads();
-        setLeads(fetchedLeads);
+        const response = await leadApi.getLeads(currentPage, 10);
+        setLeads(response.leads);
+        setTotalPages(response.totalPages);
       } catch (err) {
         setError("Failed to load leads");
         console.error("Error fetching leads:", err);
@@ -26,7 +29,7 @@ const MessagesCenter: React.FC = () => {
     };
 
     fetchLeads();
-  }, []);
+  }, [currentPage]);
 
   return (
     <div className="p-6">
@@ -73,6 +76,35 @@ const MessagesCenter: React.FC = () => {
                     <div className="text-sm text-gray-500">{lead.status}</div>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {!isLoading && totalPages > 1 && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex justify-between items-center">
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </div>

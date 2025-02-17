@@ -19,7 +19,7 @@ const MessageCenter: React.FC = () => {
   const fetchLeads = async () => {
     try {
       setLoading(true);
-      const response = await leadApi.getLeads(currentPage, 10, showArchived);
+      const response = await leadApi.getLeads(currentPage, 10);
       setLeads(response.leads);
       setTotalPages(response.totalPages);
     } catch (err) {

@@ -6,13 +6,13 @@ const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const messageApi = {
   // Get messages for a lead
   async getMessages(leadId: string): Promise<Message[]> {
-    const response = await axios.get(`${BASE_URL}/api/messages/${leadId}`);
+    const response = await axios.get(`${BASE_URL}/api/messages/lead/${leadId}`);
     return response.data;
   },
 
   // Send a message (production)
   async sendMessage(leadId: string, text: string): Promise<Message> {
-    const response = await axios.post(`${BASE_URL}/api/messages`, {
+    const response = await axios.post(`${BASE_URL}/api/messages/send`, {
       leadId,
       text,
     });

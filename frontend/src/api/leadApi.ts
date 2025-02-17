@@ -3,12 +3,41 @@ import { Lead } from "../types/lead";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
+interface GetLeadsResponse {
+  leads: Lead[];
+  currentPage: number;
+  totalPages: number;
+  totalLeads: number;
+}
+
+interface SearchFilters {
+  name?: boolean;
+  email?: boolean;
+  phone?: boolean;
+  status?: boolean;
+}
+
 const leadApi = {
-  // Get all leads with pagination
-  async getLeads(page: number = 1, limit: number = 10): Promise<Lead[]> {
-    const response = await axios.get(
-      `${API_URL}/leads?page=${page}&limit=${limit}`
-    );
+  // Get all leads with pagination and search
+  async getLeads(
+    page: number = 1,
+    limit: number = 10,
+    search: string = "",
+    searchFilters: SearchFilters = {}
+  ): Promise<GetLeadsResponse> {
+    // Convert searchFilters to array of fields to search
+    const searchFields = Object.entries(searchFilters)
+      .filter(([_, enabled]) => enabled)
+      .map(([field]) => (field === "phone" ? "phoneNumber" : field));
+
+    const response = await axios.get(`${API_URL}/leads`, {
+      params: {
+        page,
+        limit,
+        search,
+        searchFields: JSON.stringify(searchFields),
+      },
+    });
     return response.data;
   },
 
