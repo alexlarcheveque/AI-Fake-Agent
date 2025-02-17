@@ -3,6 +3,7 @@ const {
   sendMessage,
   getMessages,
   receiveMessage,
+  sendLocalMessage,
 } = require("../controllers/messageController");
 const router = express.Router();
 const Message = require("../models/Message");
@@ -20,8 +21,11 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Send a new message to a lead
+// Send a new message to a lead (production endpoint)
 router.post("/send", sendMessage);
+
+// Local test endpoint - skips Twilio
+router.post("/send-local", sendLocalMessage);
 
 // Webhook endpoint for receiving messages from Twilio
 router.post("/webhook", receiveMessage);

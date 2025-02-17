@@ -1,15 +1,11 @@
 import React from "react";
-import { Message } from "../api/messageApi";
+import { Message } from "../types/message";
 
 interface MessageListProps {
   messages: Message[];
-  currentLeadId: number;
 }
 
-const MessageList: React.FC<MessageListProps> = ({
-  messages,
-  currentLeadId,
-}) => {
+const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const messageEndRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -22,19 +18,22 @@ const MessageList: React.FC<MessageListProps> = ({
         <div
           key={message.id}
           className={`flex ${
-            message.sender === "agent" ? "justify-end" : "justify-start"
+            message.sender === "agent" ? "justify-start" : "justify-end"
           }`}
         >
           <div
             className={`max-w-[70%] rounded-lg p-3 ${
               message.sender === "agent"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-200 text-gray-800"
+                ? "bg-gray-200 text-gray-800"
+                : "bg-blue-600 text-white"
             }`}
           >
             <p className="text-sm">{message.text}</p>
             <span className="text-xs opacity-75 mt-1 block">
-              {new Date(message.timestamp).toLocaleTimeString()}
+              {new Date(message.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
           </div>
         </div>

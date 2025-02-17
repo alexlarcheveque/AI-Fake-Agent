@@ -48,18 +48,32 @@ const Navbar = () => {
               >
                 Messages
               </Link>
+              <Link
+                to="/playground"
+                className={`px-3 py-4 text-sm font-medium border-b-2 ${
+                  isActive("/playground")
+                    ? "border-blue-500 text-gray-900"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                AI Playground
+              </Link>
               <a
                 href="#"
                 className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 px-3 py-4 text-sm font-medium"
               >
                 Analytics
               </a>
-              <a
-                href="#"
-                className="border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 px-3 py-4 text-sm font-medium"
+              <Link
+                to="/settings"
+                className={`px-3 py-4 text-sm font-medium border-b-2 ${
+                  isActive("/settings")
+                    ? "border-blue-500 text-gray-900"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
               >
                 Settings
-              </a>
+              </Link>
             </div>
           </div>
         </div>

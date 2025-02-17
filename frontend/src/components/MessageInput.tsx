@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 interface MessageInputProps {
   onSendMessage: (text: string) => void;
@@ -10,6 +10,16 @@ const MessageInput: React.FC<MessageInputProps> = ({
   isLoading = false,
 }) => {
   const [message, setMessage] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-adjust height of textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "40px"; // Reset height
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = Math.min(scrollHeight, 100) + "px"; // Max height of 100px
+    }
+  }, [message]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,21 +29,36 @@ const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200">
       <div className="flex space-x-2">
-        <input
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type your message..."
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500"
-          disabled={isLoading}
-        />
+        <div className="flex-1 relative">
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message..."
+            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500 resize-none overflow-x-auto"
+            disabled={isLoading}
+            rows={1}
+            style={{
+              maxHeight: "100px",
+              overflowY: "auto",
+            }}
+          />
+        </div>
         <button
           type="submit"
           disabled={!message.trim() || isLoading}
-          className={`px-6 py-2 rounded-lg bg-blue-600 text-white font-medium
+          className={`px-6 py-2 rounded-lg bg-blue-600 text-white font-medium flex-shrink-0 h-fit
             ${
               !message.trim() || isLoading
                 ? "opacity-50 cursor-not-allowed"
