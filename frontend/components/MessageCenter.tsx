@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import MessageThread from "../src/components/MessageThread";
-import leadApi, { Lead } from "../src/api/leadApi";
+import leadApi from "../src/api/leadApi";
+import { Lead } from "../src/types/lead";
 
 const MessagesCenter: React.FC = () => {
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
@@ -28,19 +29,21 @@ const MessagesCenter: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex gap-4">
-          {/* Sidebar - Lead List */}
-          <div className="w-1/4 bg-white rounded-lg shadow-lg p-4">
-            <h2 className="text-xl font-bold mb-4">Leads</h2>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Messages</h1>
 
-            {/* Error State */}
-            {error && (
-              <div className="p-2 mb-4 bg-red-100 text-red-700 text-sm rounded">
-                {error}
-              </div>
-            )}
+      {/* Error Message */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow-md">
+        <div className="flex gap-4 p-6">
+          {/* Sidebar - Lead List */}
+          <div className="w-1/4 bg-gray-50 rounded-lg p-4">
+            <h2 className="text-xl font-semibold text-gray-700 mb-4">Leads</h2>
 
             {/* Loading State */}
             {isLoading ? (
@@ -91,7 +94,7 @@ const MessagesCenter: React.FC = () => {
                 />
               </div>
             ) : (
-              <div className="h-[800px] bg-white rounded-lg shadow-lg flex items-center justify-center text-gray-500">
+              <div className="h-[800px] bg-gray-50 rounded-lg flex items-center justify-center text-gray-500">
                 Select a lead to start messaging
               </div>
             )}

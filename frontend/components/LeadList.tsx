@@ -1,5 +1,6 @@
 import { useState } from "react";
-import leadApi, { Lead } from "../src/api/leadApi";
+import leadApi from "../src/api/leadApi";
+import { Lead } from "../src/types/lead";
 import React from "react";
 
 interface LeadListProps {
@@ -17,6 +18,8 @@ const LeadList: React.FC<LeadListProps> = ({
   onLeadsChange,
   onError,
 }) => {
+  console.log("leads", leads);
+
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [updateLoading, setUpdateLoading] = useState<number | null>(null);
 
@@ -79,7 +82,7 @@ const LeadList: React.FC<LeadListProps> = ({
     setEditingLead(null);
   };
 
-  if (isLoading && leads.length === 0) {
+  if (isLoading && leads?.length === 0) {
     return <div className="text-center py-4">Loading...</div>;
   }
 

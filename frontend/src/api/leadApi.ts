@@ -1,22 +1,14 @@
 import axios from "axios";
+import { Lead } from "../types/lead";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
-export interface Lead {
-  id: number;
-  name: string;
-  phoneNumber: string;
-  email: string;
-  status: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 const leadApi = {
-  // Get all leads
-  async getLeads(): Promise<Lead[]> {
-    const response = await axios.get(`${API_URL}/leads`);
+  // Get all leads with pagination
+  async getLeads(page: number = 1, limit: number = 10): Promise<Lead[]> {
+    const response = await axios.get(
+      `${API_URL}/leads?page=${page}&limit=${limit}`
+    );
     return response.data;
   },
 
@@ -28,7 +20,7 @@ const leadApi = {
 
   // Create a new lead
   async createLead(
-    lead: Omit<Lead, "id" | "createdAt" | "updatedAt">
+    lead: Omit<Lead, "id" | "createdAt" | "updatedAt" | "archived">
   ): Promise<Lead> {
     const response = await axios.post(`${API_URL}/leads`, lead);
     return response.data;
@@ -38,6 +30,11 @@ const leadApi = {
   async updateLead(id: number, lead: Partial<Lead>): Promise<Lead> {
     const response = await axios.put(`${API_URL}/leads/${id}`, lead);
     return response.data;
+  },
+
+  // Archive a lead
+  async archiveLead(id: string): Promise<void> {
+    await axios.put(`${API_URL}/leads/${id}/archive`);
   },
 
   // Delete a lead

@@ -1,11 +1,27 @@
 const Lead = require("../models/Lead");
 const logger = require("../utils/logger");
 
-// Get all leads
+// Get all leads with pagination
 const getAllLeads = async (req, res) => {
   try {
-    const leads = await Lead.findAll();
-    res.json(leads);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await Lead.findAndCountAll({
+      limit,
+      offset,
+      order: [["createdAt", "DESC"]],
+    });
+
+    const totalPages = Math.ceil(count / limit);
+
+    res.json({
+      leads: rows,
+      currentPage: page,
+      totalPages,
+      totalLeads: count,
+    });
   } catch (error) {
     logger.error("Error fetching leads:", error);
     res.status(500).json({ error: error.message });
