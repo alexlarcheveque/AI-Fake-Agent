@@ -23,6 +23,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLocalTesting, setIsLocalTesting] = useState(false);
 
   // Fetch messages on component mount and when leadId changes
   useEffect(() => {
@@ -47,8 +48,20 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      const newMessage = await messageApi.sendMessage(leadId, text);
-      setMessages((prev) => [...prev, newMessage]);
+
+      if (isLocalTesting) {
+        // Local testing mode
+        const response = await messageApi.sendLocalMessage(text);
+        setMessages((prev) => [
+          ...prev,
+          response.userMessage,
+          response.aiMessage,
+        ]);
+      } else {
+        // Production mode
+        const newMessage = await messageApi.sendMessage(leadId, text);
+        setMessages((prev) => [...prev, newMessage]);
+      }
     } catch (err) {
       setError("Failed to send message");
       console.error("Error sending message:", err);
@@ -61,9 +74,24 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     <div className="flex flex-col h-full bg-white rounded-lg shadow-lg">
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold mb-1">
-          {leadName || `Lead #${leadId}`}
-        </h2>
+        <div className="flex justify-between items-center mb-1">
+          <h2 className="text-lg font-semibold">
+            {leadName || `Lead #${leadId}`}
+          </h2>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">Local Testing:</span>
+            <button
+              onClick={() => setIsLocalTesting(!isLocalTesting)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                isLocalTesting
+                  ? "bg-green-100 text-green-800 hover:bg-green-200"
+                  : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+              }`}
+            >
+              {isLocalTesting ? "Enabled" : "Disabled"}
+            </button>
+          </div>
+        </div>
         <div className="text-sm text-gray-600 flex flex-wrap gap-x-4">
           {leadEmail && (
             <div>
