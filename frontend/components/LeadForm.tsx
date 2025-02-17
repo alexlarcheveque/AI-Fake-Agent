@@ -1,5 +1,6 @@
 import { useState } from "react";
-import leadApi, { Lead } from "../src/api/leadApi";
+import leadApi from "../src/api/leadApi";
+import { Lead } from "../src/types/lead";
 import React from "react";
 
 interface FormErrors {
