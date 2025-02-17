@@ -1,14 +1,31 @@
 const Lead = require("../models/Lead");
+const { Op } = require("sequelize");
 const logger = require("../utils/logger");
 
-// Get all leads with pagination
+// Get all leads with pagination and search
 const getAllLeads = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+    const searchFields = req.query.searchFields
+      ? JSON.parse(req.query.searchFields)
+      : ["name", "email", "phoneNumber", "status"];
     const offset = (page - 1) * limit;
 
+    // Build search condition
+    const searchCondition = search
+      ? {
+          [Op.or]: searchFields.map((field) => ({
+            [field]: {
+              [Op.iLike]: `%${search}%`,
+            },
+          })),
+        }
+      : {};
+
     const { count, rows } = await Lead.findAndCountAll({
+      where: searchCondition,
       limit,
       offset,
       order: [["createdAt", "DESC"]],

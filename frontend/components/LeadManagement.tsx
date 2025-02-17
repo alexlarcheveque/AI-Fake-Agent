@@ -9,31 +9,64 @@ const LeadManagement = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  console.log("leads", leads);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFilters, setSearchFilters] = useState({
+    name: true,
+    email: true,
+    phone: true,
+    status: true,
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLeads, setTotalLeads] = useState(0);
 
   const fetchLeads = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await leadApi.getLeads();
-      setLeads(data);
+      const data = await leadApi.getLeads(
+        currentPage,
+        10,
+        searchQuery,
+        searchFilters
+      );
+      setLeads(data.leads);
+      setTotalPages(data.totalPages);
+      setTotalLeads(data.totalLeads);
     } catch (err) {
       setError("Failed to fetch leads");
       console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentPage, searchQuery, searchFilters]);
 
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
 
   const handleLeadCreated = useCallback(async (newLead: Lead) => {
-    setLeads((prevLeads) => [...prevLeads, newLead]);
+    setLeads((prevLeads) => [newLead, ...prevLeads]);
     setIsModalOpen(false); // Close modal after successful creation
   }, []);
+
+  const toggleFilter = (filter: keyof typeof searchFilters) => {
+    setSearchFilters((prev) => ({
+      ...prev,
+      [filter]: !prev[filter],
+    }));
+    setCurrentPage(1); // Reset to first page when changing filters
+  };
+
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1); // Reset to first page when searching
+      fetchLeads();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchFilters]);
 
   return (
     <div className="p-6">
@@ -47,16 +80,121 @@ const LeadManagement = () => {
         </button>
       </div>
 
-      {/* Lead List Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-semibold text-gray-700 mb-4">Lead List</h2>
-        <LeadList
-          leads={leads}
-          isLoading={isLoading}
-          error={error}
-          onLeadsChange={setLeads}
-          onError={setError}
-        />
+      <div className="flex gap-6">
+        {/* Lead List Section */}
+        <div className="flex-1">
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-700 mb-4">
+              Lead List
+            </h2>
+            <LeadList
+              leads={leads}
+              isLoading={isLoading}
+              error={error}
+              onLeadsChange={setLeads}
+              onError={setError}
+            />
+
+            {/* Pagination */}
+            {!isLoading && totalPages > 1 && (
+              <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+                <div className="text-sm text-gray-500">
+                  Showing page {currentPage} of {totalPages}
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Search Section */}
+        <div className="w-80">
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold text-gray-700 mb-4">
+              Lead Search
+            </h2>
+
+            {/* Search Input */}
+            <div className="mb-4">
+              <input
+                type="text"
+                placeholder="Search leads..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Search Filters */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">
+                Search in:
+              </h3>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={searchFilters.name}
+                  onChange={() => toggleFilter("name")}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">Name</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={searchFilters.email}
+                  onChange={() => toggleFilter("email")}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">Email</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={searchFilters.phone}
+                  onChange={() => toggleFilter("phone")}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">Phone</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={searchFilters.status}
+                  onChange={() => toggleFilter("status")}
+                  className="rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-600">Status</span>
+              </label>
+            </div>
+
+            {/* Search Stats */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <p className="text-sm text-gray-600">
+                Found {totalLeads} matching leads
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Add Lead Modal */}

@@ -124,6 +124,9 @@ const messageController = {
         where: { leadId },
         order: [["timestamp", "ASC"]],
       });
+
+      console.log("messages", messages);
+
       res.json(messages);
     } catch (error) {
       logger.error("Error fetching messages:", error);
