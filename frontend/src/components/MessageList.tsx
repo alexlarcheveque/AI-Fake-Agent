@@ -8,6 +8,8 @@ interface MessageListProps {
 const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const messageEndRef = React.useRef<HTMLDivElement>(null);
 
+  console.log("messages", messages);
+
   React.useEffect(() => {
     // Only scroll if there are messages
     if (messages.length > 0) {
@@ -16,19 +18,19 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   }, [messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="p-4 space-y-4">
       {messages.map((message) => (
         <div
           key={message.id}
           className={`flex ${
-            message.sender === "agent" ? "justify-start" : "justify-end"
+            message.sender === "agent" ? "justify-end" : "justify-start"
           }`}
         >
           <div
-            className={`max-w-[70%] rounded-lg p-3 ${
+            className={`max-w-[75%] rounded-lg px-4 py-2 ${
               message.sender === "agent"
-                ? "bg-gray-200 text-gray-800"
-                : "bg-blue-600 text-white"
+                ? "bg-blue-600 text-white"
+                : "bg-gray-200 text-gray-800"
             }`}
           >
             <p className="text-sm">{message.text}</p>

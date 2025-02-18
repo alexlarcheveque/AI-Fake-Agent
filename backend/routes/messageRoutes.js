@@ -9,7 +9,7 @@ const {
 // Get message history for a lead
 router.get("/lead/:leadId", getMessages);
 
-// Send a new message to a lead
+// Send a message to a lead (with optional AI response)
 router.post("/send", sendMessage);
 
 // Webhook for receiving messages (for Twilio)

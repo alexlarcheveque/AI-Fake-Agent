@@ -10,8 +10,11 @@ const messageApi = {
     return response.data;
   },
 
-  // Send a message (production)
-  async sendMessage(leadId: string, text: string): Promise<Message> {
+  // Send a message
+  async sendMessage(
+    leadId: string,
+    text: string
+  ): Promise<{ message: Message; aiMessage?: Message }> {
     const response = await axios.post(`${BASE_URL}/api/messages/send`, {
       leadId,
       text,

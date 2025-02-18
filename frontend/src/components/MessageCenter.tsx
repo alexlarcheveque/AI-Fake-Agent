@@ -1,188 +1,151 @@
 import React, { useState, useEffect } from "react";
+import MessageThread from "./MessageThread";
 import leadApi from "../api/leadApi";
-import messageApi from "../api/messageApi";
 import { Lead } from "../types/lead";
-import { Message } from "../types/message";
-import MessageList from "./MessageList";
-import MessageInput from "./MessageInput";
 
-const MessageCenter: React.FC = () => {
+const MessagesCenter: React.FC = () => {
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [showArchived, setShowArchived] = useState(false);
 
-  const fetchLeads = async () => {
-    try {
-      setLoading(true);
-      const response = await leadApi.getLeads(currentPage, 10);
-      setLeads(response.leads);
-      setTotalPages(response.totalPages);
-    } catch (err) {
-      setError("Failed to fetch leads");
-      console.error("Error fetching leads:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Fetch leads on component mount
   useEffect(() => {
-    fetchLeads();
-  }, [currentPage, showArchived]);
-
-  const fetchMessages = async (leadId: number) => {
-    try {
-      const messages = await messageApi.getMessages(leadId.toString());
-      setMessages(messages);
-    } catch (err) {
-      setError("Failed to fetch messages");
-      console.error("Error fetching messages:", err);
-    }
-  };
-
-  const handleLeadSelect = async (lead: Lead) => {
-    setSelectedLead(lead);
-    await fetchMessages(lead.id);
-  };
-
-  const handleSendMessage = async (text: string) => {
-    if (!selectedLead) return;
-
-    try {
-      const message = await messageApi.sendMessage(
-        selectedLead.id.toString(),
-        text
-      );
-      setMessages((prev) => [...prev, message]);
-    } catch (err) {
-      setError("Failed to send message");
-      console.error("Error sending message:", err);
-    }
-  };
-
-  const handleArchive = async (id: number) => {
-    try {
-      await leadApi.archiveLead(id.toString());
-      fetchLeads();
-      if (selectedLead?.id === id) {
-        setSelectedLead(null);
-        setMessages([]);
+    const fetchLeads = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const response = await leadApi.getLeads(currentPage, 10);
+        setLeads(response.leads);
+        setTotalPages(response.totalPages);
+      } catch (err) {
+        setError("Failed to load leads");
+        console.error("Error fetching leads:", err);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      setError("Failed to archive lead");
-      console.error("Error archiving lead:", err);
-    }
-  };
+    };
 
-  if (loading && !leads.length) return <div>Loading...</div>;
-  if (error) return <div className="text-red-600">{error}</div>;
+    fetchLeads();
+  }, [currentPage]);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Message Center</h1>
-        <button
-          onClick={() => setShowArchived(!showArchived)}
-          className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-        >
-          {showArchived ? "Show Active Leads" : "Show Archived Leads"}
-        </button>
-      </div>
+    <div className="h-[calc(100vh-4rem)] flex flex-col p-6">
+      <h1 className="text-2xl font-bold mb-6 flex-shrink-0">Messages</h1>
 
-      <div className="grid grid-cols-12 gap-6">
-        {/* Lead List */}
-        <div className="col-span-4 bg-white rounded-lg shadow">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold text-gray-900">Leads</h2>
-          </div>
-          <div className="divide-y divide-gray-200">
-            {leads.map((lead) => (
-              <div
-                key={lead.id}
-                className={`p-4 cursor-pointer hover:bg-gray-50 ${
-                  selectedLead?.id === lead.id ? "bg-blue-50" : ""
-                }`}
-                onClick={() => handleLeadSelect(lead)}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900">
-                      {lead.name}
-                    </h3>
-                    <p className="text-sm text-gray-500">{lead.email}</p>
-                  </div>
-                  {!lead.archived && (
+      {/* Error Message */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg flex-shrink-0">
+          {error}
+        </div>
+      )}
+
+      <div className="flex-1 bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="h-full flex">
+          {/* Sidebar - Lead List */}
+          <div className="w-1/4 border-r border-gray-200 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-xl font-semibold text-gray-700">Leads</h2>
+            </div>
+
+            {/* Loading State */}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8 flex-1">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : leads.length === 0 ? (
+              // Empty State
+              <div className="text-center py-8 text-gray-500 flex-1">
+                No leads available
+              </div>
+            ) : (
+              // Lead List
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-2 space-y-2">
+                  {leads.map((lead) => (
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleArchive(lead.id);
-                      }}
-                      className="text-sm text-indigo-600 hover:text-indigo-900"
+                      key={lead.id}
+                      onClick={() => setSelectedLeadId(lead.id)}
+                      className={`w-full p-3 text-left rounded-lg transition-colors
+                        ${
+                          selectedLeadId === lead.id
+                            ? "bg-blue-100 text-blue-800"
+                            : "hover:bg-gray-100"
+                        }`}
                     >
-                      Archive
+                      <div className="font-medium flex items-center gap-2">
+                        {lead.name}
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            lead.aiAssistantEnabled
+                              ? "bg-purple-100 text-purple-800 border border-purple-200"
+                              : "bg-gray-100 text-gray-600 border border-gray-200"
+                          }`}
+                        >
+                          {lead.aiAssistantEnabled ? "AI Enabled" : "Manual"}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-500">{lead.status}</div>
                     </button>
-                  )}
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-          {/* Pagination */}
-          <div className="flex justify-center p-4 border-t">
-            <button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50 mr-2"
-            >
-              Previous
-            </button>
-            <span className="px-3 py-1 text-sm">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50 ml-2"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+            )}
 
-        {/* Message Area */}
-        <div className="col-span-8 bg-white rounded-lg shadow">
-          {selectedLead ? (
-            <div className="h-[600px] flex flex-col">
-              <div className="p-4 border-b">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  {selectedLead.name}
-                </h2>
-                <p className="text-sm text-gray-500">{selectedLead.email}</p>
+            {/* Pagination */}
+            {!isLoading && totalPages > 1 && (
+              <div className="p-4 border-t border-gray-200 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                <MessageList messages={messages} />
+            )}
+          </div>
+
+          {/* Main Content - Message Thread */}
+          <div className="flex-1 h-full">
+            {selectedLeadId ? (
+              <MessageThread
+                leadId={selectedLeadId}
+                leadName={leads.find((l) => l.id === selectedLeadId)?.name}
+                leadEmail={leads.find((l) => l.id === selectedLeadId)?.email}
+                leadPhone={
+                  leads.find((l) => l.id === selectedLeadId)?.phoneNumber
+                }
+                leadSource={leads.find((l) => l.id === selectedLeadId)?.status}
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-500">
+                Select a lead to start messaging
               </div>
-              {!selectedLead.archived && (
-                <MessageInput
-                  onSendMessage={handleSendMessage}
-                  isLoading={loading}
-                />
-              )}
-            </div>
-          ) : (
-            <div className="h-[600px] flex items-center justify-center text-gray-500">
-              Select a lead to view messages
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-export default MessageCenter;
+export default MessagesCenter;

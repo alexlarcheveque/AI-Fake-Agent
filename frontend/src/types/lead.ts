@@ -4,6 +4,7 @@ export interface Lead {
   phoneNumber: string;
   email: string;
   status: string;
+  aiAssistantEnabled: boolean;
   archived: boolean;
   notes?: string;
   createdAt: string;
