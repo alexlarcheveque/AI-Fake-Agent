@@ -15,8 +15,10 @@ const Lead = sequelize.define(
     },
     email: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true,
+      allowNull: true,
+      validate: {
+        isEmail: true,
+      },
     },
     phoneNumber: {
       type: DataTypes.STRING,
@@ -26,6 +28,11 @@ const Lead = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       defaultValue: "new",
+    },
+    aiAssistantEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
     },
   },
   {

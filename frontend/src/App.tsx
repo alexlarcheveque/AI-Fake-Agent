@@ -1,8 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Navbar from "../components/Navbar";
-import Dashboard from "../components/Dashboard";
-import LeadManagement from "../components/LeadManagement";
-import MessageCenter from "../components/MessageCenter";
+import Navbar from "./components/Navbar";
+import Dashboard from "./components/Dashboard";
+import LeadManagement from "./components/LeadManagement";
+import MessageCenter from "./components/MessageCenter";
 import Playground from "./components/Playground";
 import Settings from "./components/Settings";
 

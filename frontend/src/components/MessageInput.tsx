@@ -3,36 +3,42 @@ import React, { useState, useRef, useEffect } from "react";
 interface MessageInputProps {
   onSendMessage: (text: string) => void;
   isLoading?: boolean;
+  isDisabled?: boolean;
+  placeholder?: string;
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
   onSendMessage,
   isLoading = false,
+  isDisabled = false,
+  placeholder = "Type your message...",
 }) => {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-adjust height of textarea
+  // Adjust textarea height based on content
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "40px"; // Reset height
-      const scrollHeight = textareaRef.current.scrollHeight;
-      textareaRef.current.style.height = Math.min(scrollHeight, 100) + "px"; // Max height of 100px
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [message]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !isLoading) {
+    if (message.trim() && !isLoading && !isDisabled) {
       onSendMessage(message.trim());
       setMessage("");
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      if (message.trim() && !isLoading && !isDisabled) {
+        onSendMessage(message.trim());
+        setMessage("");
+      }
     }
   };
 
@@ -45,9 +51,10 @@ const MessageInput: React.FC<MessageInputProps> = ({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message..."
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500 resize-none overflow-x-auto"
-            disabled={isLoading}
+            placeholder={placeholder}
+            className={`w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500 resize-none overflow-x-auto
+              ${isDisabled ? "bg-gray-300 text-gray-500" : ""}`}
+            disabled={isLoading || isDisabled}
             rows={1}
             style={{
               maxHeight: "100px",
@@ -57,10 +64,10 @@ const MessageInput: React.FC<MessageInputProps> = ({
         </div>
         <button
           type="submit"
-          disabled={!message.trim() || isLoading}
+          disabled={!message.trim() || isLoading || isDisabled}
           className={`px-6 py-2 rounded-lg bg-blue-600 text-white font-medium flex-shrink-0 h-fit
             ${
-              !message.trim() || isLoading
+              !message.trim() || isLoading || isDisabled
                 ? "opacity-50 cursor-not-allowed"
                 : "hover:bg-blue-700"
             }`}

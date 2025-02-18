@@ -1,16 +1,45 @@
 const Settings = require("../models/Settings");
 const logger = require("../utils/logger");
 
+const DEFAULT_SETTINGS = {
+  AGENT_NAME: "",
+  COMPANY_NAME: "",
+  AGENT_CITY: "",
+  AGENT_STATE: "",
+  AI_ASSISTANT_ENABLED: true,
+};
+
 const settingsController = {
+  // Initialize settings with default values
+  async initializeSettings() {
+    try {
+      for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+        const [setting] = await Settings.findOrCreate({
+          where: { key },
+          defaults: { value: value.toString() },
+        });
+      }
+    } catch (error) {
+      logger.error("Error initializing settings:", error);
+      throw error;
+    }
+  },
+
   // Get all settings
   async getSettings(req, res) {
     try {
       const settings = await Settings.findAll();
-      const formattedSettings = settings.reduce((acc, setting) => {
-        acc[setting.key] = setting.value;
+      const settingsMap = settings.reduce((acc, setting) => {
+        // Convert 'true'/'false' strings to actual booleans for boolean settings
+        if (setting.key === "AI_ASSISTANT_ENABLED") {
+          acc[setting.key] = setting.value === "true";
+        } else {
+          acc[setting.key] = setting.value;
+        }
         return acc;
       }, {});
-      res.json(formattedSettings);
+
+      res.json(settingsMap);
     } catch (error) {
       logger.error("Error fetching settings:", error);
       res.status(500).json({ error: "Failed to fetch settings" });
@@ -23,48 +52,25 @@ const settingsController = {
       const updates = req.body;
 
       for (const [key, value] of Object.entries(updates)) {
-        await Settings.upsert({
-          key,
-          value: String(value),
-          category: "agent",
-        });
+        await Settings.update({ value: value.toString() }, { where: { key } });
       }
 
-      res.json({ message: "Settings updated successfully" });
+      // Fetch and return updated settings
+      const settings = await Settings.findAll();
+      const settingsMap = settings.reduce((acc, setting) => {
+        // Convert 'true'/'false' strings to actual booleans for boolean settings
+        if (setting.key === "AI_ASSISTANT_ENABLED") {
+          acc[setting.key] = setting.value === "true";
+        } else {
+          acc[setting.key] = setting.value;
+        }
+        return acc;
+      }, {});
+
+      res.json(settingsMap);
     } catch (error) {
       logger.error("Error updating settings:", error);
       res.status(500).json({ error: "Failed to update settings" });
-    }
-  },
-
-  // Initialize default settings if they don't exist
-  async initializeSettings() {
-    try {
-      // Wait for the Settings model to be synced
-      await Settings.sync();
-
-      const defaultSettings = {
-        AGENT_NAME: "Alex Larcheveque",
-        COMPANY_NAME: "Serene Team",
-        AGENT_CITY: "Culver City",
-        AGENT_STATE: "California",
-      };
-
-      const promises = Object.entries(defaultSettings).map(([key, value]) =>
-        Settings.findOrCreate({
-          where: { key },
-          defaults: {
-            value: String(value),
-            category: "agent",
-          },
-        })
-      );
-
-      await Promise.all(promises);
-      logger.info("Settings initialized successfully");
-    } catch (error) {
-      logger.error("Error initializing settings:", error);
-      throw error; // Rethrow to be caught by the server initialization
     }
   },
 };

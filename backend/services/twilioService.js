@@ -1,13 +1,24 @@
 const twilio = require("twilio");
-const client = twilio("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN");
+const logger = require("../utils/logger");
 
-// Send SMS to a phone number
-const sendSMS = (to, body) => {
-  return client.messages.create({
-    body,
-    from: "TWILIO_PHONE_NUMBER",
-    to,
-  });
+const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+
+const twilioService = {
+  async sendMessage(phoneNumber, text) {
+    console.log("trrying to send twilio message");
+    try {
+      const twilioMessage = await client.messages.create({
+        body: text,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: phoneNumber,
+      });
+      console.log("twilio message sent");
+      return twilioMessage;
+    } catch (error) {
+      logger.error("Error sending Twilio message:", error);
+      throw error;
+    }
+  },
 };
 
-module.exports = { sendSMS };
+module.exports = twilioService;

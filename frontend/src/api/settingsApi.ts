@@ -7,6 +7,7 @@ export interface AgentSettings {
   COMPANY_NAME: string;
   AGENT_CITY: string;
   AGENT_STATE: string;
+  AI_ASSISTANT_ENABLED: boolean;
 }
 
 const settingsApi = {
@@ -17,8 +18,15 @@ const settingsApi = {
   },
 
   // Update settings
-  async updateSettings(settings: Partial<AgentSettings>): Promise<void> {
-    await axios.put(`${BASE_URL}/api/settings`, settings);
+  async updateSettings(
+    settings: Partial<AgentSettings>
+  ): Promise<AgentSettings> {
+    const response = await axios.put(`${BASE_URL}/api/settings`, settings);
+    return response.data;
+  },
+
+  async toggleAiAssistant(enabled: boolean): Promise<AgentSettings> {
+    return this.updateSettings({ AI_ASSISTANT_ENABLED: enabled });
   },
 };
 
