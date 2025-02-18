@@ -5,6 +5,7 @@ const sequelize = require("./config/database");
 const leadRoutes = require("./routes/leadroutes");
 const messageRoutes = require("./routes/messageRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
+const authRoutes = require("./routes/authRoutes");
 const settingsController = require("./controllers/settingsController");
 const agentSettings = require("./config/agentSettings");
 
@@ -14,6 +15,7 @@ app.use(cors());
 app.use(express.json());
 
 // Routes
+app.use("/api/auth", authRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/settings", settingsRoutes);
