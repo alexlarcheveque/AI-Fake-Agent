@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import MessageInput from "./MessageInput";
 import MessageList from "./MessageList";
 import { Message } from "../types/message";
@@ -20,11 +20,12 @@ const Playground: React.FC = () => {
       const userMessage: Message = {
         id: Date.now(),
         text,
-        sender: "user",
+        sender: "lead",
         twilioSid: `local-${Date.now()}`,
         timestamp: new Date().toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        useAiResponse: true,
       };
 
       // Add user message to UI immediately
@@ -38,7 +39,7 @@ const Playground: React.FC = () => {
       );
 
       // Only add AI message since user message is already shown
-      setMessages((prev) => [...prev, response.aiMessage]);
+      setMessages((prev) => [...prev, response.message]);
     } catch (error) {
       setError("Failed to send message");
       console.error("Error sending message:", error);
@@ -47,10 +48,38 @@ const Playground: React.FC = () => {
     }
   };
 
+  const handleStartConversation = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await messageApi.sendLocalMessage(
+        leadContext
+          ? `Create a short, warm and engaging introduction message with the following context: ${leadContext}. Be sure to confirm what the lead is looking for.`
+          : "Create a short, warm and engaging introduction message",
+        []
+      );
+      setMessages([response.message]);
+    } catch (error) {
+      setError("Failed to start conversation");
+      console.error("Error starting conversation:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const generateRandomContext = () => {
     const randomIndex = Math.floor(Math.random() * SAMPLE_LEAD_CONTEXT.length);
     setLeadContext(SAMPLE_LEAD_CONTEXT[randomIndex]);
+    setMessages([]);
   };
+
+  // Generate initial greeting when lead context changes
+  useEffect(() => {
+    if (leadContext.trim()) {
+      handleStartConversation();
+    }
+  }, [leadContext]);
 
   return (
     <div className="p-6">
@@ -113,7 +142,6 @@ const Playground: React.FC = () => {
               onClick={generateRandomContext}
               className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center"
             >
-              {/* Shuffle Arrows Icon */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -143,11 +171,30 @@ const Playground: React.FC = () => {
 
         {/* Messages */}
         <div className="h-[600px] flex flex-col">
-          <MessageList messages={messages} />
-          <MessageInput
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-          />
+          <div className="flex-1 overflow-y-auto">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                <p className="mb-4">No messages yet</p>
+                <button
+                  onClick={handleStartConversation}
+                  disabled={isLoading}
+                  className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors ${
+                    isLoading ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {isLoading ? "Starting..." : "Start Conversation"}
+                </button>
+              </div>
+            ) : (
+              <MessageList messages={messages} />
+            )}
+          </div>
+          <div className="flex-shrink-0">
+            <MessageInput
+              onSendMessage={handleSendMessage}
+              isLoading={isLoading}
+            />
+          </div>
         </div>
       </div>
     </div>
