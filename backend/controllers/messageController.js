@@ -144,6 +144,45 @@ const messageController = {
       res.status(500).json({ error: "Failed to fetch messages" });
     }
   },
+
+  // Send a local message (for playground testing)
+  async sendLocalMessage(req, res) {
+    console.log("sendLocalMessage", req.body);
+    try {
+      const { text, previousMessages } = req.body;
+
+      // Get current settings
+      const settings = await Settings.findAll();
+      const settingsMap = settings.reduce((acc, setting) => {
+        acc[setting.key] = setting.value;
+        return acc;
+      }, {});
+
+      // Generate AI response
+      const aiResponse = await openaiService.generateResponse(
+        text,
+        settingsMap,
+        previousMessages
+      );
+
+      // Create response message
+      const aiMessage = {
+        id: Date.now(),
+        text: aiResponse,
+        sender: "agent",
+        twilioSid: `local-response-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        useAiResponse: true,
+      };
+
+      res.json({ message: aiMessage });
+    } catch (error) {
+      logger.error("Error processing local message:", error);
+      res.status(500).json({ error: "Failed to process message" });
+    }
+  },
 };
 
 module.exports = messageController;

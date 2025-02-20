@@ -26,8 +26,8 @@ const messageApi = {
   async sendLocalMessage(
     text: string,
     previousMessages: Message[],
-    leadContext: string
-  ): Promise<{ aiMessage: Message }> {
+    leadContext?: string
+  ): Promise<{ message: Message }> {
     const response = await axios.post(`${BASE_URL}/api/messages/send-local`, {
       text,
       previousMessages,

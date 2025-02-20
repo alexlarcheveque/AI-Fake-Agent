@@ -34,12 +34,25 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             }`}
           >
             <p className="text-sm">{message.text}</p>
-            <span className="text-xs opacity-75 mt-1 block">
-              {new Date(message.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
+            <div className="flex justify-between items-center mt-1 text-xs opacity-75">
+              <span>
+                {new Date(message.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span
+                className={`ml-2 ${
+                  message.sender === "agent" ? "text-blue-100" : "text-gray-600"
+                }`}
+              >
+                {message.sender === "lead"
+                  ? "Lead"
+                  : message.sender === "agent"
+                  ? "AI Assistant"
+                  : "Manual"}
+              </span>
+            </div>
           </div>
         </div>
       ))}
