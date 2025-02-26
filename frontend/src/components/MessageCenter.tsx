@@ -135,6 +135,13 @@ const MessagesCenter: React.FC = () => {
                   leads.find((l) => l.id === selectedLeadId)?.phoneNumber
                 }
                 leadSource={leads.find((l) => l.id === selectedLeadId)?.status}
+                nextScheduledMessage={
+                  leads.find((l) => l.id === selectedLeadId)
+                    ?.nextScheduledMessage
+                }
+                messageCount={
+                  leads.find((l) => l.id === selectedLeadId)?.messageCount
+                }
               />
             ) : (
               <div className="h-full flex items-center justify-center text-gray-500">

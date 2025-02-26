@@ -1,6 +1,7 @@
 const Lead = require("../models/Lead");
 const { Op } = require("sequelize");
 const logger = require("../utils/logger");
+const scheduledMessageService = require("../services/scheduledMessageService");
 
 // Get all leads with pagination and search
 const getAllLeads = async (req, res) => {
@@ -49,9 +50,11 @@ const getAllLeads = async (req, res) => {
 const getLead = async (req, res) => {
   try {
     const lead = await Lead.findByPk(req.params.id);
+
     if (!lead) {
       return res.status(404).json({ error: "Lead not found" });
     }
+
     res.json(lead);
   } catch (error) {
     logger.error("Error fetching lead:", error);
@@ -63,7 +66,15 @@ const getLead = async (req, res) => {
 const createLead = async (req, res) => {
   try {
     const lead = await Lead.create(req.body);
-    res.status(201).json(lead);
+
+    // Schedule the first message
+    if (lead.enableFollowUps) {
+      await scheduledMessageService.scheduleNextMessage(lead.id);
+    }
+
+    // Fetch the lead again to include the scheduled message
+    const updatedLead = await Lead.findByPk(lead.id);
+    res.status(201).json(updatedLead);
   } catch (error) {
     logger.error("Error creating lead:", error);
 

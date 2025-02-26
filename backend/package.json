@@ -10,11 +10,13 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.0",
     "nodemailer": "^6.10.0",
     "openai": "^4.83.0",
     "pg": "^8.13.1",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.5",
+    "sequelize-cli": "^6.6.2",
     "twilio": "^5.4.3"
   }
 }

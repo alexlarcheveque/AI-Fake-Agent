@@ -8,6 +8,7 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const authRoutes = require("./routes/authRoutes");
 const settingsController = require("./controllers/settingsController");
 const agentSettings = require("./config/agentSettings");
+const cronService = require("./services/cronService");
 
 const app = express();
 
