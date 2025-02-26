@@ -4,6 +4,7 @@ import leadApi from "../api/leadApi";
 import { Message } from "../types/message";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
+import FollowUpIndicator from "./FollowUpIndicator";
 
 interface MessageThreadProps {
   leadId: number;
@@ -11,7 +12,8 @@ interface MessageThreadProps {
   leadEmail?: string;
   leadPhone?: string;
   leadSource?: string;
-  createdAt?: string;
+  nextScheduledMessage?: string;
+  messageCount?: number;
 }
 
 const MessageThread: React.FC<MessageThreadProps> = ({
@@ -20,7 +22,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   leadEmail,
   leadPhone,
   leadSource,
-  createdAt,
+  nextScheduledMessage,
+  messageCount,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,12 +91,18 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     <div className="h-full flex flex-col bg-white rounded-lg shadow-lg overflow-hidden">
       {/* Header */}
       <div className="p-4 border-b border-gray-200 flex-shrink-0">
-        <div className="flex justify-between items-center mb-1">
-          <h2 className="text-lg font-semibold">
-            {leadName || `Lead #${leadId}`}
-          </h2>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-600">AI Assistant:</span>
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-xl font-semibold text-gray-800">{leadName}</h2>
+          <div className="flex items-center space-x-4">
+            {nextScheduledMessage && (
+              <div className="text-sm text-gray-600">
+                <FollowUpIndicator
+                  nextScheduledMessage={nextScheduledMessage}
+                  messageCount={messageCount || 0}
+                  className="text-blue-600"
+                />
+              </div>
+            )}
             <button
               onClick={handleToggleAiAssistant}
               className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
@@ -102,7 +111,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   : "bg-gray-100 text-gray-800 hover:bg-gray-200"
               }`}
             >
-              {aiAssistantEnabled ? "Enabled" : "Disabled"}
+              {aiAssistantEnabled ? "AI Enabled" : "AI Disabled"}
             </button>
           </div>
         </div>
@@ -122,10 +131,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <span className="font-medium">Source:</span> {leadSource}
             </div>
           )}
-          {createdAt && (
+          {messageCount && (
             <div>
-              <span className="font-medium">Created:</span>{" "}
-              {new Date(createdAt).toLocaleDateString()}
+              <span className="font-medium">Message Count:</span> {messageCount}
             </div>
           )}
         </div>

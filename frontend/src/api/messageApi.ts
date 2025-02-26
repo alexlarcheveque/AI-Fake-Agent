@@ -35,6 +35,14 @@ const messageApi = {
     });
     return response.data;
   },
+
+  // Test Twilio
+  async testTwilio(text: string): Promise<{ message: Message }> {
+    const response = await axios.post(`${BASE_URL}/api/messages/test-twilio`, {
+      text,
+    });
+    return response.data;
+  },
 };
 
 export default messageApi;

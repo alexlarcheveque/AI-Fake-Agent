@@ -50,6 +50,7 @@ interface FormData {
   phoneNumber: string;
   status: string;
   aiAssistantEnabled: boolean;
+  enableFollowUps: boolean;
 }
 
 const initialFormData: FormData = {
@@ -58,6 +59,7 @@ const initialFormData: FormData = {
   phoneNumber: "",
   status: "new",
   aiAssistantEnabled: true,
+  enableFollowUps: true,
 };
 
 // Validation functions
@@ -128,7 +130,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     Object.keys(formData).forEach((key) => {
-      if (key === "aiAssistantEnabled") return;
+      if (key === "aiAssistantEnabled" || key === "enableFollowUps") return;
       const value = formData[key as keyof typeof formData];
       if (typeof value === "string") {
         const error = validateField(key, value);
@@ -182,7 +184,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
 
     // Mark all fields as touched
     const allFields = Object.keys(formData).filter(
-      (key) => key !== "aiAssistantEnabled"
+      (key) => key !== "aiAssistantEnabled" && key !== "enableFollowUps"
     );
     setTouchedFields(new Set(allFields));
 
@@ -357,6 +359,39 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
             <span
               className={`${
                 formData.aiAssistantEnabled ? "translate-x-5" : "translate-x-0"
+              } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Automated Follow-ups Toggle */}
+      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-gray-900">
+              Automated Follow-ups
+            </h3>
+            <p className="text-sm text-gray-500">
+              Enable AI to automatically follow up with leads who don't respond
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setFormData((prev) => ({
+                ...prev,
+                enableFollowUps: !prev.enableFollowUps,
+              }))
+            }
+            className={`${
+              formData.enableFollowUps ? "bg-blue-600" : "bg-gray-200"
+            } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+            disabled={isLoading}
+          >
+            <span
+              className={`${
+                formData.enableFollowUps ? "translate-x-5" : "translate-x-0"
               } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
             />
           </button>

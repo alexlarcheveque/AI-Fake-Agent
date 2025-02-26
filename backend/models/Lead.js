@@ -34,6 +34,22 @@ const Lead = sequelize.define(
       allowNull: false,
       defaultValue: true,
     },
+    nextScheduledMessage: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    lastMessageDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    messageCount: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    enableFollowUps: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
   },
   {
     timestamps: true,

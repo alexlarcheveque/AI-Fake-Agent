@@ -2,6 +2,7 @@ import { useState } from "react";
 import leadApi from "../api/leadApi";
 import { Lead } from "../types/lead";
 import React from "react";
+import FollowUpIndicator from "./FollowUpIndicator";
 
 interface LeadListProps {
   leads: Lead[];
@@ -84,6 +85,8 @@ const LeadList: React.FC<LeadListProps> = ({
   if (isLoading && leads?.length === 0) {
     return <div className="text-center py-4">Loading...</div>;
   }
+
+  console.log(leads[0]);
 
   return (
     <div className="overflow-x-auto">
@@ -333,15 +336,29 @@ const LeadList: React.FC<LeadListProps> = ({
                         </td>
                         <td className="px-6 h-[52px]">
                           <div className="py-2 flex justify-center">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                lead.aiAssistantEnabled
-                                  ? "bg-purple-100 text-purple-800 border border-purple-200"
-                                  : "bg-gray-100 text-gray-600 border border-gray-200"
-                              }`}
-                            >
-                              {lead.aiAssistantEnabled ? "Enabled" : "Disabled"}
-                            </span>
+                            <div className="flex flex-col space-y-1">
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  lead.aiAssistantEnabled
+                                    ? "bg-purple-100 text-purple-800"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                AI:{" "}
+                                {lead.aiAssistantEnabled
+                                  ? "Enabled"
+                                  : "Disabled"}
+                              </span>
+                              {lead.nextScheduledMessage && (
+                                <FollowUpIndicator
+                                  nextScheduledMessage={
+                                    lead.nextScheduledMessage
+                                  }
+                                  messageCount={lead.messageCount + 1}
+                                  className="text-blue-600"
+                                />
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 h-[52px]">

@@ -4,8 +4,19 @@ const Settings = require("../models/Settings");
 const twilioService = require("../services/twilioService");
 const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
+const followUpService = require("../services/followUpService");
+const FollowUp = require("../models/FollowUp");
 
 const messageController = {
+  // send test twilio message
+  async testTwilio(req, res) {
+    const twilioMessage = await twilioService.sendMessage(
+      "+5571981265131",
+      "test"
+    );
+    res.json({ message: twilioMessage });
+  },
+
   // Send a message to a lead via Twilio
   async sendMessage(req, res) {
     try {
@@ -60,6 +71,9 @@ const messageController = {
           twilioSid: aiTwilioMessage.sid,
         });
 
+        // Schedule follow-up after sending message
+        await followUpService.scheduleFollowUp(leadId, new Date());
+
         res.json({ message, aiMessage });
       } else {
         res.json({ message });
@@ -113,6 +127,17 @@ const messageController = {
           sender: "agent",
           twilioSid: twilioMessage.sid,
         });
+
+        // Cancel any pending follow-ups when lead responds
+        await FollowUp.update(
+          { status: "cancelled" },
+          {
+            where: {
+              leadId: lead.id,
+              status: "pending",
+            },
+          }
+        );
 
         res.json({
           incomingMessage,

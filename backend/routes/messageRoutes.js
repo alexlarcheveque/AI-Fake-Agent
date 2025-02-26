@@ -5,6 +5,7 @@ const {
   getMessages,
   receiveMessage,
   sendLocalMessage,
+  testTwilio,
 } = require("../controllers/messageController");
 
 // Get message history for a lead
@@ -18,5 +19,8 @@ router.post("/send-local", sendLocalMessage);
 
 // Webhook for receiving messages (for Twilio)
 router.post("/receive", receiveMessage);
+
+// Test Twilio
+router.post("/test-twilio", testTwilio);
 
 module.exports = router;
