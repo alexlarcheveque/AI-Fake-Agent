@@ -60,4 +60,7 @@ User.prototype.checkPassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
 
+// This relationship will be properly set up in Settings.js
+// User.hasMany(Settings, { foreignKey: 'userId' });
+
 module.exports = User;

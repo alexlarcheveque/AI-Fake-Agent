@@ -1,32 +1,39 @@
 import axios from "axios";
+import { getAuthHeader } from "../utils/auth";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-export interface AgentSettings {
-  AGENT_NAME: string;
-  COMPANY_NAME: string;
-  AGENT_CITY: string;
-  AGENT_STATE: string;
-  AI_ASSISTANT_ENABLED: boolean;
+export interface UserSettings {
+  id: number;
+  userId: string;
+  agentName: string;
+  companyName: string;
+  agentCity: string;
+  agentState: string;
+  aiAssistantEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const settingsApi = {
-  // Get all settings
-  async getSettings(): Promise<AgentSettings> {
-    const response = await axios.get(`${BASE_URL}/api/settings`);
+  // Get settings for current user
+  async getSettings(): Promise<UserSettings> {
+    const response = await axios.get(`${BASE_URL}/api/settings`, {
+      headers: getAuthHeader(),
+    });
     return response.data;
   },
 
-  // Update settings
-  async updateSettings(
-    settings: Partial<AgentSettings>
-  ): Promise<AgentSettings> {
-    const response = await axios.put(`${BASE_URL}/api/settings`, settings);
+  // Update settings for current user
+  async updateSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
+    const response = await axios.put(`${BASE_URL}/api/settings`, settings, {
+      headers: getAuthHeader(),
+    });
     return response.data;
   },
 
-  async toggleAiAssistant(enabled: boolean): Promise<AgentSettings> {
-    return this.updateSettings({ AI_ASSISTANT_ENABLED: enabled });
+  async toggleAiAssistant(enabled: boolean): Promise<UserSettings> {
+    return this.updateSettings({ aiAssistantEnabled: enabled });
   },
 };
 

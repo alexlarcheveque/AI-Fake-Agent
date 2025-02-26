@@ -21,7 +21,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       await onLogin(email, password);
       navigate("/");
     } catch (err: any) {
-      setError(err.message || "Failed to sign in");
+      console.error("Login error:", err);
+      setError(err.response?.data?.error || err.message || "Failed to sign in");
     } finally {
       setIsLoading(false);
     }

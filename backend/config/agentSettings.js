@@ -1,29 +1,39 @@
-const Settings = require("../models/Settings");
+const UserSettings = require("../models/UserSettings");
 
 const agentSettings = {
   _settings: {
-    name: "Alex Larcheveque",
-    companyName: "Serene Team",
-    city: "Culver City",
-    state: "California",
+    agentName: "Default Agent",
+    companyName: "Default Company",
+    city: "Default City",
+    state: "Default State",
   },
 
   async initialize() {
-    try {
-      const dbSettings = await Settings.findAll();
-      const settingsMap = dbSettings.reduce((acc, setting) => {
-        acc[setting.key] = setting.value;
-        return acc;
-      }, {});
+    // This method is no longer needed for global settings
+    // But we'll keep it for backward compatibility
+    console.log("Agent settings initialized with defaults");
+  },
 
-      this._settings = {
-        name: settingsMap.AGENT_NAME || this._settings.name,
-        companyName: settingsMap.COMPANY_NAME || this._settings.companyName,
-        city: settingsMap.AGENT_CITY || this._settings.city,
-        state: settingsMap.AGENT_STATE || this._settings.state,
-      };
+  async loadUserSettings(userId) {
+    if (!userId) {
+      return;
+    }
+
+    try {
+      const userSettings = await UserSettings.findOne({
+        where: { userId },
+      });
+
+      if (userSettings) {
+        this._settings = {
+          name: userSettings.agentName,
+          companyName: userSettings.companyName,
+          city: userSettings.agentCity,
+          state: userSettings.agentState,
+        };
+      }
     } catch (error) {
-      console.error("Error loading settings:", error);
+      console.error("Failed to load user settings", error);
     }
   },
 

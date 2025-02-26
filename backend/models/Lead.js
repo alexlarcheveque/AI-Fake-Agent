@@ -50,6 +50,14 @@ const Lead = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "Users",
+        key: "id",
+      },
+    },
   },
   {
     timestamps: true,
