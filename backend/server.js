@@ -26,11 +26,18 @@ const PORT = process.env.PORT || 3000;
 // Sync database and start server
 const initializeApp = async () => {
   try {
+    // No need to initialize global settings anymore
+    // We'll create user settings when needed
+
+    // If you need to log something at startup
+    console.log(
+      "App initialization complete - user settings will be created as needed"
+    );
+
     // Sync all models with the database
     await sequelize.sync({ alter: true });
 
-    // Initialize settings after database is synced
-    await settingsController.initializeSettings();
+    // Keep the agentSettings initialization which is now updated to use the new model
     await agentSettings.initialize();
 
     // Start the server

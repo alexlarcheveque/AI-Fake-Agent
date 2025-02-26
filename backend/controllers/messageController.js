@@ -6,6 +6,7 @@ const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
 const followUpService = require("../services/followUpService");
 const FollowUp = require("../models/FollowUp");
+const settingsService = require("../services/settingsService");
 
 const messageController = {
   // send test twilio message
@@ -28,6 +29,10 @@ const messageController = {
         return res.status(404).json({ error: "Lead not found" });
       }
 
+      // Get the lead owner
+      const userId = lead.userId;
+      const settingsMap = await settingsService.getAllSettings(userId);
+
       // Send message via Twilio
       const twilioMessage = await twilioService.sendMessage(
         lead.phoneNumber,
@@ -44,13 +49,6 @@ const messageController = {
 
       // If AI Assistant is enabled for this lead, generate and send AI response
       if (lead.aiAssistantEnabled) {
-        // Get current settings
-        const settings = await Settings.findAll();
-        const settingsMap = settings.reduce((acc, setting) => {
-          acc[setting.key] = setting.value;
-          return acc;
-        }, {});
-
         // Generate AI response
         const aiResponse = await openaiService.generateResponse(
           text,
@@ -96,6 +94,10 @@ const messageController = {
         return res.status(404).json({ error: "Lead not found" });
       }
 
+      // Get the lead owner
+      const userId = lead.userId;
+      const settingsMap = await settingsService.getAllSettings(userId);
+
       // Save incoming message
       const incomingMessage = await Message.create({
         leadId: lead.id,
@@ -106,13 +108,6 @@ const messageController = {
 
       // Only generate AI response if enabled for this lead
       if (lead.aiAssistantEnabled) {
-        // Get current settings
-        const settings = await Settings.findAll();
-        const settingsMap = settings.reduce((acc, setting) => {
-          acc[setting.key] = setting.value;
-          return acc;
-        }, {});
-
         // Generate and send AI response
         const aiResponse = await openaiService.generateResponse(
           Body,
