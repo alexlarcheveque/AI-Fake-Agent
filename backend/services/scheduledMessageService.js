@@ -22,25 +22,46 @@ const scheduledMessageService = {
       }
 
       // Calculate next message date
-      const daysToAdd = FOLLOW_UP_INTERVALS[lead.messageCount];
-      // Use createdAt for first message, lastMessageDate for subsequent messages
-      const baseDate =
-        lead.messageCount === 0 ? lead.createdAt : lead.lastMessageDate;
-      const nextScheduledMessage = new Date(baseDate);
-      nextScheduledMessage.setDate(nextScheduledMessage.getDate() + daysToAdd);
+      let nextScheduledMessage;
+
+      // For the first message (messageCount = 0)
+      if (lead.messageCount === 0) {
+        nextScheduledMessage = new Date();
+
+        // Apply the first message timing preference
+        switch (lead.firstMessageTiming) {
+          case "next_day":
+            nextScheduledMessage.setDate(nextScheduledMessage.getDate() + 1);
+            break;
+          case "one_week":
+            nextScheduledMessage.setDate(nextScheduledMessage.getDate() + 7);
+            break;
+          case "two_weeks":
+            nextScheduledMessage.setDate(nextScheduledMessage.getDate() + 14);
+            break;
+          case "immediate":
+          default:
+            // Keep the current date for immediate sending
+            break;
+        }
+      } else {
+        // For follow-up messages, use the existing logic
+        const daysToAdd = FOLLOW_UP_INTERVALS[lead.messageCount - 1];
+        nextScheduledMessage = new Date(lead.lastMessageDate);
+        nextScheduledMessage.setDate(
+          nextScheduledMessage.getDate() + daysToAdd
+        );
+      }
 
       // Update lead with next scheduled message
-      await lead.update({
-        nextScheduledMessage,
-        // Don't increment messageCount until the message is actually sent
-        messageCount: lead.messageCount,
-      });
+      await lead.update({ nextScheduledMessage });
 
       logger.info(
         `Scheduled next message for lead ${leadId} at ${nextScheduledMessage}`
       );
     } catch (error) {
       logger.error(`Error scheduling next message for lead ${leadId}:`, error);
+      throw error;
     }
   },
 

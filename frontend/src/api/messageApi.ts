@@ -43,6 +43,12 @@ const messageApi = {
     });
     return response.data;
   },
+
+  // Add this method to your existing messageApi.ts file
+  async getMessageStats(): Promise<{ totalMessages: number }> {
+    const response = await axios.get(`${BASE_URL}/messages/stats`);
+    return response.data;
+  },
 };
 
 export default messageApi;
