@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const settingsController = require("./controllers/settingsController");
 const agentSettings = require("./config/agentSettings");
 const cronService = require("./services/cronService");
+const scheduledMessageService = require("./services/scheduledMessageService");
 
 const app = express();
 
@@ -26,6 +27,9 @@ const PORT = process.env.PORT || 3000;
 // Sync database and start server
 const initializeApp = async () => {
   try {
+    // Then sync all models
+    await sequelize.sync({ alter: true });
+
     // No need to initialize global settings anymore
     // We'll create user settings when needed
 
@@ -34,9 +38,6 @@ const initializeApp = async () => {
       "App initialization complete - user settings will be created as needed"
     );
 
-    // Sync all models with the database
-    await sequelize.sync({ alter: true });
-
     // Keep the agentSettings initialization which is now updated to use the new model
     await agentSettings.initialize();
 
@@ -44,6 +45,11 @@ const initializeApp = async () => {
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
+
+    // Check for scheduled messages every minute
+    setInterval(async () => {
+      await scheduledMessageService.checkAndSendScheduledMessages();
+    }, 60000); // 60000 ms = 1 minute
   } catch (error) {
     console.error("Error initializing application:", error);
     process.exit(1);

@@ -3,6 +3,7 @@ const openaiService = require("./openaiService");
 const twilioService = require("./twilioService");
 const logger = require("../utils/logger");
 const { Op } = require("sequelize");
+const Message = require("../models/Message");
 
 // Follow-up intervals in days
 const FOLLOW_UP_INTERVALS = [7, 14, 30]; // 1 week, 2 weeks, 1 month
@@ -110,6 +111,92 @@ const scheduledMessageService = {
       }
     } catch (error) {
       logger.error("Error processing scheduled messages:", error);
+    }
+  },
+
+  async checkAndSendScheduledMessages() {
+    try {
+      const now = new Date();
+
+      // Find leads with scheduled messages that are due
+      const leadsWithDueMessages = await Lead.findAll({
+        where: {
+          nextScheduledMessage: {
+            [Op.not]: null,
+            [Op.lte]: now, // Less than or equal to current time
+          },
+          archived: false,
+        },
+      });
+
+      logger.info(
+        `Found ${leadsWithDueMessages.length} leads with messages due to be sent`
+      );
+
+      // Send messages for each lead
+      for (const lead of leadsWithDueMessages) {
+        try {
+          // Generate message text
+          const messageText = await openaiService.generateResponse(
+            `Generate follow-up message #${
+              lead.messageCount
+            } for a lead who hasn't responded in ${
+              FOLLOW_UP_INTERVALS[lead.messageCount - 1]
+            } days. Keep it casual but professional.`,
+            {},
+            [] // No previous messages needed
+          );
+
+          // Create message record
+          const message = await Message.create({
+            leadId: lead.id,
+            text: messageText,
+            sender: "agent",
+            status: "scheduled",
+            direction: "outbound",
+          });
+
+          // Try to send the message via Twilio
+          try {
+            await twilioService.sendMessage(
+              lead.phoneNumber,
+              messageText,
+              message.id
+            );
+
+            // Update message status to sent
+            await message.update({ status: "sent" });
+
+            // Update lead record
+            await lead.update({
+              nextScheduledMessage: null,
+              messageCount: lead.messageCount + 1,
+            });
+
+            logger.info(`Sent scheduled message to lead ${lead.id}`);
+          } catch (twilioError) {
+            // Handle Twilio errors
+            logger.error(
+              `Twilio error for lead ${lead.id}: ${twilioError.message}`
+            );
+
+            // Update message status to failed
+            await message.update({
+              status: "failed",
+              statusDetails: twilioError.message,
+            });
+
+            // Don't update the lead's nextScheduledMessage so we can try again later
+          }
+        } catch (error) {
+          logger.error(
+            `Error sending scheduled message to lead ${lead.id}:`,
+            error
+          );
+        }
+      }
+    } catch (error) {
+      logger.error("Error checking for scheduled messages:", error);
     }
   },
 };

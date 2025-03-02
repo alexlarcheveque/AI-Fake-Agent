@@ -12,9 +12,9 @@ const Settings = sequelize.define(
     },
     userId: {
       type: DataTypes.UUID,
-      allowNull: true, // Allow null for global settings
+      allowNull: true,
       references: {
-        model: User,
+        model: "Users",
         key: "id",
       },
     },
@@ -35,7 +35,7 @@ const Settings = sequelize.define(
   {
     // Model options
     timestamps: true, // Enables createdAt and updatedAt
-    tableName: "settings", // Force table name to be lowercase
+    tableName: "Settings", // Explicitly set the table name
     underscored: true, // Use snake_case for column names
     indexes: [
       // Create a composite unique index for userId + key

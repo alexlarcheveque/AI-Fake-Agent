@@ -87,6 +87,33 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }
   };
 
+  // Add this helper function to get status icon and color
+  const getStatusIndicator = (message: Message) => {
+    if (message.direction === "inbound") return null;
+
+    const statusMap = {
+      queued: { icon: "⏳", color: "text-gray-400", text: "Queued" },
+      sending: { icon: "⏳", color: "text-blue-400", text: "Sending" },
+      sent: { icon: "✓", color: "text-blue-500", text: "Sent" },
+      delivered: { icon: "✓✓", color: "text-green-500", text: "Delivered" },
+      failed: { icon: "❌", color: "text-red-500", text: "Failed" },
+      undelivered: { icon: "❌", color: "text-red-500", text: "Undelivered" },
+      read: { icon: "👁️", color: "text-green-600", text: "Read" },
+    };
+
+    const status = message.deliveryStatus || "queued";
+    const indicator = statusMap[status];
+
+    return (
+      <span
+        className={`text-xs ${indicator.color} ml-2`}
+        title={message.errorMessage || indicator.text}
+      >
+        {indicator.icon}
+      </span>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col bg-white rounded-lg shadow-lg overflow-hidden">
       {/* Header */}

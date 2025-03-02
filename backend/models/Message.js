@@ -14,7 +14,7 @@ const Message = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: Lead,
+        model: "Leads",
         key: "id",
       },
     },
@@ -22,26 +22,59 @@ const Message = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: false,
     },
-    sender: {
-      type: DataTypes.ENUM("agent", "lead"),
+    direction: {
+      type: DataTypes.ENUM("inbound", "outbound"),
       allowNull: false,
+      defaultValue: function () {
+        // Default based on sender if available
+        return this.sender === "agent" ? "outbound" : "inbound";
+      },
+    },
+    isAiGenerated: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
     twilioSid: {
       type: DataTypes.STRING,
-      unique: true,
+      allowNull: true,
     },
-    timestamp: {
+    deliveryStatus: {
+      type: DataTypes.ENUM(
+        "queued",
+        "sending",
+        "sent",
+        "delivered",
+        "failed",
+        "undelivered",
+        "read"
+      ),
+      defaultValue: "queued",
+    },
+    errorCode: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    errorMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    statusUpdatedAt: {
       type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-    useAiResponse: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true,
-      allowNull: false,
+      allowNull: true,
     },
   },
   {
     timestamps: true,
+    validate: {
+      senderDirectionConsistency() {
+        if (
+          (this.sender === "agent" && this.direction !== "outbound") ||
+          (this.sender === "lead" && this.direction !== "inbound")
+        ) {
+          throw new Error("Sender and direction must be consistent");
+        }
+      },
+    },
   }
 );
 

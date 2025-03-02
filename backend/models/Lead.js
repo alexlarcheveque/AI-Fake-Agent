@@ -66,6 +66,11 @@ const Lead = sequelize.define(
         isIn: [["immediate", "next_day", "one_week", "two_weeks"]],
       },
     },
+    archived: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
   },
   {
     timestamps: true,
