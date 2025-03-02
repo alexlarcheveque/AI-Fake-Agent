@@ -17,6 +17,34 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     }
   }, [messages]);
 
+  React.useEffect(() => {
+    if (messages.length > 0) {
+      console.log("Message structure:", messages[0]);
+    }
+  }, [messages]);
+
+  // Helper function to format dates safely
+  const formatMessageTime = (dateString: string | Date) => {
+    try {
+      const date =
+        typeof dateString === "string" ? new Date(dateString) : dateString;
+
+      // Check if date is valid before formatting
+      if (isNaN(date.getTime())) {
+        console.warn("Invalid date:", dateString);
+        return ""; // Return empty string for invalid dates
+      }
+
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "";
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
       {messages.map((message) => (
@@ -35,22 +63,19 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           >
             <p className="text-sm">{message.text}</p>
             <div className="flex justify-between items-center mt-1 text-xs opacity-75">
-              <span>
-                {new Date(message.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
+              <span>{formatMessageTime(message.createdAt)}</span>
               <span
                 className={`ml-2 ${
                   message.sender === "agent" ? "text-blue-100" : "text-gray-600"
                 }`}
               >
-                {message.sender === "lead"
-                  ? "Lead"
-                  : message.sender === "agent"
-                  ? "AI Assistant"
-                  : "Manual"}
+                {(() => {
+                  if (message.sender === "lead") return "Lead";
+                  if (message.sender === "agent" && message.isAiGenerated)
+                    return "Bot";
+                  if (message.sender === "agent") return "Agent";
+                  return "Manual";
+                })()}
               </span>
             </div>
           </div>

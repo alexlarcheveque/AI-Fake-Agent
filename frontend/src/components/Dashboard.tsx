@@ -1,14 +1,16 @@
-import messageApi from "@/api/messageApi";
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import MessageCalendar from "./MessageCalendar";
 import leadApi from "../api/leadApi";
+import messageApi from "../api/messageApi";
 
 interface DashboardStats {
   totalLeads: number;
   activeConversations: number;
   scheduledMessages: number;
   messagesSent: number;
+  deliveredMessages: number;
+  failedMessages: number;
 }
 
 const Dashboard: React.FC = () => {
@@ -17,6 +19,8 @@ const Dashboard: React.FC = () => {
     activeConversations: 0,
     scheduledMessages: 0,
     messagesSent: 0,
+    deliveredMessages: 0,
+    failedMessages: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
@@ -33,16 +37,16 @@ const Dashboard: React.FC = () => {
           (lead) => lead.nextScheduledMessage
         ).length;
 
-        // Get message stats
+        // Get message stats with enhanced data
         const messageStats = await messageApi.getMessageStats();
 
         setStats({
           totalLeads: leadsResponse.totalLeads,
-          activeConversations: leadsResponse.leads.filter(
-            (lead) => lead.messageCount > 0
-          ).length,
+          activeConversations: messageStats.activeConversations || 0,
           scheduledMessages: leadsWithScheduledMessages,
           messagesSent: messageStats.totalMessages || 0,
+          deliveredMessages: messageStats.deliveredMessages || 0,
+          failedMessages: messageStats.failedMessages || 0,
         });
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
@@ -55,7 +59,7 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const handleLeadSelect = (leadId: number) => {
-    navigate(`/leads/${leadId}`);
+    navigate(`/messages?leadId=${leadId}`);
   };
 
   return (
@@ -63,12 +67,11 @@ const Dashboard: React.FC = () => {
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
 
       {isLoading ? (
-        <div className="flex justify-center items-center h-64">
+        <div className="flex justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
         </div>
       ) : (
         <>
-          {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center">
@@ -198,6 +201,16 @@ const Dashboard: React.FC = () => {
                 <div>
                   <p className="text-gray-500 text-sm">Messages Sent</p>
                   <p className="text-2xl font-bold">{stats.messagesSent}</p>
+                  <div className="flex text-xs mt-1">
+                    <span className="text-green-600 mr-2">
+                      {stats.deliveredMessages} delivered
+                    </span>
+                    {stats.failedMessages > 0 && (
+                      <span className="text-red-600">
+                        {stats.failedMessages} failed
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="mt-4">

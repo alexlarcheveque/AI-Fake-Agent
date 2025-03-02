@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Lead } from "../types/lead";
 import leadApi from "../api/leadApi";
+import messageApi from "../api/messageApi";
 import {
   format,
   startOfMonth,
@@ -10,6 +11,7 @@ import {
   isToday,
   addMonths,
   subMonths,
+  isBefore,
 } from "date-fns";
 
 interface MessageCalendarProps {
@@ -18,24 +20,39 @@ interface MessageCalendarProps {
 
 interface CalendarLead extends Lead {
   messageType: "first" | "followup";
+  messageStatus?: string;
+}
+
+interface ScheduledMessage {
+  id: number;
+  leadId: number;
+  scheduledFor: string;
+  status: string;
+  leadName: string;
+  messageType: "first" | "followup";
+  messageCount: number;
 }
 
 const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [scheduledLeads, setScheduledLeads] = useState<CalendarLead[]>([]);
+  const [pastMessages, setPastMessages] = useState<ScheduledMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
 
-  // Fetch leads with scheduled messages
+  // Fetch leads with scheduled messages and past messages
   useEffect(() => {
-    const fetchScheduledLeads = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       try {
-        const response = await leadApi.getLeads(1, 100);
-
-        // Filter leads with scheduled messages in the current month range
+        // Get the month range
         const monthStart = startOfMonth(currentMonth);
         const monthEnd = endOfMonth(currentMonth);
 
+        // Fetch leads with upcoming scheduled messages
+        const response = await leadApi.getLeads(1, 100);
+
+        // Filter leads with scheduled messages in the current month range
         const leadsWithScheduledMessages = response.leads
           .filter((lead) => lead.nextScheduledMessage)
           .map((lead) => {
@@ -54,99 +71,150 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
           .filter(Boolean) as CalendarLead[];
 
         setScheduledLeads(leadsWithScheduledMessages);
+
+        try {
+          // Fetch past messages for the calendar
+          const pastMessagesResponse = await messageApi.getScheduledMessages(
+            format(monthStart, "yyyy-MM-dd"),
+            format(monthEnd, "yyyy-MM-dd")
+          );
+
+          setPastMessages(pastMessagesResponse || []);
+        } catch (msgError) {
+          console.error("Error fetching past messages:", msgError);
+          setPastMessages([]); // Set empty array on error
+        }
       } catch (error) {
-        console.error("Error fetching scheduled leads:", error);
+        console.error("Error fetching calendar data:", error);
+        setScheduledLeads([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchScheduledLeads();
+    fetchData();
   }, [currentMonth]);
 
-  // Navigate to previous month
-  const prevMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1));
-  };
+  useEffect(() => {
+    // Define upcomingEvents from scheduledLeads
+    const upcomingEvents = scheduledLeads.map((lead) => ({
+      id: lead.id,
+      name: lead.name,
+      messageType: lead.messageType,
+      nextScheduledMessage: lead.nextScheduledMessage,
+      isPast: false,
+      status: "upcoming",
+    }));
 
-  // Navigate to next month
+    // Combine both types of events
+    const allEvents = [
+      ...upcomingEvents,
+      ...pastMessages.map((msg) => ({
+        id: msg.leadId,
+        name: msg.leadName,
+        messageType: msg.messageType,
+        messageCount: msg.messageCount,
+        nextScheduledMessage: msg.scheduledFor,
+        isPast: true,
+        status: msg.status,
+      })),
+    ];
+
+    // Sort all events by timestamp (ascending)
+    allEvents.sort((a, b) => {
+      const dateA = new Date(a.nextScheduledMessage || 0);
+      const dateB = new Date(b.nextScheduledMessage || 0);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    setCalendarEvents(allEvents);
+  }, [scheduledLeads, pastMessages]);
+
   const nextMonth = () => {
     setCurrentMonth(addMonths(currentMonth, 1));
   };
 
-  // Get all days in the current month
+  const prevMonth = () => {
+    setCurrentMonth(subMonths(currentMonth, 1));
+  };
+
   const daysInMonth = eachDayOfInterval({
     start: startOfMonth(currentMonth),
     end: endOfMonth(currentMonth),
   });
 
-  // Group leads by date
-  const getLeadsForDay = (day: Date) => {
-    return scheduledLeads.filter((lead) => {
-      const messageDate = new Date(lead.nextScheduledMessage!);
-      return isSameDay(messageDate, day);
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Get all events (scheduled and past) for a specific day
+  const getEventsForDay = (day: Date) => {
+    // Filter events for this day
+    const events = calendarEvents.filter((event) => {
+      if (!event.nextScheduledMessage) return false;
+      const eventDate = new Date(event.nextScheduledMessage);
+      return isSameDay(eventDate, day);
+    });
+
+    // Sort events by time (ascending)
+    return events.sort((a, b) => {
+      const dateA = new Date(a.nextScheduledMessage || 0);
+      const dateB = new Date(b.nextScheduledMessage || 0);
+      return dateA.getTime() - dateB.getTime();
     });
   };
 
   return (
     <div className="bg-white rounded-lg shadow p-4">
+      {/* Calendar header */}
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold text-gray-800">
-          Scheduled Messages
+        <button
+          onClick={prevMonth}
+          className="p-2 rounded-full hover:bg-gray-100"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+        </button>
+        <h2 className="text-xl font-semibold">
+          {format(currentMonth, "MMMM yyyy")}
         </h2>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={prevMonth}
-            className="p-2 rounded-full hover:bg-gray-100"
+        <button
+          onClick={nextMonth}
+          className="p-2 rounded-full hover:bg-gray-100"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-          <span className="text-lg font-medium">
-            {format(currentMonth, "MMMM yyyy")}
-          </span>
-          <button
-            onClick={nextMonth}
-            className="p-2 rounded-full hover:bg-gray-100"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        </div>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </button>
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
       ) : (
         <div className="grid grid-cols-7 gap-1">
-          {/* Day headers */}
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          {/* Weekday headers */}
+          {weekdays.map((day) => (
             <div
               key={day}
               className="text-center font-medium text-gray-500 py-2"
@@ -157,8 +225,9 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
 
           {/* Calendar days */}
           {daysInMonth.map((day) => {
-            const dayLeads = getLeadsForDay(day);
+            const dayEvents = getEventsForDay(day);
             const isCurrentDay = isToday(day);
+            const isPastDay = isBefore(day, new Date()) && !isCurrentDay;
 
             return (
               <div
@@ -166,6 +235,8 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                 className={`min-h-[100px] border p-1 ${
                   isCurrentDay
                     ? "bg-blue-50 border-blue-200"
+                    : isPastDay
+                    ? "bg-gray-50"
                     : "hover:bg-gray-50"
                 }`}
               >
@@ -180,24 +251,43 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                 </div>
 
                 <div className="mt-1 space-y-1">
-                  {dayLeads.map((lead) => (
+                  {dayEvents.map((event) => (
                     <div
-                      key={lead.id}
-                      onClick={() => onLeadSelect && onLeadSelect(lead.id)}
+                      key={`${event.id}-${event.messageType}-${event.isPast}`}
+                      onClick={() => onLeadSelect && onLeadSelect(event.id)}
                       className={`text-xs p-1 rounded truncate cursor-pointer ${
-                        lead.messageType === "first"
+                        event.isPast
+                          ? event.status === "sent" ||
+                            event.status === "delivered"
+                            ? "bg-green-50 text-green-800 border border-green-200"
+                            : event.status === "failed"
+                            ? "bg-red-50 text-red-800 border border-red-200"
+                            : "bg-gray-50 text-gray-800 border border-gray-200"
+                          : event.messageType === "first"
                           ? "bg-green-100 text-green-800 hover:bg-green-200"
                           : "bg-blue-100 text-blue-800 hover:bg-blue-200"
                       }`}
-                      title={`${lead.name} - ${
-                        lead.messageType === "first"
+                      title={`${event.name} - ${
+                        event.isPast
+                          ? `${
+                              event.messageType === "first"
+                                ? "First message"
+                                : `Follow-up #${event.messageCount}`
+                            } (${event.status})`
+                          : event.messageType === "first"
                           ? "First message"
-                          : `Follow-up #${lead.messageCount}`
+                          : `Follow-up #${event.messageCount}`
                       }`}
                     >
-                      <div className="font-medium">{lead.name}</div>
+                      <div className="font-medium">{event.name}</div>
                       <div>
-                        {format(new Date(lead.nextScheduledMessage!), "h:mm a")}
+                        {format(
+                          new Date(event.nextScheduledMessage!),
+                          "h:mm a"
+                        )}
+                        {event.isPast && (
+                          <span className="ml-1 text-xs">({event.status})</span>
+                        )}
                       </div>
                     </div>
                   ))}

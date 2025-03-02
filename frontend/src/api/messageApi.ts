@@ -12,13 +12,26 @@ const messageApi = {
 
   // Send a message
   async sendMessage(
-    leadId: string,
-    text: string
+    leadId: string | number,
+    text: string,
+    isAiGenerated: boolean = false
   ): Promise<{ message: Message; aiMessage?: Message }> {
-    const response = await axios.post(`${BASE_URL}/api/messages/send`, {
-      leadId,
+    // Try parsing the leadId as a number if it's a string
+    const id = typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
+
+    // Debug the request payload
+    console.log("Sending message with payload:", {
+      leadId: id,
       text,
+      isAiGenerated,
     });
+
+    const response = await axios.post(`${BASE_URL}/api/messages/send`, {
+      leadId: id,
+      text,
+      isAiGenerated,
+    });
+
     return response.data;
   },
 
@@ -45,8 +58,13 @@ const messageApi = {
   },
 
   // Add this method to your existing messageApi.ts file
-  async getMessageStats(): Promise<{ totalMessages: number }> {
-    const response = await axios.get(`${BASE_URL}/messages/stats`);
+  async getMessageStats(): Promise<{
+    totalMessages: number;
+    deliveredMessages: number;
+    failedMessages: number;
+    activeConversations: number;
+  }> {
+    const response = await axios.get(`${BASE_URL}/api/messages/stats`);
     return response.data;
   },
 
@@ -54,6 +72,17 @@ const messageApi = {
   async getAllMessages(statusFilter = "all"): Promise<Message[]> {
     const params = statusFilter !== "all" ? { status: statusFilter } : {};
     const response = await axios.get(`${BASE_URL}/api/messages`, { params });
+    return response.data;
+  },
+
+  // Add this new method to fetch scheduled messages for the calendar
+  async getScheduledMessages(
+    startDate: string,
+    endDate: string
+  ): Promise<any[]> {
+    const response = await axios.get(`${BASE_URL}/api/messages/scheduled`, {
+      params: { startDate, endDate },
+    });
     return response.data;
   },
 };

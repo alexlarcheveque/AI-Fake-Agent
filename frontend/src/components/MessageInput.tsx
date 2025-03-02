@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from "react";
+import messageApi from "../api/messageApi"; // Import the API service
 
 interface MessageInputProps {
-  onSendMessage: (text: string) => void;
+  leadId: number; // Add leadId to props
+  onSendMessage: (message: any) => void; // Update type to match what you're using
   isLoading?: boolean;
   isDisabled?: boolean;
   placeholder?: string;
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
+  leadId,
   onSendMessage,
   isLoading = false,
   isDisabled = false,
@@ -15,6 +18,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
 }) => {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isSending, setIsSending] = useState(false);
 
   // Adjust textarea height based on content
   useEffect(() => {
@@ -27,8 +31,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !isLoading && !isDisabled) {
-      onSendMessage(message.trim());
-      setMessage("");
+      handleSendMessage();
     }
   };
 
@@ -36,9 +39,41 @@ const MessageInput: React.FC<MessageInputProps> = ({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (message.trim() && !isLoading && !isDisabled) {
-        onSendMessage(message.trim());
-        setMessage("");
+        handleSendMessage();
       }
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!message.trim()) return;
+
+    try {
+      setIsSending(true);
+
+      // Use messageApi instead of direct axios call
+      const newMessage = await messageApi.sendMessage(
+        leadId,
+        message.trim(),
+        false // Not AI-generated
+      );
+
+      // Update UI with new message
+      onSendMessage(newMessage);
+
+      // Clear input
+      setMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+
+      // Show detailed error from server if available
+      if (error.response && error.response.data && error.response.data.error) {
+        console.error("Server error:", error.response.data.error);
+        alert(`Failed to send message: ${error.response.data.error}`);
+      } else {
+        alert("Failed to send message. Please try again.");
+      }
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -72,7 +107,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
                 : "hover:bg-blue-700"
             }`}
         >
-          {isLoading ? (
+          {isSending ? (
             <span className="flex items-center">
               <svg
                 className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"

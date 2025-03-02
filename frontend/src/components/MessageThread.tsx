@@ -8,7 +8,7 @@ import FollowUpIndicator from "./FollowUpIndicator";
 
 interface MessageThreadProps {
   leadId: number;
-  leadName?: string;
+  leadName: string;
   leadEmail?: string;
   leadPhone?: string;
   leadSource?: string;
@@ -71,17 +71,23 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       setIsLoading(true);
       setError(null);
 
-      const response = await messageApi.sendMessage(leadId.toString(), text);
+      const response = await messageApi.sendMessage(leadId, text);
 
-      // Update messages with both the sent message and AI response if present
-      setMessages((prev) => [
-        ...prev,
-        response.message,
-        ...(response.aiMessage ? [response.aiMessage] : []),
-      ]);
-    } catch (err) {
-      setError("Failed to send message");
+      // Add both messages if AI response is present
+      if (response.message && response.aiMessage) {
+        setMessages((prev) => [...prev, response.message]);
+      } else {
+        // Just add the manual message
+        setMessages((prev) => [...prev, response.message]);
+      }
+    } catch (err: any) {
       console.error("Error sending message:", err);
+
+      if (err?.response?.data?.error) {
+        setError(`Failed to send message: ${err.response.data.error}`);
+      } else {
+        setError("Failed to send message");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -138,7 +144,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                   : "bg-gray-100 text-gray-800 hover:bg-gray-200"
               }`}
             >
-              {aiAssistantEnabled ? "AI Enabled" : "AI Disabled"}
+              {aiAssistantEnabled ? "Auto-Response: ON" : "Auto-Response: OFF"}
             </button>
           </div>
         </div>
@@ -183,12 +189,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       {/* Input */}
       <div className="flex-shrink-0">
         <MessageInput
+          leadId={leadId}
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
           isDisabled={aiAssistantEnabled}
           placeholder={
             aiAssistantEnabled
-              ? "AI will be responding, toggle AI Assistant off if you want to send manual messages"
+              ? "Send a message (AI will also respond automatically)"
               : "Type your message..."
           }
         />

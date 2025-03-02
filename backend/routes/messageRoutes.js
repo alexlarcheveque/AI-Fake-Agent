@@ -7,6 +7,8 @@ const {
   sendLocalMessage,
   testTwilio,
   statusCallback,
+  getMessageStats,
+  getScheduledMessages,
 } = require("../controllers/messageController");
 const Message = require("../models/message");
 const logger = require("../utils/logger");
@@ -27,17 +29,6 @@ router.post("/receive", receiveMessage);
 router.post("/test-twilio", testTwilio);
 
 // Add this route to your messageRoutes.js file
-router.get("/stats", async (req, res) => {
-  try {
-    const totalMessages = await Message.count();
-    res.json({ totalMessages });
-  } catch (error) {
-    console.error("Error fetching message stats:", error);
-    res.status(500).json({ error: "Failed to fetch message statistics" });
-  }
-});
-
-// Add this route to your existing messageRoutes.js
 router.post("/status-callback", statusCallback);
 
 // Add this route to get all messages with optional status filter
@@ -59,5 +50,9 @@ router.get("/", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch messages" });
   }
 });
+
+// Add these routes to your existing messageRoutes.js
+router.get("/stats", getMessageStats);
+router.get("/scheduled", getScheduledMessages);
 
 module.exports = router;

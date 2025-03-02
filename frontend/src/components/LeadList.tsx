@@ -3,6 +3,7 @@ import leadApi from "../api/leadApi";
 import { Lead } from "../types/lead";
 import React from "react";
 import FollowUpIndicator from "./FollowUpIndicator";
+import { useNavigate } from "react-router-dom";
 
 interface LeadListProps {
   leads: Lead[];
@@ -21,6 +22,7 @@ const LeadList: React.FC<LeadListProps> = ({
 }) => {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [updateLoading, setUpdateLoading] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   const handleEdit = (lead: Lead) => {
     onError(null);
@@ -80,6 +82,14 @@ const LeadList: React.FC<LeadListProps> = ({
   const handleCancel = () => {
     onError(null);
     setEditingLead(null);
+  };
+
+  const handleViewMessages = (leadId: number, e: React.MouseEvent) => {
+    if (editingLead || e.target instanceof HTMLButtonElement) {
+      return;
+    }
+
+    navigate(`/messages?leadId=${leadId}`);
   };
 
   if (isLoading && leads?.length === 0) {
@@ -143,7 +153,16 @@ const LeadList: React.FC<LeadListProps> = ({
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {leads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-gray-50">
+                  <tr
+                    key={lead.id}
+                    className={`hover:bg-gray-50 ${
+                      editingLead?.id !== lead.id ? "cursor-pointer" : ""
+                    }`}
+                    onClick={(e) =>
+                      editingLead?.id !== lead.id &&
+                      handleViewMessages(lead.id, e)
+                    }
+                  >
                     {editingLead?.id === lead.id ? (
                       // Edit mode
                       <>
@@ -219,13 +238,14 @@ const LeadList: React.FC<LeadListProps> = ({
                           <div className="py-2 flex justify-center">
                             <button
                               type="button"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setEditingLead({
                                   ...editingLead,
                                   aiAssistantEnabled:
                                     !editingLead.aiAssistantEnabled,
-                                })
-                              }
+                                });
+                              }}
                               className={`${
                                 editingLead.aiAssistantEnabled
                                   ? "bg-blue-600"
@@ -246,7 +266,10 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2 flex justify-center space-x-2">
                             <button
-                              onClick={handleUpdate}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdate();
+                              }}
                               className={`p-1 rounded-full hover:bg-green-100 text-green-600 ${
                                 updateLoading === lead.id
                                   ? "opacity-50 cursor-not-allowed"
@@ -270,7 +293,10 @@ const LeadList: React.FC<LeadListProps> = ({
                               </svg>
                             </button>
                             <button
-                              onClick={handleCancel}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancel();
+                              }}
                               className="p-1 rounded-full hover:bg-gray-100 text-gray-600"
                               disabled={updateLoading === lead.id}
                               title="Cancel"
@@ -364,7 +390,10 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2 flex justify-center space-x-2">
                             <button
-                              onClick={() => handleEdit(lead)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(lead);
+                              }}
                               className="p-1 rounded-full hover:bg-blue-100 text-blue-600"
                               disabled={isLoading}
                               title="Edit"
@@ -384,7 +413,10 @@ const LeadList: React.FC<LeadListProps> = ({
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleDelete(lead.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(lead.id);
+                              }}
                               className="p-1 rounded-full hover:bg-red-100 text-red-600"
                               disabled={isLoading}
                               title="Delete"

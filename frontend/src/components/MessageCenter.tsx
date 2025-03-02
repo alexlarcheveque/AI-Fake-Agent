@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import MessageThread from "./MessageThread";
 import leadApi from "../api/leadApi";
 import { Lead } from "../types/lead";
+import { useSearchParams } from "react-router-dom";
 
 const MessagesCenter: React.FC = () => {
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
@@ -10,6 +11,7 @@ const MessagesCenter: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [searchParams] = useSearchParams();
 
   // Fetch leads on component mount
   useEffect(() => {
@@ -20,6 +22,15 @@ const MessagesCenter: React.FC = () => {
         const response = await leadApi.getLeads(currentPage, 10);
         setLeads(response.leads);
         setTotalPages(response.totalPages);
+
+        // Check if leadId is in URL params
+        const leadIdParam = searchParams.get("leadId");
+        if (leadIdParam) {
+          const leadId = parseInt(leadIdParam, 10);
+          if (!isNaN(leadId)) {
+            setSelectedLeadId(leadId);
+          }
+        }
       } catch (err) {
         setError("Failed to load leads");
         console.error("Error fetching leads:", err);
@@ -29,7 +40,7 @@ const MessagesCenter: React.FC = () => {
     };
 
     fetchLeads();
-  }, [currentPage]);
+  }, [currentPage, searchParams]);
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-6">

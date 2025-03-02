@@ -7,6 +7,9 @@ const logger = require("../utils/logger");
 const followUpService = require("../services/followUpService");
 const FollowUp = require("../models/FollowUp");
 const settingsService = require("../services/settingsService");
+const { Op } = require("sequelize");
+const db = require("../config/database");
+const sequelize = require("sequelize");
 
 const messageController = {
   // send test twilio message
@@ -21,12 +24,33 @@ const messageController = {
   // Send a message to a lead via Twilio
   async sendMessage(req, res) {
     try {
-      const { leadId, text } = req.body;
+      // Log the entire request body for debugging
+      console.log("Received message request:", req.body);
 
-      // Find the lead
+      const { leadId, text, isAiGenerated = false } = req.body;
+
+      // Validate inputs with detailed error messages
+      if (!leadId) {
+        return res.status(400).json({ error: "leadId is required" });
+      }
+
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({
+          error: "text must be a non-empty string",
+          received: {
+            type: typeof text,
+            value: text,
+          },
+        });
+      }
+
+      // Find the lead with error handling
       const lead = await Lead.findByPk(leadId);
       if (!lead) {
-        return res.status(404).json({ error: "Lead not found" });
+        return res.status(404).json({
+          error: "Lead not found",
+          leadId: leadId,
+        });
       }
 
       // Get the lead owner
@@ -45,6 +69,7 @@ const messageController = {
         text,
         sender: "agent",
         twilioSid: twilioMessage.sid,
+        isAiGenerated,
       });
 
       // If AI Assistant is enabled for this lead, generate and send AI response
@@ -67,6 +92,7 @@ const messageController = {
           text: aiResponse,
           sender: "agent",
           twilioSid: aiTwilioMessage.sid,
+          isAiGenerated: true,
         });
 
         // Schedule follow-up after sending message
@@ -77,8 +103,11 @@ const messageController = {
         res.json({ message });
       }
     } catch (error) {
-      logger.error("Error sending message:", error);
-      res.status(500).json({ error: "Failed to send message" });
+      console.error("Error in sendMessage:", error);
+      res.status(500).json({
+        error: "Failed to send message",
+        details: error.message,
+      });
     }
   },
 
@@ -121,6 +150,7 @@ const messageController = {
           text: aiResponse,
           sender: "agent",
           twilioSid: twilioMessage.sid,
+          isAiGenerated: true,
         });
 
         // Cancel any pending follow-ups when lead responds
@@ -195,6 +225,7 @@ const messageController = {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         useAiResponse: true,
+        isAiGenerated: true,
       };
 
       res.json({ message: aiMessage });
@@ -216,27 +247,34 @@ const messageController = {
         `Received status callback for message ${messageId}: ${MessageStatus}`
       );
 
-      if (messageId) {
-        // Update by messageId instead of twilioSid
-        const message = await Message.findByPk(messageId);
+      if (messageId && messageId !== "null" && messageId !== "undefined") {
+        // Convert messageId to integer if it's a valid number
+        const parsedId = parseInt(messageId, 10);
 
-        if (message) {
-          await message.update({
-            twilioSid: MessageSid, // Save the SID if it wasn't saved before
-            deliveryStatus: MessageStatus,
-            errorCode: ErrorCode || null,
-            errorMessage: ErrorMessage || null,
-            statusUpdatedAt: new Date(),
-          });
+        if (!isNaN(parsedId)) {
+          // Update by messageId
+          const message = await Message.findByPk(parsedId);
 
-          logger.info(
-            `Updated message ${messageId} status to ${MessageStatus}`
-          );
+          if (message) {
+            await message.update({
+              twilioSid: MessageSid,
+              deliveryStatus: MessageStatus,
+              errorCode: ErrorCode || null,
+              errorMessage: ErrorMessage || null,
+              statusUpdatedAt: new Date(),
+            });
+
+            logger.info(
+              `Updated message ${messageId} status to ${MessageStatus}`
+            );
+          } else {
+            logger.warn(`No message found with ID: ${messageId}`);
+          }
         } else {
-          logger.warn(`No message found with ID: ${messageId}`);
+          logger.warn(`Invalid message ID format: ${messageId}`);
         }
       } else if (MessageSid) {
-        // Fallback to updating by twilioSid if messageId is not provided
+        // Fallback to updating by twilioSid
         const message = await Message.findOne({
           where: { twilioSid: MessageSid },
         });
@@ -263,6 +301,115 @@ const messageController = {
     } catch (error) {
       logger.error("Error processing status callback:", error);
       res.status(500).send("Error processing status callback");
+    }
+  },
+
+  // Get message statistics
+  async getMessageStats(req, res) {
+    try {
+      // Count total messages
+      const totalMessages = await Message.count();
+
+      // Count delivered messages
+      const deliveredMessages = await Message.count({
+        where: { deliveryStatus: "delivered" },
+      });
+
+      // Count failed messages
+      const failedMessages = await Message.count({
+        where: {
+          deliveryStatus: {
+            [Op.in]: ["failed", "undelivered"],
+          },
+        },
+      });
+
+      // Count active conversations (leads with at least one message in the last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // Use Sequelize's built-in methods instead of raw queries
+      const activeConversations = await Message.findAll({
+        attributes: [
+          [
+            sequelize.fn(
+              "COUNT",
+              sequelize.fn("DISTINCT", sequelize.col("leadId"))
+            ),
+            "count",
+          ],
+        ],
+        where: {
+          createdAt: {
+            [Op.gte]: sevenDaysAgo,
+          },
+        },
+        raw: true,
+      });
+
+      res.json({
+        totalMessages,
+        deliveredMessages,
+        failedMessages,
+        activeConversations: activeConversations[0]?.count || 0,
+      });
+    } catch (error) {
+      logger.error("Error getting message stats:", error);
+      res.status(500).json({ error: "Failed to get message statistics" });
+    }
+  },
+
+  // Get scheduled messages for calendar
+  async getScheduledMessages(req, res) {
+    try {
+      const { startDate, endDate } = req.query;
+
+      if (!startDate || !endDate) {
+        return res
+          .status(400)
+          .json({ error: "Start date and end date are required" });
+      }
+
+      // Parse dates
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      logger.info(`Fetching scheduled messages from ${start} to ${end}`);
+
+      // Get messages sent in the date range using proper Sequelize methods
+      const messages = await Message.findAll({
+        where: {
+          createdAt: {
+            [Op.between]: [start, end],
+          },
+          sender: "agent", // Only outbound messages
+        },
+        include: [
+          {
+            model: Lead,
+            attributes: ["id", "name"],
+            required: false, // Make this a LEFT JOIN instead of INNER JOIN
+          },
+        ],
+        order: [["createdAt", "ASC"]],
+        limit: 100, // Limit to prevent performance issues
+      });
+
+      // Format the response
+      const formattedMessages = messages.map((message) => ({
+        id: message.id,
+        leadId: message.leadId,
+        scheduledFor: message.createdAt,
+        status: message.deliveryStatus || "unknown",
+        leadName: message.Lead?.name || "Unknown Lead",
+        messageType: message.isFirstMessage ? "first" : "followup",
+        messageCount: message.messageCount || 1,
+      }));
+
+      res.json(formattedMessages);
+    } catch (error) {
+      logger.error("Error getting scheduled messages:", error);
+      res.status(500).json({ error: "Failed to get scheduled messages" });
     }
   },
 };
