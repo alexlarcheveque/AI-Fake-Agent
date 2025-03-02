@@ -192,7 +192,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           leadId={leadId}
           onSendMessage={handleSendMessage}
           isLoading={isLoading}
-          isDisabled={false}
+          isDisabled={aiAssistantEnabled}
           placeholder={
             aiAssistantEnabled
               ? "Send a message (AI will also respond automatically)"

@@ -38,6 +38,7 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
   const [scheduledLeads, setScheduledLeads] = useState<CalendarLead[]>([]);
   const [pastMessages, setPastMessages] = useState<ScheduledMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
 
   // Fetch leads with scheduled messages and past messages
   useEffect(() => {
@@ -94,6 +95,41 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
     fetchData();
   }, [currentMonth]);
 
+  useEffect(() => {
+    // Define upcomingEvents from scheduledLeads
+    const upcomingEvents = scheduledLeads.map((lead) => ({
+      id: lead.id,
+      name: lead.name,
+      messageType: lead.messageType,
+      nextScheduledMessage: lead.nextScheduledMessage,
+      isPast: false,
+      status: "upcoming",
+    }));
+
+    // Combine both types of events
+    const allEvents = [
+      ...upcomingEvents,
+      ...pastMessages.map((msg) => ({
+        id: msg.leadId,
+        name: msg.leadName,
+        messageType: msg.messageType,
+        messageCount: msg.messageCount,
+        nextScheduledMessage: msg.scheduledFor,
+        isPast: true,
+        status: msg.status,
+      })),
+    ];
+
+    // Sort all events by timestamp (ascending)
+    allEvents.sort((a, b) => {
+      const dateA = new Date(a.nextScheduledMessage || 0);
+      const dateB = new Date(b.nextScheduledMessage || 0);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    setCalendarEvents(allEvents);
+  }, [scheduledLeads, pastMessages]);
+
   const nextMonth = () => {
     setCurrentMonth(addMonths(currentMonth, 1));
   };
@@ -111,37 +147,19 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
 
   // Get all events (scheduled and past) for a specific day
   const getEventsForDay = (day: Date) => {
-    const upcomingEvents = scheduledLeads.filter((lead) =>
-      isSameDay(new Date(lead.nextScheduledMessage!), day)
-    );
+    // Filter events for this day
+    const events = calendarEvents.filter((event) => {
+      if (!event.nextScheduledMessage) return false;
+      const eventDate = new Date(event.nextScheduledMessage);
+      return isSameDay(eventDate, day);
+    });
 
-    const pastEvents = pastMessages.filter((message) =>
-      isSameDay(new Date(message.scheduledFor), day)
-    );
-
-    // Combine both types of events
-    const allEvents = [
-      ...upcomingEvents.map((lead) => ({
-        id: lead.id,
-        name: lead.name,
-        messageType: lead.messageType,
-        messageCount: lead.messageCount,
-        nextScheduledMessage: lead.nextScheduledMessage,
-        isPast: false,
-        status: "upcoming",
-      })),
-      ...pastEvents.map((msg) => ({
-        id: msg.leadId,
-        name: msg.leadName,
-        messageType: msg.messageType,
-        messageCount: msg.messageCount,
-        nextScheduledMessage: msg.scheduledFor,
-        isPast: true,
-        status: msg.status,
-      })),
-    ];
-
-    return allEvents;
+    // Sort events by time (ascending)
+    return events.sort((a, b) => {
+      const dateA = new Date(a.nextScheduledMessage || 0);
+      const dateB = new Date(b.nextScheduledMessage || 0);
+      return dateA.getTime() - dateB.getTime();
+    });
   };
 
   return (

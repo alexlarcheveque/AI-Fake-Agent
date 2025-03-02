@@ -391,7 +391,7 @@ const messageController = {
             required: false, // Make this a LEFT JOIN instead of INNER JOIN
           },
         ],
-        order: [["createdAt", "DESC"]],
+        order: [["createdAt", "ASC"]],
         limit: 100, // Limit to prevent performance issues
       });
 
