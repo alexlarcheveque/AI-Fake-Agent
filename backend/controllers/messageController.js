@@ -155,7 +155,7 @@ const messageController = {
       const { leadId } = req.params;
       const messages = await Message.findAll({
         where: { leadId },
-        order: [["timestamp", "ASC"]],
+        order: [["createdAt", "ASC"]],
       });
 
       res.json(messages);
@@ -201,6 +201,68 @@ const messageController = {
     } catch (error) {
       logger.error("Error processing local message:", error);
       res.status(500).json({ error: "Failed to process message" });
+    }
+  },
+
+  // Status callback handler for Twilio
+  async statusCallback(req, res) {
+    try {
+      const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+
+      // Get the messageId from query parameters
+      const { messageId } = req.query;
+
+      logger.info(
+        `Received status callback for message ${messageId}: ${MessageStatus}`
+      );
+
+      if (messageId) {
+        // Update by messageId instead of twilioSid
+        const message = await Message.findByPk(messageId);
+
+        if (message) {
+          await message.update({
+            twilioSid: MessageSid, // Save the SID if it wasn't saved before
+            deliveryStatus: MessageStatus,
+            errorCode: ErrorCode || null,
+            errorMessage: ErrorMessage || null,
+            statusUpdatedAt: new Date(),
+          });
+
+          logger.info(
+            `Updated message ${messageId} status to ${MessageStatus}`
+          );
+        } else {
+          logger.warn(`No message found with ID: ${messageId}`);
+        }
+      } else if (MessageSid) {
+        // Fallback to updating by twilioSid if messageId is not provided
+        const message = await Message.findOne({
+          where: { twilioSid: MessageSid },
+        });
+
+        if (message) {
+          await message.update({
+            deliveryStatus: MessageStatus,
+            errorCode: ErrorCode || null,
+            errorMessage: ErrorMessage || null,
+            statusUpdatedAt: new Date(),
+          });
+
+          logger.info(
+            `Updated message by SID ${MessageSid} status to ${MessageStatus}`
+          );
+        } else {
+          logger.warn(`No message found with Twilio SID: ${MessageSid}`);
+        }
+      } else {
+        logger.warn("Status callback received without messageId or MessageSid");
+      }
+
+      res.status(200).send("Status callback received");
+    } catch (error) {
+      logger.error("Error processing status callback:", error);
+      res.status(500).send("Error processing status callback");
     }
   },
 };

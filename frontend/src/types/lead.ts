@@ -6,6 +6,7 @@ export interface Lead {
   status: string;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
+  firstMessageTiming: string;
   nextScheduledMessage?: string; // ISO date string
   lastMessageDate?: string;
   messageCount: number;

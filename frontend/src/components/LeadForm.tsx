@@ -27,6 +27,14 @@ const VALIDATION_RULES = {
   },
 } as const;
 
+// First message timing options
+const FIRST_MESSAGE_TIMING_OPTIONS = [
+  { value: "immediate", label: "Immediately" },
+  { value: "next_day", label: "Next day" },
+  { value: "one_week", label: "One week" },
+  { value: "two_weeks", label: "Two weeks" },
+];
+
 interface FormErrors {
   name?: string;
   email?: string;
@@ -51,6 +59,7 @@ interface FormData {
   status: string;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
+  firstMessageTiming: string;
 }
 
 const initialFormData: FormData = {
@@ -60,6 +69,7 @@ const initialFormData: FormData = {
   status: "new",
   aiAssistantEnabled: true,
   enableFollowUps: true,
+  firstMessageTiming: "immediate",
 };
 
 // Validation functions
@@ -396,6 +406,31 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
             />
           </button>
         </div>
+
+        {/* First message timing options */}
+        {formData.enableFollowUps && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              When to send first message
+            </label>
+            <select
+              name="firstMessageTiming"
+              value={formData.firstMessageTiming}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              disabled={isLoading}
+            >
+              {FIRST_MESSAGE_TIMING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Choose when the first automated message should be sent
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">

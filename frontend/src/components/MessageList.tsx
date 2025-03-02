@@ -36,7 +36,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             <p className="text-sm">{message.text}</p>
             <div className="flex justify-between items-center mt-1 text-xs opacity-75">
               <span>
-                {new Date(message.timestamp).toLocaleTimeString([], {
+                {new Date(message.createdAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}

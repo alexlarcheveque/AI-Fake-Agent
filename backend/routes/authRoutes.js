@@ -14,4 +14,7 @@ router.get("/verify", auth, authController.verify);
 router.patch("/user", auth, authController.updateUser);
 router.post("/logout", auth, authController.logout);
 
+// Add this route if it's missing
+router.get("/me", auth, authController.getMe);
+
 module.exports = router;

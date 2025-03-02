@@ -27,32 +27,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const token = localStorage.getItem("token");
+    // Check for stored token on initial load
+    const initAuth = async () => {
+      console.log("Initializing auth...");
+      const token = localStorage.getItem("token");
 
-    if (token) {
-      verifyToken(token);
-    } else {
+      if (token) {
+        console.log("Token found in localStorage");
+        try {
+          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+          console.log("Making request to /auth/me...");
+
+          const response = await axios.get(`${API_URL}/auth/me`);
+          console.log("Auth verification successful:", response.data);
+          setUser(response.data);
+        } catch (error) {
+          console.error("Auth verification failed:", error);
+          localStorage.removeItem("token");
+          delete axios.defaults.headers.common["Authorization"];
+        }
+      } else {
+        console.log("No token found in localStorage");
+      }
+
       setIsLoading(false);
-    }
+    };
+
+    initAuth();
   }, []);
-
-  const verifyToken = async (token: string) => {
-    try {
-      const response = await axios.get(`${API_URL}/auth/verify`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      setUser(response.data.user);
-    } catch (error) {
-      // Token invalid or expired
-      localStorage.removeItem("token");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const login = async (email: string, password: string) => {
     const response = await axios.post(`${API_URL}/auth/login`, {
@@ -63,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const { user, token } = response.data;
     setUser(user);
     localStorage.setItem("token", token);
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   };
 
   const register = async (name: string, email: string, password: string) => {
@@ -80,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = () => {
     setUser(null);
     localStorage.removeItem("token");
+    delete axios.defaults.headers.common["Authorization"];
   };
 
   return (

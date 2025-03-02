@@ -1,11 +1,15 @@
 const OpenAI = require("openai");
 const logger = require("../utils/logger");
+const agentSettings = require("../config/agentSettings");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const openaiService = {
-  async generateResponse(text, settings, previousMessages = []) {
+  async generateResponse(text, settings = null, previousMessages = []) {
     try {
+      // Get settings from agentSettings if not provided
+      const configSettings = settings || agentSettings.getAll();
+
       // Convert previous messages to OpenAI format
       const messageHistory = previousMessages.map((msg) => ({
         role: msg.sender === "lead" ? "user" : "assistant",
@@ -37,7 +41,7 @@ const openaiService = {
         messages: [
           {
             role: "system",
-            content: `You are a professional, experienced, and helpful real estate agent assistant in the state of ${settings.AGENT_STATE} acting as a real estate agent named "${settings.AGENT_NAME}" and are working for a company named "${settings.COMPANY_NAME}". 
+            content: `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.AGENT_STATE} acting as a real estate agent named "${configSettings.AGENT_NAME}" and are working for a company named "${configSettings.COMPANY_NAME}". 
             You are interacting with potential home buyers or sellers. 
             You have experience in serving the lead's location as your team has helped buy and sell properties in that area. 
             Keep responses under 150 tokens, keep formatting simple and concise.
@@ -102,6 +106,50 @@ const openaiService = {
     } catch (error) {
       logger.error("Error generating OpenAI response:", error);
       throw error;
+    }
+  },
+
+  /**
+   * Generates a follow-up message for a lead based on their information
+   * @param {Object} lead - The lead object
+   * @returns {Promise<string>} - The generated follow-up message
+   */
+  async generateFollowUpMessage(lead) {
+    try {
+      // Use agentSettings instead of appSettings
+      const settingsMap = agentSettings.getAll();
+
+      // Create a prompt based on the lead's message count
+      let prompt = "";
+
+      if (lead.messageCount === 0) {
+        prompt = `Generate an initial follow-up message to a potential real estate lead named ${lead.name}. 
+        The message should be friendly, professional, and encourage a response. 
+        Keep it brief (under 160 characters if possible) and conversational.`;
+      } else {
+        // For subsequent follow-ups
+        prompt = `Generate follow-up message #${
+          lead.messageCount + 1
+        } for a real estate lead named ${lead.name} 
+        who hasn't responded to previous messages. Keep it casual but professional, 
+        and don't be pushy. The message should be brief (under 160 characters if possible).`;
+      }
+
+      // Generate the response using the existing generateResponse function
+      const followUpMessage = await this.generateResponse(
+        prompt,
+        settingsMap,
+        [] // No previous messages needed for follow-up
+      );
+
+      return followUpMessage;
+    } catch (error) {
+      logger.error(
+        `Error generating follow-up message for lead ${lead.id}:`,
+        error
+      );
+      // Return a default message in case of error
+      return `Hi ${lead.name}, just checking in to see if you have any questions about real estate opportunities. Let me know if you'd like to chat!`;
     }
   },
 };

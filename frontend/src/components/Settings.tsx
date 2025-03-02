@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from "react";
-import settingsApi, { UserSettings } from "../api/settingsApi";
+import axios from "axios";
 
 const Settings: React.FC = () => {
-  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [settings, setSettings] = useState({
+    agentName: "",
+    companyName: "",
+    agentState: "",
+    agentCity: "",
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -10,18 +15,18 @@ const Settings: React.FC = () => {
 
   // Load settings on component mount
   useEffect(() => {
-    loadSettings();
+    fetchSettings();
   }, []);
 
-  const loadSettings = async () => {
+  const fetchSettings = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await settingsApi.getSettings();
-      setSettings(data);
+      const response = await axios.get("/api/user-settings");
+      setSettings(response.data);
     } catch (err: any) {
-      console.error("Error loading settings:", err);
-      setError("Failed to load settings. Please try again.");
+      console.error("Error fetching settings:", err);
+      setError("Failed to fetch settings. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -52,11 +57,10 @@ const Settings: React.FC = () => {
       setError(null);
       setSuccess(false);
 
-      const updatedSettings = await settingsApi.updateSettings(settings);
-      setSettings(updatedSettings);
+      const response = await axios.put("/api/user-settings", settings);
+      setSettings(response.data);
       setSuccess(true);
 
-      // Clear success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       console.error("Error saving settings:", err);
@@ -118,20 +122,6 @@ const Settings: React.FC = () => {
                 type="text"
                 name="companyName"
                 value={settings.companyName}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                City
-              </label>
-              <input
-                type="text"
-                name="agentCity"
-                value={settings.agentCity}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 required

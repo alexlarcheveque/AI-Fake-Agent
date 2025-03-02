@@ -43,6 +43,19 @@ const messageApi = {
     });
     return response.data;
   },
+
+  // Add this method to your existing messageApi.ts file
+  async getMessageStats(): Promise<{ totalMessages: number }> {
+    const response = await axios.get(`${BASE_URL}/messages/stats`);
+    return response.data;
+  },
+
+  // Add this method to your messageApi.ts
+  async getAllMessages(statusFilter = "all"): Promise<Message[]> {
+    const params = statusFilter !== "all" ? { status: statusFilter } : {};
+    const response = await axios.get(`${BASE_URL}/api/messages`, { params });
+    return response.data;
+  },
 };
 
 export default messageApi;
