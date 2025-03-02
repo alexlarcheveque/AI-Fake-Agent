@@ -7,6 +7,9 @@ const logger = require("../utils/logger");
 const followUpService = require("../services/followUpService");
 const FollowUp = require("../models/FollowUp");
 const settingsService = require("../services/settingsService");
+const { Op } = require("sequelize");
+const db = require("../config/database");
+const sequelize = require("sequelize");
 
 const messageController = {
   // send test twilio message
@@ -298,6 +301,115 @@ const messageController = {
     } catch (error) {
       logger.error("Error processing status callback:", error);
       res.status(500).send("Error processing status callback");
+    }
+  },
+
+  // Get message statistics
+  async getMessageStats(req, res) {
+    try {
+      // Count total messages
+      const totalMessages = await Message.count();
+
+      // Count delivered messages
+      const deliveredMessages = await Message.count({
+        where: { deliveryStatus: "delivered" },
+      });
+
+      // Count failed messages
+      const failedMessages = await Message.count({
+        where: {
+          deliveryStatus: {
+            [Op.in]: ["failed", "undelivered"],
+          },
+        },
+      });
+
+      // Count active conversations (leads with at least one message in the last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // Use Sequelize's built-in methods instead of raw queries
+      const activeConversations = await Message.findAll({
+        attributes: [
+          [
+            sequelize.fn(
+              "COUNT",
+              sequelize.fn("DISTINCT", sequelize.col("leadId"))
+            ),
+            "count",
+          ],
+        ],
+        where: {
+          createdAt: {
+            [Op.gte]: sevenDaysAgo,
+          },
+        },
+        raw: true,
+      });
+
+      res.json({
+        totalMessages,
+        deliveredMessages,
+        failedMessages,
+        activeConversations: activeConversations[0]?.count || 0,
+      });
+    } catch (error) {
+      logger.error("Error getting message stats:", error);
+      res.status(500).json({ error: "Failed to get message statistics" });
+    }
+  },
+
+  // Get scheduled messages for calendar
+  async getScheduledMessages(req, res) {
+    try {
+      const { startDate, endDate } = req.query;
+
+      if (!startDate || !endDate) {
+        return res
+          .status(400)
+          .json({ error: "Start date and end date are required" });
+      }
+
+      // Parse dates
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      logger.info(`Fetching scheduled messages from ${start} to ${end}`);
+
+      // Get messages sent in the date range using proper Sequelize methods
+      const messages = await Message.findAll({
+        where: {
+          createdAt: {
+            [Op.between]: [start, end],
+          },
+          sender: "agent", // Only outbound messages
+        },
+        include: [
+          {
+            model: Lead,
+            attributes: ["id", "name"],
+            required: false, // Make this a LEFT JOIN instead of INNER JOIN
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: 100, // Limit to prevent performance issues
+      });
+
+      // Format the response
+      const formattedMessages = messages.map((message) => ({
+        id: message.id,
+        leadId: message.leadId,
+        scheduledFor: message.createdAt,
+        status: message.deliveryStatus || "unknown",
+        leadName: message.Lead?.name || "Unknown Lead",
+        messageType: message.isFirstMessage ? "first" : "followup",
+        messageCount: message.messageCount || 1,
+      }));
+
+      res.json(formattedMessages);
+    } catch (error) {
+      logger.error("Error getting scheduled messages:", error);
+      res.status(500).json({ error: "Failed to get scheduled messages" });
     }
   },
 };

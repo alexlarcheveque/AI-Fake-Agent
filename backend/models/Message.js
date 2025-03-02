@@ -22,6 +22,11 @@ const Message = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    sender: {
+      type: DataTypes.ENUM("agent", "lead"),
+      allowNull: false,
+      defaultValue: "agent",
+    },
     direction: {
       type: DataTypes.ENUM("inbound", "outbound"),
       allowNull: false,

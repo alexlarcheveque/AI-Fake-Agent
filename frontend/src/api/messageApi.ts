@@ -58,8 +58,13 @@ const messageApi = {
   },
 
   // Add this method to your existing messageApi.ts file
-  async getMessageStats(): Promise<{ totalMessages: number }> {
-    const response = await axios.get(`${BASE_URL}/messages/stats`);
+  async getMessageStats(): Promise<{
+    totalMessages: number;
+    deliveredMessages: number;
+    failedMessages: number;
+    activeConversations: number;
+  }> {
+    const response = await axios.get(`${BASE_URL}/api/messages/stats`);
     return response.data;
   },
 
@@ -67,6 +72,17 @@ const messageApi = {
   async getAllMessages(statusFilter = "all"): Promise<Message[]> {
     const params = statusFilter !== "all" ? { status: statusFilter } : {};
     const response = await axios.get(`${BASE_URL}/api/messages`, { params });
+    return response.data;
+  },
+
+  // Add this new method to fetch scheduled messages for the calendar
+  async getScheduledMessages(
+    startDate: string,
+    endDate: string
+  ): Promise<any[]> {
+    const response = await axios.get(`${BASE_URL}/api/messages/scheduled`, {
+      params: { startDate, endDate },
+    });
     return response.data;
   },
 };
