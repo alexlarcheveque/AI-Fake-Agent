@@ -24,12 +24,15 @@ const twilioService = {
       `Attempting to send message to ${to}: ${text.substring(0, 30)}...`
     );
     try {
+      // Ensure text is a string
+      const messageText = String(text || "");
+
       // Format the phone number if needed
       const formattedTo = to.startsWith("+") ? to : `+1${to}`;
 
       // Send message via Twilio
       const twilioMessage = await client.messages.create({
-        body: text,
+        body: messageText,
         from: twilioPhoneNumber,
         to: formattedTo,
         statusCallback: `${process.env.BASE_URL}/api/messages/status-callback?messageId=${messageId}`,

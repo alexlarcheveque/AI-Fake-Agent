@@ -1,10 +1,10 @@
 export interface Message {
-  id: number;
-  leadId?: number;
+  id: number | string;
+  leadId: number;
   text: string;
   direction: "inbound" | "outbound";
   isAiGenerated: boolean;
-  sender: "agent" | "lead";
+  sender: string;
   twilioSid: string;
   timestamp: string;
   createdAt: string;

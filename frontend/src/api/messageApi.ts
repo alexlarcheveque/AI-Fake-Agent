@@ -12,13 +12,26 @@ const messageApi = {
 
   // Send a message
   async sendMessage(
-    leadId: string,
-    text: string
+    leadId: string | number,
+    text: string,
+    isAiGenerated: boolean = false
   ): Promise<{ message: Message; aiMessage?: Message }> {
-    const response = await axios.post(`${BASE_URL}/api/messages/send`, {
-      leadId,
+    // Try parsing the leadId as a number if it's a string
+    const id = typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
+
+    // Debug the request payload
+    console.log("Sending message with payload:", {
+      leadId: id,
       text,
+      isAiGenerated,
     });
+
+    const response = await axios.post(`${BASE_URL}/api/messages/send`, {
+      leadId: id,
+      text,
+      isAiGenerated,
+    });
+
     return response.data;
   },
 
