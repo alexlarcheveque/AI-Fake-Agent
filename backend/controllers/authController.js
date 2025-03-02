@@ -212,6 +212,28 @@ const authController = {
       res.status(500).json({ error: "Error resetting password" });
     }
   },
+
+  // GET /auth/me endpoint
+  async getMe(req, res) {
+    try {
+      // The auth middleware should have already verified the token
+      // and attached the user to req.user
+      if (!req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      // Return user data without sensitive information
+      res.json({
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        // other non-sensitive fields
+      });
+    } catch (error) {
+      console.error("Error in getMe:", error);
+      res.status(500).json({ error: "Server error" });
+    }
+  },
 };
 
 module.exports = authController;
