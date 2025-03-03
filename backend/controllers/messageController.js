@@ -1,14 +1,13 @@
 const Message = require("../models/Message");
 const Lead = require("../models/Lead");
-const Settings = require("../models/Settings");
+const UserSettings = require("../models/UserSettings");
 const twilioService = require("../services/twilioService");
 const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
 const followUpService = require("../services/followUpService");
 const FollowUp = require("../models/FollowUp");
-const settingsService = require("../services/settingsService");
+const userSettingsService = require("../services/userSettingsService");
 const { Op } = require("sequelize");
-const db = require("../config/database");
 const sequelize = require("sequelize");
 
 const messageController = {
@@ -55,7 +54,7 @@ const messageController = {
 
       // Get the lead owner
       const userId = lead.userId;
-      const settingsMap = await settingsService.getAllSettings(userId);
+      const settingsMap = await userSettingsService.getAllSettings(userId);
 
       // Send message via Twilio
       const twilioMessage = await twilioService.sendMessage(
@@ -125,7 +124,7 @@ const messageController = {
 
       // Get the lead owner
       const userId = lead.userId;
-      const settingsMap = await settingsService.getAllSettings(userId);
+      const settingsMap = await userSettingsService.getAllSettings(userId);
 
       // Save incoming message
       const incomingMessage = await Message.create({
@@ -202,7 +201,7 @@ const messageController = {
       const { text, previousMessages } = req.body;
 
       // Get current settings
-      const settings = await Settings.findAll();
+      const settings = await UserSettings.findOne({ where: { userId } });
       const settingsMap = settings.reduce((acc, setting) => {
         acc[setting.key] = setting.value;
         return acc;
