@@ -1,5 +1,3 @@
-const { v4: uuidv4 } = require("uuid");
-const User = require("../models/User");
 const UserSettings = require("../models/UserSettings");
 
 const agentSettings = {

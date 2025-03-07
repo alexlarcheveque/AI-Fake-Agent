@@ -1,26 +1,20 @@
 const express = require("express");
 const router = express.Router();
-const {
-  getAllLeads,
-  getLead,
-  createLead,
-  updateLead,
-  deleteLead,
-} = require("../controllers/leadController");
+const leadController = require("../controllers/leadController");
 
 // Get all leads
-router.get("/", getAllLeads);
+router.get("/", leadController.getAllLeads);
 
 // Get a single lead
-router.get("/:id", getLead);
+router.get("/:id", leadController.getLead);
 
 // Create a new lead
-router.post("/", createLead);
+router.post("/", leadController.createLead);
 
 // Update a lead
-router.put("/:id", updateLead);
+router.put("/:id", leadController.updateLead);
 
 // Delete a lead
-router.delete("/:id", deleteLead);
+router.delete("/:id", leadController.deleteLead);
 
 module.exports = router;

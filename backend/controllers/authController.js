@@ -3,8 +3,7 @@ const User = require("../models/User");
 const logger = require("../utils/logger");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const settingsService = require("../services/settingsService");
-const settingsController = require("../controllers/settingsController");
+const settingsController = require("./userSettingsController");
 
 // Generate JWT token
 const generateToken = (user) => {

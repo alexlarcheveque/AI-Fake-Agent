@@ -1,35 +1,24 @@
 const express = require("express");
 const router = express.Router();
-const {
-  sendMessage,
-  getMessages,
-  receiveMessage,
-  sendLocalMessage,
-  testTwilio,
-  statusCallback,
-  getMessageStats,
-  getScheduledMessages,
-} = require("../controllers/messageController");
-const Message = require("../models/message");
-const logger = require("../utils/logger");
+const messageController = require("../controllers/messageController");
 
 // Get message history for a lead
-router.get("/lead/:leadId", getMessages);
+router.get("/lead/:leadId", messageController.getMessages);
 
 // Send a message to a lead (with optional AI response)
-router.post("/send", sendMessage);
+router.post("/send", messageController.sendMessage);
 
 // Send a local message (for playground testing)
-router.post("/send-local", sendLocalMessage);
+router.post("/send-local", messageController.sendLocalMessage);
 
 // Webhook for receiving messages (for Twilio)
-router.post("/receive", receiveMessage);
+router.post("/receive", messageController.receiveMessage);
 
 // Test Twilio
-router.post("/test-twilio", testTwilio);
+router.post("/test-twilio", messageController.testTwilio);
 
 // Add this route to your messageRoutes.js file
-router.post("/status-callback", statusCallback);
+router.post("/status-callback", messageController.statusCallback);
 
 // Add this route to get all messages with optional status filter
 router.get("/", async (req, res) => {
@@ -52,7 +41,7 @@ router.get("/", async (req, res) => {
 });
 
 // Add these routes to your existing messageRoutes.js
-router.get("/stats", getMessageStats);
-router.get("/scheduled", getScheduledMessages);
+router.get("/stats", messageController.getMessageStats);
+router.get("/scheduled", messageController.getScheduledMessages);
 
 module.exports = router;

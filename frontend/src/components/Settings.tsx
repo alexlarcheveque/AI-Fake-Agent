@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import settingsApi from "../api/settingsApi";
+import { UserSettings } from "../types/userSettings";
 
 const Settings: React.FC = () => {
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<UserSettings>({
     agentName: "",
     companyName: "",
     agentState: "",
     agentCity: "",
+    aiAssistantEnabled: true,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -22,8 +24,11 @@ const Settings: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await axios.get("/api/user-settings");
-      setSettings(response.data);
+      const data = await settingsApi.getSettings();
+
+      console.log("data", data);
+
+      setSettings(data);
     } catch (err: any) {
       console.error("Error fetching settings:", err);
       setError("Failed to fetch settings. Please try again.");
@@ -37,7 +42,7 @@ const Settings: React.FC = () => {
   ) => {
     const { name, value, type } = e.target as HTMLInputElement;
 
-    setSettings((prev) => {
+    setSettings((prev: UserSettings) => {
       if (!prev) return prev;
 
       return {
@@ -57,8 +62,8 @@ const Settings: React.FC = () => {
       setError(null);
       setSuccess(false);
 
-      const response = await axios.put("/api/user-settings", settings);
-      setSettings(response.data);
+      const updatedSettings = await settingsApi.updateSettings(settings);
+      setSettings(updatedSettings);
       setSuccess(true);
 
       setTimeout(() => setSuccess(false), 3000);

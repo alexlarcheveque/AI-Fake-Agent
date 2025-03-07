@@ -4,11 +4,9 @@ const cors = require("cors");
 const sequelize = require("./config/database");
 const leadRoutes = require("./routes/leadroutes");
 const messageRoutes = require("./routes/messageRoutes");
-const settingsRoutes = require("./routes/settingsRoutes");
+const userSettingsRoutes = require("./routes/userSettingsRoutes");
 const authRoutes = require("./routes/authRoutes");
-const settingsController = require("./controllers/settingsController");
 const agentSettings = require("./config/agentSettings");
-const cronService = require("./services/cronService");
 const scheduledMessageService = require("./services/scheduledMessageService");
 
 const app = express();
@@ -25,7 +23,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/settings", settingsRoutes);
+app.use("/api/user-settings", userSettingsRoutes);
 
 const PORT = process.env.PORT || 3000;
 
@@ -34,6 +32,8 @@ const initializeApp = async () => {
   try {
     // Then sync all models
     await sequelize.sync({ alter: true });
+
+    console.log("Database tables recreated successfully");
 
     // No need to initialize global settings anymore
     // We'll create user settings when needed

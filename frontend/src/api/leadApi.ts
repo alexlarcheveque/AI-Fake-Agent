@@ -1,7 +1,7 @@
 import axios from "axios";
 import { Lead } from "../types/lead";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 interface GetLeadsResponse {
   leads: Lead[];
@@ -30,7 +30,7 @@ const leadApi = {
       .filter(([_, enabled]) => enabled)
       .map(([field]) => (field === "phone" ? "phoneNumber" : field));
 
-    const response = await axios.get(`${API_URL}/leads`, {
+    const response = await axios.get(`${BASE_URL}/api/leads`, {
       params: {
         page,
         limit,
@@ -43,7 +43,7 @@ const leadApi = {
 
   // Get a single lead
   async getLead(id: number): Promise<Lead> {
-    const response = await axios.get(`${API_URL}/leads/${id}`);
+    const response = await axios.get(`${BASE_URL}/api/leads/${id}`);
     return response.data;
   },
 
@@ -51,24 +51,24 @@ const leadApi = {
   async createLead(
     lead: Omit<Lead, "id" | "createdAt" | "updatedAt" | "archived">
   ): Promise<Lead> {
-    const response = await axios.post(`${API_URL}/leads`, lead);
+    const response = await axios.post(`${BASE_URL}/api/leads`, lead);
     return response.data;
   },
 
   // Update a lead
   async updateLead(id: number, lead: Partial<Lead>): Promise<Lead> {
-    const response = await axios.put(`${API_URL}/leads/${id}`, lead);
+    const response = await axios.put(`${BASE_URL}/api/leads/${id}`, lead);
     return response.data;
   },
 
   // Archive a lead
   async archiveLead(id: string): Promise<void> {
-    await axios.put(`${API_URL}/leads/${id}/archive`);
+    await axios.put(`${BASE_URL}/api/leads/${id}/archive`);
   },
 
   // Delete a lead
   async deleteLead(id: number): Promise<void> {
-    await axios.delete(`${API_URL}/leads/${id}`);
+    await axios.delete(`${BASE_URL}/api/leads/${id}`);
   },
 };
 

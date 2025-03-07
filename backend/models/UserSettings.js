@@ -1,6 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const User = require("./User");
 
 const UserSettings = sequelize.define(
   "UserSettings",
@@ -11,47 +10,40 @@ const UserSettings = sequelize.define(
       autoIncrement: true,
     },
     userId: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      unique: true, // One settings record per user
-      references: {
-        model: User,
-        key: "id",
-      },
+      type: DataTypes.STRING,
+      allowNull: true, // Allow null for default settings
+      unique: true, // Each user can have only one settings record
     },
     agentName: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "",
+      defaultValue: "Your Name",
     },
     companyName: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "",
+      defaultValue: "Your Company",
     },
     agentCity: {
       type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: "",
+      allowNull: true,
     },
     agentState: {
       type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: "",
+      allowNull: true,
     },
     aiAssistantEnabled: {
       type: DataTypes.BOOLEAN,
-      allowNull: false,
       defaultValue: true,
+    },
+    isDefault: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
   },
   {
     timestamps: true,
   }
 );
-
-// Define relationship
-UserSettings.belongsTo(User, { foreignKey: "userId" });
-User.hasOne(UserSettings, { foreignKey: "userId" });
 
 module.exports = UserSettings;
