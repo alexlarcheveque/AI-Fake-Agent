@@ -1,4 +1,6 @@
 const Lead = require("../models/Lead");
+const Message = require("../models/Message");
+const FollowUp = require("../models/FollowUp");
 const { Op } = require("sequelize");
 const logger = require("../utils/logger");
 const scheduledMessageService = require("../services/scheduledMessageService");
@@ -139,16 +141,33 @@ const leadController = {
   // Delete a lead
   async deleteLead(req, res) {
     try {
-      const lead = await Lead.findByPk(req.params.id);
+      const { id } = req.params;
+
+      // First, check if the lead exists
+      const lead = await Lead.findByPk(id);
       if (!lead) {
         return res.status(404).json({ error: "Lead not found" });
       }
 
+      // Add detailed logging
+      logger.info(`Attempting to delete lead ${id}`);
+
+      // Delete the lead (CASCADE will handle related records)
       await lead.destroy();
+
+      logger.info(`Successfully deleted lead ${id}`);
       res.json({ message: "Lead deleted successfully" });
     } catch (error) {
-      logger.error("Error deleting lead:", error);
-      res.status(500).json({ error: "Failed to delete lead" });
+      // Add detailed error logging
+      logger.error("Error deleting lead:", {
+        error: error.message,
+        stack: error.stack,
+        params: req.params.id,
+      });
+
+      res
+        .status(500)
+        .json({ error: "Failed to delete lead", details: error.message });
     }
   },
 };

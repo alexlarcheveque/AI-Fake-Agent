@@ -5,6 +5,7 @@ import { Message } from "../types/message";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import FollowUpIndicator from "./FollowUpIndicator";
+import { useSocket } from "../contexts/SocketContext";
 
 interface MessageThreadProps {
   leadId: number;
@@ -29,6 +30,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const { socket } = useSocket();
 
   // Fetch messages and lead settings on component mount and when leadId changes
   useEffect(() => {
@@ -52,6 +55,27 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }
   }, [leadId]);
 
+  // Listen for new messages
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewMessage = (data) => {
+      if (data.leadId === leadId) {
+        setMessages((prevMessages) => [...prevMessages, data.message]);
+
+        // Play a notification sound
+        const audio = new Audio("/notification.mp3");
+        audio.play();
+      }
+    };
+
+    socket.on("new-message", handleNewMessage);
+
+    return () => {
+      socket.off("new-message", handleNewMessage);
+    };
+  }, [socket, leadId]);
+
   // Toggle AI Assistant
   const handleToggleAiAssistant = async () => {
     try {
@@ -67,58 +91,39 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   // Handle sending a new message
   const handleSendMessage = async (text: string) => {
+    if (text.trim() === "" || !leadId) return;
+
     try {
-      setIsLoading(true);
-      setError(null);
+      console.log("Sending message with data:", {
+        leadId,
+        text,
+        leadIdType: typeof leadId,
+      });
 
-      const response = await messageApi.sendMessage(leadId, text);
+      setIsSending(true);
+      const numericLeadId =
+        typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
+      await messageApi.sendMessage(numericLeadId, text);
+      setIsSending(false);
 
-      // Add both messages if AI response is present
-      if (response.message && response.aiMessage) {
-        setMessages((prev) => [...prev, response.message]);
-      } else {
-        // Just add the manual message
-        setMessages((prev) => [...prev, response.message]);
-      }
-    } catch (err: any) {
-      console.error("Error sending message:", err);
-
-      if (err?.response?.data?.error) {
-        setError(`Failed to send message: ${err.response.data.error}`);
-      } else {
-        setError("Failed to send message");
-      }
-    } finally {
-      setIsLoading(false);
+      // Refresh messages
+      const updatedMessages = await messageApi.getMessages(
+        numericLeadId.toString()
+      );
+      setMessages(updatedMessages);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setIsSending(false);
     }
   };
 
-  // Add this helper function to get status icon and color
-  const getStatusIndicator = (message: Message) => {
-    if (message.direction === "inbound") return null;
+  useEffect(() => {
+    console.log("MessageThread mounted with leadId:", leadId);
 
-    const statusMap = {
-      queued: { icon: "⏳", color: "text-gray-400", text: "Queued" },
-      sending: { icon: "⏳", color: "text-blue-400", text: "Sending" },
-      sent: { icon: "✓", color: "text-blue-500", text: "Sent" },
-      delivered: { icon: "✓✓", color: "text-green-500", text: "Delivered" },
-      failed: { icon: "❌", color: "text-red-500", text: "Failed" },
-      undelivered: { icon: "❌", color: "text-red-500", text: "Undelivered" },
-      read: { icon: "👁️", color: "text-green-600", text: "Read" },
+    return () => {
+      console.log("MessageThread unmounted with leadId:", leadId);
     };
-
-    const status = message.deliveryStatus || "queued";
-    const indicator = statusMap[status];
-
-    return (
-      <span
-        className={`text-xs ${indicator.color} ml-2`}
-        title={message.errorMessage || indicator.text}
-      >
-        {indicator.icon}
-      </span>
-    );
-  };
+  }, []); // Empty dependency array means this runs once on mount and once on unmount
 
   return (
     <div className="h-full flex flex-col bg-white rounded-lg shadow-lg overflow-hidden">
@@ -191,7 +196,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         <MessageInput
           leadId={leadId}
           onSendMessage={handleSendMessage}
-          isLoading={isLoading}
+          isLoading={isSending}
           isDisabled={aiAssistantEnabled}
           placeholder={
             aiAssistantEnabled

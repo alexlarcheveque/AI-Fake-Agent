@@ -5,6 +5,32 @@ interface MessageListProps {
   messages: Message[];
 }
 
+const getStatusIndicator = (message: Message) => {
+  if (message.direction === "inbound") return null;
+
+  const statusMap = {
+    queued: { icon: "⏳", color: "text-gray-400", text: "Queued" },
+    sending: { icon: "⏳", color: "text-blue-400", text: "Sending" },
+    sent: { icon: "✓", color: "text-blue-500", text: "Sent" },
+    delivered: { icon: "✓✓", color: "text-green-500", text: "Delivered" },
+    failed: { icon: "❌", color: "text-red-500", text: "Failed" },
+    undelivered: { icon: "❌", color: "text-red-500", text: "Undelivered" },
+    read: { icon: "👁️", color: "text-green-600", text: "Read" },
+  };
+
+  const status = message.deliveryStatus || "queued";
+  const indicator = statusMap[status];
+
+  return (
+    <span
+      className={`text-xs ${indicator.color} ml-2`}
+      title={message.errorMessage || indicator.text}
+    >
+      {indicator.icon}
+    </span>
+  );
+};
+
 const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const messageEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -51,32 +77,20 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         <div
           key={message.id}
           className={`flex ${
-            message.sender === "agent" ? "justify-end" : "justify-start"
+            message.sender === "lead" ? "justify-start" : "justify-end"
           }`}
         >
           <div
-            className={`max-w-[75%] rounded-lg px-4 py-2 ${
-              message.sender === "agent"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-200 text-gray-800"
+            className={`max-w-3/4 p-3 rounded-lg ${
+              message.sender === "lead"
+                ? "bg-gray-100 text-gray-800"
+                : "bg-blue-500 text-white"
             }`}
           >
-            <p className="text-sm">{message.text}</p>
-            <div className="flex justify-between items-center mt-1 text-xs opacity-75">
-              <span>{formatMessageTime(message.createdAt)}</span>
-              <span
-                className={`ml-2 ${
-                  message.sender === "agent" ? "text-blue-100" : "text-gray-600"
-                }`}
-              >
-                {(() => {
-                  if (message.sender === "lead") return "Lead";
-                  if (message.sender === "agent" && message.isAiGenerated)
-                    return "Bot";
-                  if (message.sender === "agent") return "Agent";
-                  return "Manual";
-                })()}
-              </span>
+            {message.text}
+            <div className="text-xs mt-1 opacity-70">
+              {new Date(message.createdAt).toLocaleTimeString()}
+              {message.sender === "agent" && getStatusIndicator(message)}
             </div>
           </div>
         </div>

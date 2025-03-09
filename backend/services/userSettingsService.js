@@ -50,6 +50,26 @@ const userSettingsService = {
       throw error;
     }
   },
+
+  // Add this new function
+  async getAllSettings(userId) {
+    try {
+      const settings = await this.getSettings(userId);
+
+      // Convert to the format expected by the message controller
+      return {
+        agentName: settings.agentName,
+        companyName: settings.companyName,
+        agentCity: settings.agentCity || "",
+        agentState: settings.agentState || "",
+        aiAssistantEnabled: settings.aiAssistantEnabled,
+      };
+    } catch (error) {
+      logger.error("Error getting all settings:", error);
+      // Return default settings as fallback
+      return DEFAULT_SETTINGS;
+    }
+  },
 };
 
 module.exports = userSettingsService;

@@ -1,6 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Lead = require("./Lead");
 
 const Message = sequelize.define(
   "Message",
@@ -83,8 +82,14 @@ const Message = sequelize.define(
   }
 );
 
-// Set up the relationship
-Message.belongsTo(Lead, { foreignKey: "leadId" });
-Lead.hasMany(Message, { foreignKey: "leadId" });
-
+// Export the model immediately
 module.exports = Message;
+
+// Set up associations after export
+setTimeout(() => {
+  const Lead = require("./Lead");
+
+  Message.belongsTo(Lead, {
+    foreignKey: "leadId",
+  });
+}, 0);
