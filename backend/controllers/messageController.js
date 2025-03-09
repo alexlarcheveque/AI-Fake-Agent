@@ -9,6 +9,15 @@ const FollowUp = require("../models/FollowUp");
 const userSettingsService = require("../services/userSettingsService");
 const { Op } = require("sequelize");
 const sequelize = require("sequelize");
+const { MessagingResponse } = require("twilio").twiml;
+
+const DEFAULT_SETTINGS = {
+  agentName: "Your Name",
+  companyName: "Your Company",
+  agentCity: "Your City",
+  agentState: "Your State",
+  aiAssistantEnabled: true,
+};
 
 const messageController = {
   // send test twilio message
@@ -54,7 +63,17 @@ const messageController = {
 
       // Get the lead owner
       const userId = lead.userId;
-      const settingsMap = await userSettingsService.getAllSettings(userId);
+
+      // Add a check for missing userId
+      if (!userId) {
+        logger.warn(
+          `Lead ${leadId} has no associated user, using default settings`
+        );
+        // Use default settings if no user is associated
+        const settingsMap = DEFAULT_SETTINGS;
+      } else {
+        const settingsMap = await userSettingsService.getAllSettings(userId);
+      }
 
       // Send message via Twilio
       const twilioMessage = await twilioService.sendMessage(
@@ -67,6 +86,7 @@ const messageController = {
         leadId,
         text,
         sender: "agent",
+        direction: "outbound",
         twilioSid: twilioMessage.sid,
         isAiGenerated,
       });
@@ -90,6 +110,7 @@ const messageController = {
           leadId,
           text: aiResponse,
           sender: "agent",
+          direction: "outbound",
           twilioSid: aiTwilioMessage.sid,
           isAiGenerated: true,
         });
@@ -113,68 +134,137 @@ const messageController = {
   // Receive and process incoming messages
   async receiveMessage(req, res) {
     try {
-      const { From, Body, MessageSid } = req.body;
+      logger.info("Received incoming message from Twilio:", {
+        body: req.body,
+        rawBody: req.rawBody ? req.rawBody.toString() : "No raw body",
+        headers: req.headers,
+        url: req.originalUrl,
+        method: req.method,
+        contentType: req.headers["content-type"],
+      });
 
-      // Find lead by phone number
-      const lead = await Lead.findOne({ where: { phoneNumber: From } });
-      if (!lead) {
-        logger.warn(`Message received from unknown number: ${From}`);
-        return res.status(404).json({ error: "Lead not found" });
+      // Extract the message details from Twilio's request
+      const { From, Body, To, MessageSid } = req.body;
+
+      // Log the extracted fields specifically
+      logger.info("Extracted message fields:", { From, Body, To, MessageSid });
+
+      // Validate required fields
+      if (!From || !Body) {
+        logger.error("Missing required fields in Twilio webhook", {
+          From,
+          Body,
+          To,
+          MessageSid,
+        });
+        return res.status(400).send("Missing required fields");
       }
 
-      // Get the lead owner
-      const userId = lead.userId;
-      const settingsMap = await userSettingsService.getAllSettings(userId);
+      // Extract just the last 10 digits (US numbers)
+      const getLastTenDigits = (phoneNumber) => {
+        const digitsOnly = phoneNumber.replace(/\D/g, "");
+        return digitsOnly.slice(-10);
+      };
 
-      // Save incoming message
-      const incomingMessage = await Message.create({
+      // Get the last 10 digits of the incoming number
+      const last10Digits = getLastTenDigits(From);
+
+      // First try to find by exact match
+      let lead = await Lead.findOne({
+        where: { phoneNumber: From },
+      });
+
+      // If not found, try without the country code (just the last 10 digits)
+      if (!lead) {
+        lead = await Lead.findOne({
+          where: { phoneNumber: last10Digits },
+        });
+      }
+
+      // If still not found, try with a more flexible approach
+      if (!lead) {
+        // Get all leads
+        const allLeads = await Lead.findAll();
+
+        // Find a lead where the last 10 digits match
+        lead = allLeads.find((l) => {
+          const leadLast10 = getLastTenDigits(l.phoneNumber);
+          return leadLast10 === last10Digits;
+        });
+      }
+
+      // Log what we tried
+      logger.info("Phone number matching:", {
+        incoming: From,
+        last10Digits,
+        foundLead: lead ? lead.id : "none",
+      });
+
+      if (!lead) {
+        logger.warn(
+          `No lead found with phone number ${From} (normalized: ${From})`
+        );
+
+        // Optionally create a new lead for unknown numbers
+        lead = await Lead.create({
+          name: `Unknown (${From})`,
+          phoneNumber: From,
+          email: "",
+          source: "SMS",
+          status: "New",
+          notes: `Automatically created from incoming SMS on ${new Date().toISOString()}`,
+        });
+
+        logger.info(
+          `Created new lead with ID ${lead.id} for unknown phone number ${From}`
+        );
+      }
+
+      // Create the message record
+      const message = await Message.create({
         leadId: lead.id,
         text: Body,
         sender: "lead",
-        twilioSid: MessageSid,
+        direction: "inbound",
+        twilioSid: MessageSid || null,
+        deliveryStatus: "delivered",
       });
 
-      // Only generate AI response if enabled for this lead
-      if (lead.aiAssistantEnabled) {
-        // Generate and send AI response
-        const aiResponse = await openaiService.generateResponse(
-          Body,
-          settingsMap
-        );
-        const twilioMessage = await twilioService.sendMessage(From, aiResponse);
-
-        // Save AI response
-        const aiMessage = await Message.create({
+      // Emit socket event with the new message
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new-message', {
           leadId: lead.id,
-          text: aiResponse,
-          sender: "agent",
-          twilioSid: twilioMessage.sid,
-          isAiGenerated: true,
-        });
-
-        // Cancel any pending follow-ups when lead responds
-        await FollowUp.update(
-          { status: "cancelled" },
-          {
-            where: {
-              leadId: lead.id,
-              status: "pending",
-            },
+          message: {
+            id: message.id,
+            text: message.text,
+            sender: message.sender,
+            createdAt: message.createdAt,
+            leadName: lead.name,
+            phoneNumber: lead.phoneNumber
           }
-        );
-
-        res.json({
-          incomingMessage,
-          aiMessage,
-        });
-      } else {
-        res.json({
-          incomingMessage,
         });
       }
+
+      // After creating the message, log it
+      logger.info("Successfully created inbound message:", {
+        messageId: message.id,
+        leadId: lead.id,
+        text: Body,
+      });
+
+      // Send a response to Twilio
+      const twiml = new MessagingResponse();
+      res.type("text/xml").send(twiml.toString());
+
+      // Add more detailed logging for phone number details
+      logger.info("Phone number details:", {
+        original: From,
+        last10Digits: From.replace(/\D/g, "").slice(-10),
+      });
     } catch (error) {
       logger.error("Error processing incoming message:", error);
-      res.status(500).json({ error: "Failed to process message" });
+      res.status(500).send("Error processing message");
     }
   },
 
@@ -182,11 +272,16 @@ const messageController = {
   async getMessages(req, res) {
     try {
       const { leadId } = req.params;
+      logger.info(`Fetching messages for lead ${leadId}`);
+
       const messages = await Message.findAll({
         where: { leadId },
         order: [["createdAt", "ASC"]],
       });
 
+      console.log("messages", messages);
+
+      logger.info(`Found ${messages.length} messages for lead ${leadId}`);
       res.json(messages);
     } catch (error) {
       logger.error("Error fetching messages:", error);
@@ -237,69 +332,33 @@ const messageController = {
   // Status callback handler for Twilio
   async statusCallback(req, res) {
     try {
-      const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+      logger.info("Received status callback from Twilio:", {
+        body: req.body,
+        messageStatus: req.body.MessageStatus,
+        messageSid: req.body.MessageSid,
+      });
 
-      // Get the messageId from query parameters
-      const { messageId } = req.query;
-
-      logger.info(
-        `Received status callback for message ${messageId}: ${MessageStatus}`
-      );
-
-      if (messageId && messageId !== "null" && messageId !== "undefined") {
-        // Convert messageId to integer if it's a valid number
-        const parsedId = parseInt(messageId, 10);
-
-        if (!isNaN(parsedId)) {
-          // Update by messageId
-          const message = await Message.findByPk(parsedId);
-
-          if (message) {
-            await message.update({
-              twilioSid: MessageSid,
-              deliveryStatus: MessageStatus,
-              errorCode: ErrorCode || null,
-              errorMessage: ErrorMessage || null,
-              statusUpdatedAt: new Date(),
-            });
-
-            logger.info(
-              `Updated message ${messageId} status to ${MessageStatus}`
-            );
-          } else {
-            logger.warn(`No message found with ID: ${messageId}`);
-          }
-        } else {
-          logger.warn(`Invalid message ID format: ${messageId}`);
-        }
-      } else if (MessageSid) {
-        // Fallback to updating by twilioSid
+      // Update message status in database
+      if (req.body.MessageSid) {
         const message = await Message.findOne({
-          where: { twilioSid: MessageSid },
+          where: { twilioSid: req.body.MessageSid },
         });
 
         if (message) {
           await message.update({
-            deliveryStatus: MessageStatus,
-            errorCode: ErrorCode || null,
-            errorMessage: ErrorMessage || null,
+            deliveryStatus: req.body.MessageStatus,
             statusUpdatedAt: new Date(),
           });
-
           logger.info(
-            `Updated message by SID ${MessageSid} status to ${MessageStatus}`
+            `Updated message ${message.id} status to ${req.body.MessageStatus}`
           );
-        } else {
-          logger.warn(`No message found with Twilio SID: ${MessageSid}`);
         }
-      } else {
-        logger.warn("Status callback received without messageId or MessageSid");
       }
 
-      res.status(200).send("Status callback received");
+      res.status(200).send("Status received");
     } catch (error) {
       logger.error("Error processing status callback:", error);
-      res.status(500).send("Error processing status callback");
+      res.status(500).send("Error processing status");
     }
   },
 
@@ -410,6 +469,16 @@ const messageController = {
       logger.error("Error getting scheduled messages:", error);
       res.status(500).json({ error: "Failed to get scheduled messages" });
     }
+  },
+
+  // Add this function to compare phone numbers regardless of formatting
+  phoneNumbersMatch(phone1, phone2) {
+    const normalize = (phone) => {
+      if (!phone) return "";
+      return phone.replace(/\D/g, "").replace(/^1/, ""); // Remove country code and non-digits
+    };
+
+    return normalize(phone1) === normalize(phone2);
   },
 };
 

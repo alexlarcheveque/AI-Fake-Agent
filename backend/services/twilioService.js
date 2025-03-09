@@ -19,64 +19,20 @@ logger.info(
 const client = twilio(accountSid, authToken);
 
 const twilioService = {
-  async sendMessage(to, text, messageId = null) {
-    logger.info(
-      `Attempting to send message to ${to}: ${text.substring(0, 30)}...`
-    );
+  async sendMessage(to, body) {
     try {
-      // Ensure text is a string
-      const messageText = String(text || "");
-
-      // Format the phone number if needed
-      const formattedTo = to.startsWith("+") ? to : `+1${to}`;
-
-      // Send message via Twilio
-      const twilioMessage = await client.messages.create({
-        body: messageText,
+      const message = await client.messages.create({
+        to,
         from: twilioPhoneNumber,
-        to: formattedTo,
-        statusCallback: `${process.env.BASE_URL}/api/messages/status-callback?messageId=${messageId}`,
+        body,
+        statusCallback: `${process.env.BASE_URL}/api/messages/status-callback`,
       });
 
-      logger.info(`Message sent via Twilio: ${twilioMessage.sid}`);
-
-      // If messageId is provided, update the message with Twilio SID and status
-      if (messageId) {
-        await Message.update(
-          {
-            twilioSid: twilioMessage.sid,
-            deliveryStatus: twilioMessage.status,
-            statusUpdatedAt: new Date(),
-          },
-          { where: { id: messageId } }
-        );
-      }
-
-      return {
-        success: true,
-        sid: twilioMessage.sid,
-        status: twilioMessage.status,
-      };
+      console.log(`Message sent via Twilio: ${message.sid}`);
+      return message;
     } catch (error) {
-      logger.error("Error sending message via Twilio:", error);
-
-      // If messageId is provided, update the message with error details
-      if (messageId) {
-        await Message.update(
-          {
-            deliveryStatus: "failed",
-            errorCode: error.code,
-            errorMessage: error.message,
-            statusUpdatedAt: new Date(),
-          },
-          { where: { id: messageId } }
-        );
-      }
-
-      return {
-        success: false,
-        error: error.message,
-      };
+      console.error("Error sending Twilio message:", error);
+      throw error;
     }
   },
 

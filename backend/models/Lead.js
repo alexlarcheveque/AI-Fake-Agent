@@ -17,12 +17,21 @@ const Lead = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
       validate: {
-        isEmail: true,
+        isEmail: function (value) {
+          if (value === null || value === "") return true; // Skip validation for empty values
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+            throw new Error("Invalid email format");
+          }
+        },
       },
     },
     phoneNumber: {
       type: DataTypes.STRING,
       allowNull: false,
+      validate: {
+        notEmpty: true,
+      },
+      index: true,
     },
     status: {
       type: DataTypes.STRING,
@@ -77,4 +86,16 @@ const Lead = sequelize.define(
   }
 );
 
+// Export the model immediately
 module.exports = Lead;
+
+// Set up associations after export (this avoids circular dependencies)
+// This needs to be after the export
+setTimeout(() => {
+  const Message = require("./Message");
+
+  Lead.hasMany(Message, {
+    foreignKey: "leadId",
+    onDelete: "CASCADE",
+  });
+}, 0);
