@@ -1,8 +1,17 @@
 require("dotenv").config();
+
+// Add environment variable check
+console.log("Environment variables check:");
+console.log("OPENAI_API_KEY exists:", !!process.env.OPENAI_API_KEY);
+console.log("TWILIO_ACCOUNT_SID exists:", !!process.env.TWILIO_ACCOUNT_SID);
+console.log("TWILIO_AUTH_TOKEN exists:", !!process.env.TWILIO_AUTH_TOKEN);
+console.log("TWILIO_PHONE_NUMBER exists:", !!process.env.TWILIO_PHONE_NUMBER);
+console.log("BASE_URL:", process.env.BASE_URL);
+
 const express = require("express");
 const cors = require("cors");
 const sequelize = require("./config/database");
-const leadRoutes = require("./routes/leadroutes");
+const leadRoutes = require("./routes/leadRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const userSettingsRoutes = require("./routes/userSettingsRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -11,8 +20,17 @@ const scheduledMessageService = require("./services/scheduledMessageService");
 require("./models/associations");
 const http = require("http");
 const { Server } = require("socket.io");
+const messageController = require("./controllers/messageController");
 
 const app = express();
+
+// Add this at the very top, before any other middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log("Headers:", req.headers);
+  if (req.body) console.log("Body:", req.body);
+  next();
+});
 
 app.use(
   cors({
@@ -58,9 +76,15 @@ app.post("/api/test-form", (req, res) => {
   res.json({ received: req.body });
 });
 
+// Add these routes to handle both potential webhook paths
+app.post("/api/messages/receive", (req, res) => {
+  console.log("Received webhook at /api/messages/receive");
+  messageController.receiveMessage(req, res);
+});
+
+// Also handle the path without the /api prefix (Twilio might be using this)
 app.post("/messages/receive", (req, res) => {
-  // Forward the request to your actual handler
-  const messageController = require("./controllers/messageController");
+  console.log("Received webhook at /messages/receive");
   messageController.receiveMessage(req, res);
 });
 

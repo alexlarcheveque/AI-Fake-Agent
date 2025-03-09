@@ -91,6 +91,23 @@ const messageController = {
         isAiGenerated,
       });
 
+      // Emit socket event for sent message
+      const io = req.app.get("io");
+      if (io) {
+        io.emit("new-message", {
+          leadId: lead.id,
+          message: {
+            id: message.id,
+            text: message.text,
+            sender: message.sender,
+            createdAt: message.createdAt,
+            leadName: lead.name,
+            phoneNumber: lead.phoneNumber,
+            deliveryStatus: message.deliveryStatus,
+          },
+        });
+      }
+
       // If AI Assistant is enabled for this lead, generate and send AI response
       if (lead.aiAssistantEnabled) {
         // Generate AI response
@@ -231,9 +248,9 @@ const messageController = {
       });
 
       // Emit socket event with the new message
-      const io = req.app.get('io');
+      const io = req.app.get("io");
       if (io) {
-        io.emit('new-message', {
+        io.emit("new-message", {
           leadId: lead.id,
           message: {
             id: message.id,
@@ -241,8 +258,8 @@ const messageController = {
             sender: message.sender,
             createdAt: message.createdAt,
             leadName: lead.name,
-            phoneNumber: lead.phoneNumber
-          }
+            phoneNumber: lead.phoneNumber,
+          },
         });
       }
 
@@ -332,33 +349,50 @@ const messageController = {
   // Status callback handler for Twilio
   async statusCallback(req, res) {
     try {
-      logger.info("Received status callback from Twilio:", {
-        body: req.body,
-        messageStatus: req.body.MessageStatus,
-        messageSid: req.body.MessageSid,
-      });
+      const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
 
-      // Update message status in database
-      if (req.body.MessageSid) {
-        const message = await Message.findOne({
-          where: { twilioSid: req.body.MessageSid },
-        });
+      console.log(`Status update for message ${MessageSid}: ${MessageStatus}`);
 
-        if (message) {
-          await message.update({
-            deliveryStatus: req.body.MessageStatus,
-            statusUpdatedAt: new Date(),
-          });
-          logger.info(
-            `Updated message ${message.id} status to ${req.body.MessageStatus}`
-          );
-        }
+      if (!MessageSid) {
+        return res.status(400).json({ error: "MessageSid is required" });
       }
 
-      res.status(200).send("Status received");
+      // Find the message by Twilio SID
+      const message = await Message.findOne({
+        where: { twilioSid: MessageSid },
+      });
+
+      if (!message) {
+        console.error(`No message found with Twilio SID: ${MessageSid}`);
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      // Update the message status
+      await message.update({
+        deliveryStatus: MessageStatus,
+        errorCode: ErrorCode || null,
+        errorMessage: ErrorMessage || null,
+        statusUpdatedAt: new Date(),
+      });
+
+      // Emit socket event for status update
+      const io = req.app.get("io");
+      if (io) {
+        io.emit("message-status-update", {
+          messageId: message.id,
+          leadId: message.leadId,
+          twilioSid: MessageSid,
+          status: MessageStatus,
+        });
+      }
+
+      console.log(
+        `Updated status for message ${message.id} to ${MessageStatus}`
+      );
+      res.status(200).send("Status updated");
     } catch (error) {
-      logger.error("Error processing status callback:", error);
-      res.status(500).send("Error processing status");
+      console.error("Error updating message status:", error);
+      res.status(500).json({ error: "Failed to update message status" });
     }
   },
 

@@ -2,7 +2,9 @@ const OpenAI = require("openai");
 const logger = require("../utils/logger");
 const agentSettings = require("../config/agentSettings");
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
+
+const openai = new OpenAI({ apiKey });
 
 const openaiService = {
   async generateResponse(text, settings = null, previousMessages = []) {

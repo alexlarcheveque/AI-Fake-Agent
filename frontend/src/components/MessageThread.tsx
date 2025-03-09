@@ -60,19 +60,65 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     if (!socket) return;
 
     const handleNewMessage = (data) => {
-      if (data.leadId === leadId) {
-        setMessages((prevMessages) => [...prevMessages, data.message]);
+      // Make sure we're checking the correct lead ID format
+      const currentLeadId =
+        typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
+
+      if (data.leadId === currentLeadId) {
+        console.log("Received new message via socket:", data.message);
+
+        // Check if this message is already in our state to avoid duplicates
+        setMessages((prevMessages) => {
+          const messageExists = prevMessages.some(
+            (msg) => msg.id === data.message.id
+          );
+          if (messageExists) return prevMessages;
+          return [...prevMessages, data.message];
+        });
 
         // Play a notification sound
         const audio = new Audio("/notification.mp3");
-        audio.play();
+        audio
+          .play()
+          .catch((err) => console.log("Error playing notification:", err));
       }
     };
 
+    // Listen for both sent and received messages
     socket.on("new-message", handleNewMessage);
 
     return () => {
       socket.off("new-message", handleNewMessage);
+    };
+  }, [socket, leadId]);
+
+  // Add this useEffect to listen for status updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleStatusUpdate = (data) => {
+      // Make sure we're checking the correct lead ID format
+      const currentLeadId =
+        typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
+
+      if (data.leadId === currentLeadId) {
+        console.log("Received status update:", data);
+
+        // Update the message status in our state
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.id === data.messageId
+              ? { ...msg, deliveryStatus: data.status }
+              : msg
+          )
+        );
+      }
+    };
+
+    socket.on("message-status-update", handleStatusUpdate);
+
+    return () => {
+      socket.off("message-status-update", handleStatusUpdate);
     };
   }, [socket, leadId]);
 
@@ -103,14 +149,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       setIsSending(true);
       const numericLeadId =
         typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
-      await messageApi.sendMessage(numericLeadId, text);
+
+      // Send the message
+      const sentMessage = await messageApi.sendMessage(numericLeadId, text);
+      console.log("Message sent successfully:", sentMessage);
+
       setIsSending(false);
 
-      // Refresh messages
-      const updatedMessages = await messageApi.getMessages(
-        numericLeadId.toString()
-      );
-      setMessages(updatedMessages);
+      // Instead of fetching all messages again, just add the new one to state
+      setMessages((prev) => [...prev, sentMessage]);
     } catch (error) {
       console.error("Error sending message:", error);
       setIsSending(false);
@@ -124,6 +171,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       console.log("MessageThread unmounted with leadId:", leadId);
     };
   }, []); // Empty dependency array means this runs once on mount and once on unmount
+
+  useEffect(() => {
+    console.log("Current messages state:", messages);
+  }, [messages]);
 
   return (
     <div className="h-full flex flex-col bg-white rounded-lg shadow-lg overflow-hidden">
