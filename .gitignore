@@ -6,6 +6,7 @@
 # Backend
 backend/.env
 backend/node_modules
+backend/logs
 
 # Frontend
 frontend/.env

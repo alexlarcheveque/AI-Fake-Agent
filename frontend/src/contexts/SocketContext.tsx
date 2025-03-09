@@ -20,20 +20,29 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    // Create socket connection
+    // Create socket connection with reconnection options
     const socketInstance = io(
-      import.meta.env.VITE_API_URL || "http://localhost:3000"
+      import.meta.env.VITE_API_URL || "http://localhost:3000",
+      {
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        autoConnect: true,
+      }
     );
 
-    // Set up event listeners
+    // Set up event listeners with better logging
     socketInstance.on("connect", () => {
-      console.log("Connected to socket server");
+      console.log("Socket connected successfully:", socketInstance.id);
       setConnected(true);
     });
 
-    socketInstance.on("disconnect", () => {
-      console.log("Disconnected from socket server");
+    socketInstance.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
       setConnected(false);
+    });
+
+    socketInstance.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
     });
 
     // Save socket instance
@@ -41,6 +50,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
 
     // Clean up on unmount
     return () => {
+      console.log("Cleaning up socket connection");
       socketInstance.disconnect();
     };
   }, []);

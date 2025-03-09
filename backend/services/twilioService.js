@@ -3,9 +3,10 @@ const Message = require("../models/Message");
 const logger = require("../utils/logger");
 
 // Initialize Twilio client with environment variables
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+const accountSid = process.env.TWILIO_ACCOUNT_SID || "your_account_sid_here";
+const authToken = process.env.TWILIO_AUTH_TOKEN || "your_auth_token_here";
+const twilioPhoneNumber =
+  process.env.TWILIO_PHONE_NUMBER || "your_phone_number_here";
 
 // Log the Twilio configuration (with partial SID for security)
 const sidPreview = accountSid
@@ -21,11 +22,18 @@ const client = twilio(accountSid, authToken);
 const twilioService = {
   async sendMessage(to, body) {
     try {
+      // Make sure the callback URL is correct and includes the full path
+      const statusCallbackUrl = `${process.env.BASE_URL}/api/messages/status-callback`;
+
+      console.log(
+        `Sending message to ${to} with status callback: ${statusCallbackUrl}`
+      );
+
       const message = await client.messages.create({
         to,
         from: twilioPhoneNumber,
         body,
-        statusCallback: `${process.env.BASE_URL}/api/messages/status-callback`,
+        statusCallback: statusCallbackUrl,
       });
 
       console.log(`Message sent via Twilio: ${message.sid}`);

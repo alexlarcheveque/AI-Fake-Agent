@@ -14,13 +14,29 @@ router.post("/send", messageController.sendMessage);
 router.post("/send-local", messageController.sendLocalMessage);
 
 // Webhook for receiving messages (for Twilio)
-router.post("/receive", messageController.receiveMessage);
+router.post("/receive", (req, res) => {
+  console.log("Received incoming message webhook:", {
+    body: req.body,
+    headers: req.headers,
+    method: req.method,
+  });
+
+  messageController.receiveMessage(req, res);
+});
 
 // Test Twilio
 router.post("/test-twilio", messageController.testTwilio);
 
 // Add this route for status callbacks
-router.post("/status-callback", messageController.statusCallback);
+router.post("/status-callback", (req, res) => {
+  console.log("Received Twilio status callback:", {
+    body: req.body,
+    headers: req.headers,
+    method: req.method,
+  });
+
+  messageController.statusCallback(req, res);
+});
 
 // Add this route to get all messages with optional status filter
 router.get("/", async (req, res) => {
@@ -92,6 +108,11 @@ router.post("/simulate-incoming", async (req, res) => {
     console.error("Error simulating incoming message:", error);
     res.status(500).json({ error: "Failed to simulate incoming message" });
   }
+});
+
+// Add a simple test endpoint
+router.get("/test", (req, res) => {
+  res.status(200).send("Webhook endpoint is working");
 });
 
 module.exports = router;
