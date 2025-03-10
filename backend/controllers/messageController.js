@@ -10,14 +10,7 @@ const userSettingsService = require("../services/userSettingsService");
 const { Op } = require("sequelize");
 const sequelize = require("sequelize");
 const { MessagingResponse } = require("twilio").twiml;
-
-const DEFAULT_SETTINGS = {
-  agentName: "Your Name",
-  companyName: "Your Company",
-  agentCity: "Your City",
-  agentState: "Your State",
-  aiAssistantEnabled: true,
-};
+const DEFAULT_SETTINGS = require("../config/defaultSettings");
 
 const messageController = {
   // send test twilio message
@@ -270,6 +263,102 @@ const messageController = {
         text: Body,
       });
 
+      // Check if AI Assistant is enabled for this lead
+      if (lead.aiAssistantEnabled) {
+        // Schedule AI response with a random delay between 15 seconds to 30 seconds
+        const delayMs = Math.floor(Math.random() * (30000 - 15000 + 1) + 15000); // 15000-30000 ms (15-30 seconds)
+
+        console.log(
+          `Scheduling AI response for lead ${lead.id} with ${
+            delayMs / 1000
+          } seconds delay`
+        );
+
+        setTimeout(async () => {
+          try {
+            // Get user settings
+            const userId = lead.userId;
+            let settingsMap;
+
+            if (userId) {
+              // Get user-specific settings
+              settingsMap = await userSettingsService.getAllSettings(userId);
+              console.log("Using user settings for AI response:", settingsMap);
+            } else {
+              // Use default settings if no user is associated
+              settingsMap = DEFAULT_SETTINGS;
+              console.log(
+                "Using default settings for AI response (no userId found)"
+              );
+            }
+
+            // Get previous messages for context (last 5 messages)
+            const previousMessages = await Message.findAll({
+              where: { leadId: lead.id },
+              order: [["createdAt", "DESC"]],
+              limit: 5,
+            });
+
+            // Reverse to get chronological order
+            const messageHistory = previousMessages.reverse();
+
+            // Generate AI response with proper settings and context
+            const aiResponse = await openaiService.generateResponse(
+              Body, // The incoming message text
+              settingsMap,
+              messageHistory // Include previous messages for context
+            );
+
+            // Send AI response via Twilio
+            const aiTwilioMessage = await twilioService.sendMessage(
+              lead.phoneNumber,
+              aiResponse
+            );
+
+            // Save AI response to database
+            const aiMessage = await Message.create({
+              leadId: lead.id,
+              text: aiResponse,
+              sender: "agent",
+              direction: "outbound",
+              twilioSid: aiTwilioMessage.sid,
+              isAiGenerated: true,
+            });
+
+            console.log(`AI response sent to lead ${lead.id}: ${aiResponse}`);
+
+            // Emit socket event for the AI response
+            if (io) {
+              io.emit("new-message", {
+                leadId: lead.id,
+                message: {
+                  id: aiMessage.id,
+                  text: aiMessage.text,
+                  sender: aiMessage.sender,
+                  createdAt: aiMessage.createdAt,
+                  leadName: lead.name,
+                  phoneNumber: lead.phoneNumber,
+                  deliveryStatus: aiMessage.deliveryStatus,
+                },
+              });
+            }
+
+            console.log("Lead info:", {
+              id: lead.id,
+              userId: lead.userId,
+              aiAssistantEnabled: lead.aiAssistantEnabled,
+            });
+
+            console.log("Settings being used for AI:", settingsMap);
+          } catch (error) {
+            console.error(
+              `Error sending AI response to lead ${lead.id}:`,
+              error
+            );
+          }
+        }, delayMs);
+      }
+
       // Send a response to Twilio
       const twiml = new MessagingResponse();
       res.type("text/xml").send(twiml.toString());
@@ -310,14 +399,43 @@ const messageController = {
   async sendLocalMessage(req, res) {
     console.log("sendLocalMessage", req.body);
     try {
-      const { text, previousMessages } = req.body;
+      const { text, previousMessages, userId } = req.body;
 
-      // Get current settings
-      const settings = await UserSettings.findOne({ where: { userId } });
-      const settingsMap = settings.reduce((acc, setting) => {
-        acc[setting.key] = setting.value;
-        return acc;
-      }, {});
+      // Check if userId is provided
+      if (!userId) {
+        console.log("No userId provided, using default settings");
+        // Use default settings
+        const aiResponse = await openaiService.generateResponse(
+          text,
+          DEFAULT_SETTINGS,
+          previousMessages
+        );
+
+        // Create response message
+        const aiMessage = {
+          id: `local-playground-${Date.now()}`,
+          text: aiResponse,
+          sender: "agent",
+          twilioSid: `local-response-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          useAiResponse: true,
+          isAiGenerated: true,
+        };
+
+        return res.json({ message: aiMessage });
+      }
+
+      // Get user settings
+      let settingsMap;
+      try {
+        settingsMap = await userSettingsService.getAllSettings(userId);
+        console.log("Using user settings for playground:", settingsMap);
+      } catch (error) {
+        console.error("Error getting user settings:", error);
+        settingsMap = DEFAULT_SETTINGS;
+      }
 
       // Generate AI response
       const aiResponse = await openaiService.generateResponse(

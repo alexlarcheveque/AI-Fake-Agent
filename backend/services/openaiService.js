@@ -12,6 +12,12 @@ const openaiService = {
       // Get settings from agentSettings if not provided
       const configSettings = settings || agentSettings.getAll();
 
+      console.log("Using settings for AI response:", {
+        AGENT_NAME: configSettings.AGENT_NAME,
+        COMPANY_NAME: configSettings.COMPANY_NAME,
+        AGENT_STATE: configSettings.AGENT_STATE,
+      });
+
       // Convert previous messages to OpenAI format
       const messageHistory = previousMessages.map((msg) => ({
         role: msg.sender === "lead" ? "user" : "assistant",

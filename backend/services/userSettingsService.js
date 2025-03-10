@@ -54,20 +54,32 @@ const userSettingsService = {
   // Add this new function
   async getAllSettings(userId) {
     try {
-      const settings = await this.getSettings(userId);
+      const settings = await UserSettings.findAll({
+        where: { userId },
+      });
 
-      // Convert to the format expected by the message controller
-      return {
-        agentName: settings.agentName,
-        companyName: settings.companyName,
-        agentCity: settings.agentCity || "",
-        agentState: settings.agentState || "",
-        aiAssistantEnabled: settings.aiAssistantEnabled,
-      };
+      // Convert to a map
+      const settingsMap = {};
+      settings.forEach((setting) => {
+        settingsMap[setting.key] = setting.value;
+      });
+
+      console.log(
+        `Retrieved ${settings.length} settings for user ${userId}:`,
+        settingsMap
+      );
+
+      // Fill in any missing settings with defaults
+      Object.keys(DEFAULT_SETTINGS).forEach((key) => {
+        if (!settingsMap[key]) {
+          settingsMap[key] = DEFAULT_SETTINGS[key];
+        }
+      });
+
+      return settingsMap;
     } catch (error) {
-      logger.error("Error getting all settings:", error);
-      // Return default settings as fallback
-      return DEFAULT_SETTINGS;
+      console.error(`Error getting settings for user ${userId}:`, error);
+      return DEFAULT_SETTINGS; // Fallback to defaults on error
     }
   },
 };

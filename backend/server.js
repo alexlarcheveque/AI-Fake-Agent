@@ -88,6 +88,47 @@ app.post("/messages/receive", (req, res) => {
   messageController.receiveMessage(req, res);
 });
 
+// Add this route at the root level
+app.post("/messages/receive", (req, res) => {
+  console.log("========== INCOMING WEBHOOK ==========");
+  console.log("Body:", req.body);
+  console.log("From:", req.body.From);
+  console.log("To:", req.body.To);
+  console.log("Body:", req.body.Body);
+  console.log("MessageSid:", req.body.MessageSid);
+  console.log("======================================");
+
+  messageController.receiveMessage(req, res);
+});
+
+// Add this route at the root level
+app.post("/messages/receive", (req, res) => {
+  console.log("========== INCOMING WEBHOOK ==========");
+  console.log("Body:", req.body);
+  console.log("From:", req.body.From);
+  console.log("To:", req.body.To);
+  console.log("Body:", req.body.Body);
+  console.log("MessageSid:", req.body.MessageSid);
+  console.log("======================================");
+
+  messageController.receiveMessage(req, res);
+});
+
+app.post("/sms", (req, res) => {
+  console.log("Received SMS webhook:", req.body);
+  messageController.receiveMessage(req, res);
+});
+
+// Add this route to handle the typo
+app.post("/api/mesages/receive", (req, res) => {
+  console.log("Received webhook at misspelled URL");
+  messageController.receiveMessage(req, res);
+});
+
+app.get("/test", (req, res) => {
+  res.send("Server is running");
+});
+
 const PORT = process.env.PORT || 3000;
 
 // Create HTTP server
