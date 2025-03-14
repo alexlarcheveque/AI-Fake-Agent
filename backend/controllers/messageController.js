@@ -240,6 +240,19 @@ const messageController = {
         deliveryStatus: "delivered",
       });
 
+      // Update the lead with the current messageCount + 1, but DON'T schedule an immediate follow-up
+      await lead.update({
+        lastMessageAt: new Date(),
+        messageCount: lead.messageCount + 1,
+        // Set nextScheduledMessage to a future date (e.g., 3 days from now)
+        // This ensures we don't send another follow-up too soon after the AI response
+        nextScheduledMessage: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days later
+      });
+
+      console.log(
+        `Updated lead ${lead.id} with new message count and future follow-up date`
+      );
+
       // Emit socket event with the new message
       const io = req.app.get("io");
       if (io) {
@@ -266,7 +279,7 @@ const messageController = {
       // Check if AI Assistant is enabled for this lead
       if (lead.aiAssistantEnabled) {
         // Schedule AI response with a random delay between 15 seconds to 30 seconds
-        const delayMs = Math.floor(Math.random() * (30000 - 15000 + 1) + 15000); // 15000-30000 ms (15-30 seconds)
+        const delayMs = Math.floor(Math.random() * (30000 - 15000 + 1) + 15000);
 
         console.log(
           `Scheduling AI response for lead ${lead.id} with ${
