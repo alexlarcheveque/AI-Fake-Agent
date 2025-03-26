@@ -17,6 +17,16 @@ interface SearchFilters {
   status?: boolean;
 }
 
+interface BulkImportResponse {
+  success: boolean;
+  message: string;
+  created: Lead[];
+  failed: Array<{
+    data: Partial<Lead>;
+    error: string;
+  }>;
+}
+
 const leadApi = {
   // Get all leads with pagination and search
   async getLeads(
@@ -70,6 +80,39 @@ const leadApi = {
   async deleteLead(id: number): Promise<void> {
     await axios.delete(`${BASE_URL}/api/leads/${id}`);
   },
+  
+  // Import leads from CSV file
+  async importLeadsFromCSV(
+    file: File, 
+    aiFeatures?: { 
+      aiAssistantEnabled: boolean; 
+      enableFollowUps: boolean; 
+      firstMessageTiming: string;
+    }
+  ): Promise<BulkImportResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Append AI feature settings if provided
+    if (aiFeatures) {
+      formData.append('aiAssistantEnabled', aiFeatures.aiAssistantEnabled.toString());
+      formData.append('enableFollowUps', aiFeatures.enableFollowUps.toString());
+      formData.append('firstMessageTiming', aiFeatures.firstMessageTiming);
+    }
+    
+    const response = await axios.post(`${BASE_URL}/api/leads/bulk`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response.data;
+  },
+  
+  // Download lead template
+  downloadLeadTemplate(): void {
+    window.open(`${BASE_URL}/api/leads/template`, '_blank');
+  }
 };
 
 export default leadApi;

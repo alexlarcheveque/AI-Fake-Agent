@@ -11,6 +11,7 @@ const { Op } = require("sequelize");
 const sequelize = require("sequelize");
 const { MessagingResponse } = require("twilio").twiml;
 const DEFAULT_SETTINGS = require("../config/defaultSettings");
+const appointmentService = require("../services/appointmentService");
 
 const messageController = {
   // send test twilio message
@@ -104,21 +105,62 @@ const messageController = {
       // If AI Assistant is enabled for this lead, generate and send AI response
       if (lead.aiAssistantEnabled) {
         // Generate AI response
-        const aiResponse = await openaiService.generateResponse(
+        const aiResponseData = await openaiService.generateResponse(
           text,
           settingsMap
         );
 
+        // Check if aiResponseData contains appointment details
+        let aiResponseText;
+        let appointmentDetails = null;
+        
+        if (typeof aiResponseData === 'object' && aiResponseData.text) {
+          // It's the new format with appointment details
+          aiResponseText = aiResponseData.text;
+          appointmentDetails = aiResponseData.appointmentDetails;
+          
+          if (appointmentDetails) {
+            console.log('Appointment detected:', appointmentDetails);
+            
+            // Create appointment in database
+            try {
+              const appointment = await appointmentService.createAppointmentFromAI(
+                lead.id, 
+                lead.userId, 
+                appointmentDetails
+              );
+              
+              console.log('Appointment created successfully:', appointment.id);
+              
+              // Add a Google Calendar confirmation if a calendar link was created
+              if (appointment.googleCalendarEventLink) {
+                // Check if the lead has an email
+                const leadWithEmail = await Lead.findByPk(lead.id);
+                if (leadWithEmail && leadWithEmail.email) {
+                  // If lead has an email, they'll receive a calendar invitation
+                  aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
+                }
+              }
+            } catch (appointmentError) {
+              console.error('Error creating appointment:', appointmentError);
+              // Continue with the message even if appointment creation fails
+            }
+          }
+        } else {
+          // It's just a string (old format or no appointment detected)
+          aiResponseText = aiResponseData;
+        }
+
         // Send AI response via Twilio
         const aiTwilioMessage = await twilioService.sendMessage(
           lead.phoneNumber,
-          aiResponse
+          aiResponseText
         );
 
         // Save AI response to database
         const aiMessage = await Message.create({
           leadId,
-          text: aiResponse,
+          text: aiResponseText,
           sender: "agent",
           direction: "outbound",
           twilioSid: aiTwilioMessage.sid,
@@ -278,8 +320,8 @@ const messageController = {
 
       // Check if AI Assistant is enabled for this lead
       if (lead.aiAssistantEnabled) {
-        // Schedule AI response with a random delay between 15 seconds to 30 seconds
-        const delayMs = Math.floor(Math.random() * (30000 - 15000 + 1) + 15000);
+        // Schedule AI response with a random delay between 10 seconds to 15 seconds
+        const delayMs = Math.floor(Math.random() * (15000 - 10000 + 1) + 10000);
 
         console.log(
           `Scheduling AI response for lead ${lead.id} with ${
@@ -316,29 +358,70 @@ const messageController = {
             const messageHistory = previousMessages.reverse();
 
             // Generate AI response with proper settings and context
-            const aiResponse = await openaiService.generateResponse(
+            const aiResponseData = await openaiService.generateResponse(
               Body, // The incoming message text
               settingsMap,
               messageHistory // Include previous messages for context
             );
 
+            // Check if aiResponseData contains appointment details
+            let aiResponseText;
+            let appointmentDetails = null;
+            
+            if (typeof aiResponseData === 'object' && aiResponseData.text) {
+              // It's the new format with appointment details
+              aiResponseText = aiResponseData.text;
+              appointmentDetails = aiResponseData.appointmentDetails;
+              
+              if (appointmentDetails) {
+                console.log('Appointment detected:', appointmentDetails);
+                
+                // Create appointment in database
+                try {
+                  const appointment = await appointmentService.createAppointmentFromAI(
+                    lead.id, 
+                    lead.userId, 
+                    appointmentDetails
+                  );
+                  
+                  console.log('Appointment created successfully:', appointment.id);
+                  
+                  // Add a Google Calendar confirmation if a calendar link was created
+                  if (appointment.googleCalendarEventLink) {
+                    // Check if the lead has an email
+                    const leadWithEmail = await Lead.findByPk(lead.id);
+                    if (leadWithEmail && leadWithEmail.email) {
+                      // If lead has an email, they'll receive a calendar invitation
+                      aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
+                    }
+                  }
+                } catch (appointmentError) {
+                  console.error('Error creating appointment:', appointmentError);
+                  // Continue with the message even if appointment creation fails
+                }
+              }
+            } else {
+              // It's just a string (old format or no appointment detected)
+              aiResponseText = aiResponseData;
+            }
+
             // Send AI response via Twilio
             const aiTwilioMessage = await twilioService.sendMessage(
               lead.phoneNumber,
-              aiResponse
+              aiResponseText
             );
 
             // Save AI response to database
             const aiMessage = await Message.create({
               leadId: lead.id,
-              text: aiResponse,
+              text: aiResponseText,
               sender: "agent",
               direction: "outbound",
               twilioSid: aiTwilioMessage.sid,
               isAiGenerated: true,
             });
 
-            console.log(`AI response sent to lead ${lead.id}: ${aiResponse}`);
+            console.log(`AI response sent to lead ${lead.id}: ${aiResponseText}`);
 
             // Emit socket event for the AI response
             if (io) {
@@ -418,16 +501,35 @@ const messageController = {
       if (!userId) {
         console.log("No userId provided, using default settings");
         // Use default settings
-        const aiResponse = await openaiService.generateResponse(
+        const aiResponseData = await openaiService.generateResponse(
           text,
           DEFAULT_SETTINGS,
           previousMessages
         );
 
+        // Check if aiResponseData contains appointment details
+        let aiResponseText;
+        let appointmentDetails = null;
+        
+        if (typeof aiResponseData === 'object' && aiResponseData.text) {
+          // It's the new format with appointment details
+          aiResponseText = aiResponseData.text;
+          appointmentDetails = aiResponseData.appointmentDetails;
+          
+          if (appointmentDetails) {
+            console.log('Appointment detected:', appointmentDetails);
+            // For playground, we log the appointment details but don't add text to the message
+            console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
+          }
+        } else {
+          // It's just a string (old format or no appointment detected)
+          aiResponseText = aiResponseData;
+        }
+
         // Create response message
         const aiMessage = {
           id: `local-playground-${Date.now()}`,
-          text: aiResponse,
+          text: aiResponseText,
           sender: "agent",
           twilioSid: `local-response-${Date.now()}`,
           timestamp: new Date().toISOString(),
@@ -435,6 +537,7 @@ const messageController = {
           updatedAt: new Date().toISOString(),
           useAiResponse: true,
           isAiGenerated: true,
+          appointmentDetails: appointmentDetails
         };
 
         return res.json({ message: aiMessage });
@@ -451,16 +554,35 @@ const messageController = {
       }
 
       // Generate AI response
-      const aiResponse = await openaiService.generateResponse(
+      const aiResponseData = await openaiService.generateResponse(
         text,
         settingsMap,
         previousMessages
       );
 
+      // Check if aiResponseData contains appointment details
+      let aiResponseText;
+      let appointmentDetails = null;
+      
+      if (typeof aiResponseData === 'object' && aiResponseData.text) {
+        // It's the new format with appointment details
+        aiResponseText = aiResponseData.text;
+        appointmentDetails = aiResponseData.appointmentDetails;
+        
+        if (appointmentDetails) {
+          console.log('Appointment detected in playground:', appointmentDetails);
+          // For playground, we log the appointment details but don't add text to the message
+          console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
+        }
+      } else {
+        // It's just a string (old format or no appointment detected)
+        aiResponseText = aiResponseData;
+      }
+
       // Create response message
       const aiMessage = {
         id: Date.now(),
-        text: aiResponse,
+        text: aiResponseText,
         sender: "agent",
         twilioSid: `local-response-${Date.now()}`,
         timestamp: new Date().toISOString(),
@@ -468,6 +590,7 @@ const messageController = {
         updatedAt: new Date().toISOString(),
         useAiResponse: true,
         isAiGenerated: true,
+        appointmentDetails: appointmentDetails
       };
 
       res.json({ message: aiMessage });

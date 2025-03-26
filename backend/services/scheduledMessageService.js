@@ -81,7 +81,7 @@ const scheduledMessageService = {
       for (const lead of leads) {
         try {
           // Generate and send follow-up message
-          const followUpMessage = await openaiService.generateResponse(
+          const aiResponseData = await openaiService.generateResponse(
             `Generate follow-up message #${
               lead.messageCount
             } for a lead who hasn't responded in ${
@@ -91,8 +91,18 @@ const scheduledMessageService = {
             [] // No previous messages needed for follow-up
           );
 
+          // Check if aiResponseData contains appointment details
+          let aiResponseText;
+          if (typeof aiResponseData === 'object' && aiResponseData.text) {
+            // It's the new format with appointment details - for follow-ups we don't need the details
+            aiResponseText = aiResponseData.text;
+          } else {
+            // It's just a string (old format or no appointment detected)
+            aiResponseText = aiResponseData;
+          }
+
           // Send message via Twilio
-          await twilioService.sendMessage(lead.phoneNumber, followUpMessage);
+          await twilioService.sendMessage(lead.phoneNumber, aiResponseText);
 
           // Update lead
           await lead.update({
@@ -137,7 +147,7 @@ const scheduledMessageService = {
       for (const lead of leadsWithDueMessages) {
         try {
           // Generate message text
-          const messageText = await openaiService.generateResponse(
+          const aiResponseData = await openaiService.generateResponse(
             `Generate follow-up message #${
               lead.messageCount
             } for a lead who hasn't responded in ${
@@ -146,6 +156,16 @@ const scheduledMessageService = {
             {},
             [] // No previous messages needed
           );
+
+          // Check if aiResponseData contains appointment details
+          let messageText;
+          if (typeof aiResponseData === 'object' && aiResponseData.text) {
+            // It's the new format with appointment details
+            messageText = aiResponseData.text;
+          } else {
+            // It's just a string (old format or no appointment detected)
+            messageText = aiResponseData;
+          }
 
           // Create message record
           const message = await Message.create({

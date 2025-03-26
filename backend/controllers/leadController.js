@@ -4,6 +4,8 @@ const FollowUp = require("../models/FollowUp");
 const { Op } = require("sequelize");
 const logger = require("../utils/logger");
 const scheduledMessageService = require("../services/scheduledMessageService");
+const csv = require('csv-parser');
+const { Readable } = require('stream');
 
 const leadController = {
   // Get all leads with pagination and search
@@ -50,7 +52,7 @@ const leadController = {
   },
 
   // Get a single lead
-  async getLead(req, res) {
+  async getLeadById(req, res) {
     try {
       const lead = await Lead.findByPk(req.params.id);
 
@@ -168,6 +170,232 @@ const leadController = {
       res
         .status(500)
         .json({ error: "Failed to delete lead", details: error.message });
+    }
+  },
+
+  // Bulk import leads from CSV
+  async bulkImportLeads(req, res) {
+    try {
+      if (!req.file && !req.files) {
+        return res.status(400).json({ error: "No CSV file uploaded" });
+      }
+
+      // Access the uploaded file buffer
+      const fileBuffer = req.file ? req.file.buffer : req.files.file.data;
+      
+      // Get AI feature settings from request body or use defaults
+      const aiFeatureSettings = {
+        aiAssistantEnabled: req.body.aiAssistantEnabled === 'true',
+        enableFollowUps: req.body.enableFollowUps === 'true',
+        firstMessageTiming: req.body.firstMessageTiming || 'immediate'
+      };
+      
+      // Log the AI feature settings
+      logger.info(`Bulk import with AI settings: ${JSON.stringify(aiFeatureSettings)}`);
+      
+      // Parse CSV data
+      const results = [];
+      const errors = [];
+      let rowCount = 0;
+      
+      // Create a readable stream from the buffer
+      const bufferStream = new Readable();
+      bufferStream.push(fileBuffer);
+      bufferStream.push(null);
+      
+      // Field mappings for flexibility - add variations of column names
+      const fieldMappings = {
+        name: ['name', 'fullname', 'full name', 'customer name', 'client name', 'contact name'],
+        phoneNumber: ['phone number', 'phonenumber', 'phone', 'mobile', 'cell', 'telephone', 'contact number', 'cell number', 'mobile number'],
+        email: ['email', 'email address', 'mail', 'e-mail'],
+        status: ['status', 'lead status', 'customer status', 'client status'],
+      };
+      
+      // Create a normalized field map based on actual headers
+      let normalizedFieldMap = null;
+      
+      // Process the stream with csv-parser
+      await new Promise((resolve, reject) => {
+        bufferStream
+          .pipe(csv())
+          .on('data', (data) => {
+            rowCount++;
+            
+            // On first row, create the normalized field map
+            if (rowCount === 1 && !normalizedFieldMap) {
+              normalizedFieldMap = {};
+              
+              // Get all headers and normalize them (lowercase, remove spaces)
+              const actualHeaders = Object.keys(data).map(header => header.toLowerCase().trim());
+              
+              // For each field type (name, email, etc.), find its best match in the headers
+              Object.entries(fieldMappings).forEach(([fieldName, possibleMatches]) => {
+                // Find the first match in the header
+                const matchedHeader = actualHeaders.find(header => 
+                  possibleMatches.includes(header.toLowerCase())
+                );
+                
+                // If found, create a mapping from the field name to the actual header
+                if (matchedHeader) {
+                  normalizedFieldMap[fieldName] = Object.keys(data).find(
+                    h => h.toLowerCase().trim() === matchedHeader
+                  );
+                }
+              });
+              
+              // Debug log the field mapping
+              logger.info(`CSV import: created field mapping: ${JSON.stringify(normalizedFieldMap)}`);
+            }
+            
+            // Validate required fields
+            const rowErrors = [];
+            
+            // Check for required name field
+            const nameValue = normalizedFieldMap.name ? data[normalizedFieldMap.name]?.trim() : '';
+            if (!nameValue) {
+              rowErrors.push(`Row ${rowCount}: Name is required`);
+            }
+            
+            // Check for required phone field
+            const phoneValue = normalizedFieldMap.phoneNumber ? 
+              data[normalizedFieldMap.phoneNumber]?.trim() : '';
+            if (!phoneValue) {
+              rowErrors.push(`Row ${rowCount}: Phone number is required`);
+            }
+            
+            // Extract email (optional)
+            const emailValue = normalizedFieldMap.email ? 
+              data[normalizedFieldMap.email]?.trim() : '';
+            
+            // Extract status (optional with default)
+            let statusValue = normalizedFieldMap.status ? 
+              data[normalizedFieldMap.status]?.trim().toLowerCase() : 'new';
+            
+            // Validate status if provided
+            if (statusValue && !['new', 'contacted', 'qualified', 'lost'].includes(statusValue)) {
+              statusValue = 'new'; // Default to 'new' if invalid
+            }
+            
+            // Standardize the data structure - order matches our standard CSV format
+            const lead = {
+              name: nameValue,
+              phoneNumber: phoneValue || '',
+              email: emailValue || '',
+              status: statusValue || 'new',
+              aiAssistantEnabled: aiFeatureSettings.aiAssistantEnabled,
+              enableFollowUps: aiFeatureSettings.enableFollowUps,
+              firstMessageTiming: aiFeatureSettings.firstMessageTiming
+            };
+            
+            if (rowErrors.length > 0) {
+              errors.push(...rowErrors);
+            } else {
+              results.push(lead);
+            }
+          })
+          .on('end', resolve)
+          .on('error', (error) => {
+            logger.error('Error parsing CSV:', error);
+            reject(error);
+          });
+      });
+      
+      // If there are validation errors, return them
+      if (errors.length > 0) {
+        return res.status(400).json({
+          error: "Validation errors in CSV file",
+          details: errors
+        });
+      }
+      
+      // If no valid leads were found
+      if (results.length === 0) {
+        return res.status(400).json({
+          error: "No valid leads found in CSV file",
+          details: ["The file appears to be empty or does not contain valid data"]
+        });
+      }
+      
+      // Process all leads and create them in the database
+      const createdLeads = [];
+      const failedLeads = [];
+      
+      // Use Promise.all for better performance with many leads
+      const leadPromises = results.map(async (leadData) => {
+        try {
+          const lead = await Lead.create(leadData);
+          
+          // Schedule the first message if follow-ups are enabled
+          if (lead.enableFollowUps) {
+            await scheduledMessageService.scheduleNextMessage(lead.id);
+          }
+          
+          // Fetch the lead again to include any associations
+          const updatedLead = await Lead.findByPk(lead.id);
+          createdLeads.push(updatedLead);
+          return updatedLead;
+        } catch (error) {
+          // Handle duplicate emails or other errors
+          const errorMessage = error.name === "SequelizeUniqueConstraintError" 
+            ? `Lead with email ${leadData.email} already exists` 
+            : error.message;
+            
+          failedLeads.push({
+            data: leadData,
+            error: errorMessage
+          });
+          
+          // We don't want to throw, we want to process as many leads as possible
+          return null;
+        }
+      });
+      
+      await Promise.all(leadPromises);
+      
+      res.status(201).json({
+        success: true,
+        message: `Processed ${results.length} leads, created ${createdLeads.length} leads`,
+        created: createdLeads,
+        failed: failedLeads
+      });
+    } catch (error) {
+      logger.error("Error processing bulk lead upload:", error);
+      res.status(500).json({ error: "Failed to process bulk lead upload", details: error.message });
+    }
+  },
+  
+  // Generate a CSV template for lead uploads
+  async downloadLeadTemplate(req, res) {
+    try {
+      // Set the appropriate headers
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="lead-template.csv"');
+      
+      // Define the column headers we're using
+      const headers = 'Name,Phone Number,Email,Status';
+      
+      // Create a simplified CSV template with standardized column headers
+      const csvTemplate = [
+        // Headers row
+        headers,
+        // Example row 1 - basic required fields
+        'John Doe,+1234567890,john@example.com,new',
+        // Example row 2 - different status value
+        'Jane Smith,+1987654321,jane@example.com,contacted',
+        // Example row 3 - minimal required fields (name and phone only)
+        'Michael Johnson,+1654987320,,qualified',
+        // Example row 4 - international number format example
+        'Sara Wilson,+44 20 1234 5678,sara@example.com,lost'
+      ].join('\n');
+      
+      // Log that template is being downloaded
+      logger.info(`Lead CSV template downloaded with headers: ${headers}`);
+      
+      // Send the CSV template
+      res.send(csvTemplate);
+    } catch (error) {
+      logger.error("Error generating lead template:", error);
+      res.status(500).json({ error: "Failed to generate lead template" });
     }
   },
 };
