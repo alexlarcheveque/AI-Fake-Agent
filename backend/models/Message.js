@@ -28,11 +28,8 @@ const Message = sequelize.define(
     },
     direction: {
       type: DataTypes.ENUM("inbound", "outbound"),
-      allowNull: false,
-      defaultValue: function () {
-        // Default based on sender if available
-        return this.sender === "agent" ? "outbound" : "inbound";
-      },
+      allowNull: true,
+      defaultValue: "outbound",
     },
     isAiGenerated: {
       type: DataTypes.BOOLEAN,
@@ -69,11 +66,18 @@ const Message = sequelize.define(
   },
   {
     timestamps: true,
+    hooks: {
+      beforeValidate: (message) => {
+        if (message.direction === null || message.direction === undefined) {
+          message.direction = message.sender === "lead" ? "inbound" : "outbound";
+        }
+      }
+    },
     validate: {
       senderDirectionConsistency() {
-        if (
-          (this.sender === "agent" && this.direction !== "outbound") ||
-          (this.sender === "lead" && this.direction !== "inbound")
+        if (this.direction && 
+          ((this.sender === "agent" && this.direction !== "outbound") ||
+           (this.sender === "lead" && this.direction !== "inbound"))
         ) {
           throw new Error("Sender and direction must be consistent");
         }

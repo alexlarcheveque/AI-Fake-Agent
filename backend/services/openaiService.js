@@ -65,7 +65,7 @@ const openaiService = {
                 - Assist them in finding properties in their area that meet their criteria. If their criteria is missing or not specific, ask them for more details.
                 - Ask proactive questions and address any questions/objections they have regarding the local real estate market.
                 - If interested in specific properties and only once have provided a valid email, reply that you will find properties that meet their criteria and include "NEW SEARCH CRITERIA: BED:<bed_count> BATH:<bath_count> PRICE:<price_range> SQFT:<sqft_range>" at the end of the message.
-                - If an appointment is scheduled, conclude with "NEW APPOINTMENT SET: <appointment_date> at <appointment_time>" at the end of the message.
+                - If an appointment is scheduled, conclude with the exact text "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" at the end of your message, where MM/DD/YYYY is the actual date with real numbers (not placeholders). For example, if the appointment is for June 1, 2025, you would write "NEW APPOINTMENT SET: 06/01/2025 at 2:00 PM". Be sure to include leading zeros for single-digit months and days.
               - **Tone and Style**: Maintain professionalism, be informative, and steer them towards the next steps in their real estate journey. Ensure responses are concise and informative, suitable for text conversation.
 
               ## Instructions for Sellers:
@@ -79,20 +79,38 @@ const openaiService = {
 
               Provide responses in a concise and text-friendly format, with clear actionable steps for the client.
 
+              # Appointment Format Requirements:
+              
+              When scheduling appointments, ALWAYS follow these rules:
+              1. Format dates as MM/DD/YYYY (with leading zeros for single digits)
+              2. Format times as HH:MM AM/PM or HH:MM PM (include minutes even for whole hours)
+              3. Use the exact phrase "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" at the end of your message
+              4. NEVER use placeholders like "<MM/DD/YYYY>" - always use real dates
+              5. IF a client asks for a specific date (e.g., "Saturday"), convert it to the correct MM/DD/YYYY format
+              
               # Examples
 
               Example 1:
               - **Input**: Potential buyer interested in a 3-bedroom house within the zip code 12345. Email provided.
-              - **Output**: "Thank you for your interest! I'll find properties matching your criteria. NEW SEARCH CRITERIA: 3-bedroom homes in 12345."
+              - **Output**: "Thank you for your interest! I'll find properties matching your criteria. NEW SEARCH CRITERIA: BED:3 BATH:2 PRICE:300000-500000 SQFT:1500-2500"
 
               Example 2:
-              - **Input**: Potential seller interested in setting up an appointment to list their home.
-              - **Output**: "I can help set up a meeting to discuss listing your property. When are you available?"
+              - **Input**: Potential seller interested in setting up an appointment to list their home on June 1st.
+              - **Output**: "I can help set up a meeting to discuss listing your property. I'm available on June 1st at 2 PM. NEW APPOINTMENT SET: 06/01/2025 at 2:00 PM"
+
+              Example 3:
+              - **Input**: Lead wants to schedule a house viewing on Saturday.
+              - **Output**: "I'd be happy to show you properties this Saturday, March 29th, at 3:00 PM. NEW APPOINTMENT SET: 03/29/2025 at 3:00 PM"
+              
+              Example 4:
+              - **Input**: Client asks to meet this weekend.
+              - **Output**: "I'm available to meet this Sunday, April 13th. Does 10:30 AM work for you? NEW APPOINTMENT SET: 04/13/2025 at 10:30 AM"
 
               # Notes
 
               - Ensure responses meet the buyer's or seller's immediate needs and encourage the desired next steps.
-              - Consider potential prompt updates for handling different regions and market conditions.`,
+              - NEVER use placeholder text for dates. Always convert day names (like "Saturday") to a specific date (like "03/29/2025").
+              - For appointments, always use the exact format "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" with real dates and times.`,
           },
           ...messageHistory,
           ...(text
@@ -110,7 +128,85 @@ const openaiService = {
         presence_penalty: 0.85,
       });
 
-      return completion.choices[0].message.content;
+      const responseContent = completion.choices[0].message.content;
+      
+      // Check for "NEW APPOINTMENT SET:" in the response
+      const appointmentRegex = /NEW APPOINTMENT SET:\s*(\d{1,2}\/\d{1,2}\/\d{4}|\w+\/\w+\/\w+)\s*at\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/i;
+      const appointmentMatch = responseContent.match(appointmentRegex);
+      
+      if (appointmentMatch) {
+        let appointmentDate = appointmentMatch[1];
+        const appointmentTime = appointmentMatch[2];
+        
+        // Check if the date is a placeholder (like MM/DD/YYYY)
+        if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(appointmentDate)) {
+          // Look for day names in the message to extract a real date
+          const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 
+                            'tomorrow', 'today', 'next week'];
+          const dayRegex = new RegExp(`(${dayNames.join('|')})`, 'i');
+          const dayMatch = responseContent.match(dayRegex);
+          
+          if (dayMatch) {
+            // Convert day name to an actual date
+            const dayName = dayMatch[1].toLowerCase();
+            const today = new Date();
+            let targetDate = new Date(today);
+            
+            if (dayName === 'tomorrow') {
+              targetDate.setDate(today.getDate() + 1);
+            } else if (dayName === 'today') {
+              // Keep today's date
+            } else if (dayName === 'next week') {
+              targetDate.setDate(today.getDate() + 7);
+            } else {
+              // Handle specific day names
+              const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+              const targetDay = daysOfWeek.indexOf(dayName);
+              if (targetDay !== -1) {
+                const currentDay = today.getDay();
+                const daysToAdd = (targetDay + 7 - currentDay) % 7;
+                // If today is the target day, schedule for next week
+                targetDate.setDate(today.getDate() + (daysToAdd === 0 ? 7 : daysToAdd));
+              }
+            }
+            
+            // Format the date as MM/DD/YYYY
+            const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+            const day = String(targetDate.getDate()).padStart(2, '0');
+            const year = targetDate.getFullYear();
+            appointmentDate = `${month}/${day}/${year}`;
+            
+            console.log(`Converted day name "${dayName}" to date: ${appointmentDate}`);
+          } else {
+            // Default to a date 3 days from now if no day name is found
+            const defaultDate = new Date();
+            defaultDate.setDate(defaultDate.getDate() + 3);
+            const month = String(defaultDate.getMonth() + 1).padStart(2, '0');
+            const day = String(defaultDate.getDate()).padStart(2, '0');
+            const year = defaultDate.getFullYear();
+            appointmentDate = `${month}/${day}/${year}`;
+            
+            console.log(`Using default date: ${appointmentDate}`);
+          }
+        }
+        
+        console.log(`Detected appointment: ${appointmentDate} at ${appointmentTime}`);
+        
+        // Remove the original "NEW APPOINTMENT SET:" part from the response - don't add any confirmation text
+        let cleanedResponse = responseContent.replace(appointmentRegex, '').trim();
+        
+        // Just return the cleaned response with appointment details - no added text
+        return {
+          text: cleanedResponse,
+          appointmentDetails: {
+            date: appointmentDate,
+            time: appointmentTime
+          }
+        };
+      }
+      
+      // If no appointment detected, return the original response
+      return responseContent;
     } catch (error) {
       logger.error("Error generating OpenAI response:", error);
       throw error;

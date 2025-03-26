@@ -7,6 +7,9 @@ console.log("TWILIO_ACCOUNT_SID exists:", !!process.env.TWILIO_ACCOUNT_SID);
 console.log("TWILIO_AUTH_TOKEN exists:", !!process.env.TWILIO_AUTH_TOKEN);
 console.log("TWILIO_PHONE_NUMBER exists:", !!process.env.TWILIO_PHONE_NUMBER);
 console.log("BASE_URL:", process.env.BASE_URL);
+console.log("GOOGLE_CLIENT_ID exists:", !!process.env.GOOGLE_CLIENT_ID);
+console.log("GOOGLE_CLIENT_SECRET exists:", !!process.env.GOOGLE_CLIENT_SECRET);
+console.log("GOOGLE_REDIRECT_URI:", process.env.GOOGLE_REDIRECT_URI);
 
 const express = require("express");
 const cors = require("cors");
@@ -15,6 +18,8 @@ const leadRoutes = require("./routes/leadRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const userSettingsRoutes = require("./routes/userSettingsRoutes");
 const authRoutes = require("./routes/authRoutes");
+const appointmentRoutes = require("./routes/appointmentRoutes");
+const oauthRoutes = require("./routes/oauthRoutes");
 const agentSettings = require("./config/agentSettings");
 const scheduledMessageService = require("./services/scheduledMessageService");
 require("./models/associations");
@@ -69,6 +74,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
+app.use("/api/appointments", appointmentRoutes);
+app.use("/api/oauth", oauthRoutes);
 
 // Add this before your other routes
 app.post("/api/test-form", (req, res) => {
@@ -158,10 +165,15 @@ app.set("io", io);
 // Sync database and start server
 const initializeApp = async () => {
   try {
-    // Then sync all models
-    await sequelize.sync({ alter: true });
-
-    console.log("Database tables recreated successfully");
+    // Check if migrations should be skipped
+    if (process.env.SKIP_MIGRATIONS !== 'true') {
+      // Use a safer sync option that doesn't alter existing tables
+      // This will only create tables that don't exist yet
+      await sequelize.sync({ alter: false });
+      console.log("Database sync completed (tables created if they didn't exist)");
+    } else {
+      console.log("Skipping database sync as SKIP_MIGRATIONS is set to true");
+    }
 
     // No need to initialize global settings anymore
     // We'll create user settings when needed

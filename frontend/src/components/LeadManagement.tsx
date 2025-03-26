@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
-import LeadForm from "./LeadForm";
+import SingleLeadForm from "./SingleLeadForm";
+import BulkLeadForm from "./BulkLeadForm";
 import LeadList from "./LeadList";
 import leadApi from "../api/leadApi";
 import { Lead } from "../types/lead";
@@ -8,7 +9,8 @@ const LeadManagement = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateSingleLeadModalOpen, setIsCreateSingleLeadModalOpen] = useState(false);
+  const [isCreateBulkLeadModalOpen, setIsCreateBulkLeadModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFilters, setSearchFilters] = useState({
     name: true,
@@ -47,7 +49,12 @@ const LeadManagement = () => {
 
   const handleLeadCreated = useCallback(async (newLead: Lead) => {
     setLeads((prevLeads) => [newLead, ...prevLeads]);
-    setIsModalOpen(false); // Close modal after successful creation
+    setIsCreateSingleLeadModalOpen(false); // Close modal after successful creation
+  }, []);
+
+  const handleBulkUploadCreated = useCallback(async (newLeads: Lead[]) => {
+    setLeads((prevLeads) => [...newLeads, ...prevLeads]);
+    setIsCreateBulkLeadModalOpen(false); // Close modal after successful creation
   }, []);
 
   const toggleFilter = (filter: keyof typeof searchFilters) => {
@@ -72,12 +79,21 @@ const LeadManagement = () => {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Lead Management</h1>
+        {/* Add gap in between buttons */}
+        <div className="flex space-x-4">  
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => setIsCreateSingleLeadModalOpen(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           + Add New Lead
         </button>
+        <button
+          onClick={() => setIsCreateBulkLeadModalOpen(true)}
+          className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-700 transition-colors"
+        >
+          + Bulk Add Leads
+        </button>
+        </div>
       </div>
 
       <div className="flex gap-6">
@@ -198,16 +214,16 @@ const LeadManagement = () => {
       </div>
 
       {/* Add Lead Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4">
+      {isCreateSingleLeadModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-8">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-700">
                   Add New Lead
                 </h2>
                 <button
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => setIsCreateSingleLeadModalOpen(false)}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <svg
@@ -226,12 +242,49 @@ const LeadManagement = () => {
                 </button>
               </div>
             </div>
-            <div className="p-6">
-              <LeadForm onLeadCreated={handleLeadCreated} />
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              <SingleLeadForm onLeadCreated={handleLeadCreated} />
             </div>
           </div>
         </div>
       )}
+
+      {/* Bulk Lead Modal */}
+      {isCreateBulkLeadModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-8">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-gray-700">
+                  Add Bulk Leads
+                </h2>
+                <button
+                  onClick={() => setIsCreateBulkLeadModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              <BulkLeadForm onLeadsCreated={handleBulkUploadCreated} />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

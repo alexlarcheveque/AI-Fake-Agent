@@ -2,6 +2,7 @@
 const Lead = require("./Lead");
 const Message = require("./Message");
 const FollowUp = require("./FollowUp");
+const Appointment = require("./Appointment");
 
 // Define associations
 Lead.hasMany(Message, {
@@ -23,8 +24,19 @@ FollowUp.belongsTo(Lead, {
   foreignKey: "leadId",
 });
 
+// Appointment associations
+Lead.hasMany(Appointment, {
+  foreignKey: "leadId",
+  onDelete: "CASCADE",
+});
+
+Appointment.belongsTo(Lead, {
+  foreignKey: "leadId",
+});
+
 module.exports = {
   Lead,
   Message,
   FollowUp,
+  Appointment,
 };

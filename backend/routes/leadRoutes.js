@@ -1,12 +1,35 @@
 const express = require("express");
 const router = express.Router();
 const leadController = require("../controllers/leadController");
+const multer = require("multer");
+
+// Configure multer for CSV file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5 MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only CSV files
+    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed'), false);
+    }
+  },
+});
 
 // Get all leads
 router.get("/", leadController.getAllLeads);
 
-// Get a single lead
-router.get("/:id", leadController.getLead);
+// Download lead template - MUST be before /:id route
+router.get("/template", leadController.downloadLeadTemplate);
+
+// Bulk import leads from CSV - MUST be before /:id route
+router.post("/bulk", upload.single('file'), leadController.bulkImportLeads);
+
+// Get a single lead by id - Place parametrized routes AFTER specific routes
+router.get("/:id", leadController.getLeadById);
 
 // Create a new lead
 router.post("/", leadController.createLead);

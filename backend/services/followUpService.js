@@ -88,7 +88,7 @@ const followUpService = {
         }
 
         // Generate and send follow-up message
-        const followUpMessage = await openaiService.generateResponse(
+        const aiResponseData = await openaiService.generateResponse(
           `Generate follow-up message #${
             followUp.followUpNumber
           } for a lead who hasn't responded in ${
@@ -97,6 +97,16 @@ const followUpService = {
           {},
           [] // No previous messages needed for follow-up
         );
+        
+        // Check if aiResponseData contains appointment details
+        let followUpMessage;
+        if (typeof aiResponseData === 'object' && aiResponseData.text) {
+          // It's the new format with appointment details
+          followUpMessage = aiResponseData.text;
+        } else {
+          // It's just a string (old format or no appointment detected)
+          followUpMessage = aiResponseData;
+        }
 
         // Send message via Twilio
         const twilioMessage = await twilioService.sendMessage(

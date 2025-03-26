@@ -12,6 +12,28 @@ export interface Lead {
   messageCount: number;
   archived: boolean;
   notes?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  messages?: Message[];
+  followUps?: FollowUp[];
+}
+
+export interface LeadFormData {
+  name: string;
+  email: string;
+  phoneNumber: string;
+  status: string;
+  aiAssistantEnabled: boolean;
+  enableFollowUps: boolean;
+  firstMessageTiming: string;
+}
+
+export interface BulkImportResponse {
+  success: boolean;
+  message: string;
+  created: Lead[];
+  failed: {
+    data: LeadFormData;
+    error: string;
+  }[];
 }

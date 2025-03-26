@@ -1,4 +1,5 @@
 const UserSettings = require("../models/UserSettings");
+const { Op } = require("sequelize");
 
 const agentSettings = {
   _settings: {
@@ -10,18 +11,36 @@ const agentSettings = {
 
   async initialize() {
     try {
-      // Try to find any UserSettings record
-      let defaultSettings = await UserSettings.findOne();
+      let defaultSettings;
+      
+      try {
+        // First try to find settings with isDefault flag
+        defaultSettings = await UserSettings.findOne({
+          where: { isDefault: true }
+        });
+      } catch (error) {
+        // If isDefault column doesn't exist or any other error, log but continue
+        console.log("Could not query by isDefault, trying to find any user settings");
+      }
+      
+      // If we didn't find settings by isDefault, try to find any record
+      if (!defaultSettings) {
+        try {
+          defaultSettings = await UserSettings.findOne();
+        } catch (error) {
+          console.error("Error finding any user settings:", error);
+        }
+      }
 
       // If no settings exist, we'll use the defaults but not create a record
       // since we don't have a valid userId
       if (defaultSettings) {
         // Use the found settings
         this._settings = {
-          agentName: defaultSettings.agentName,
-          companyName: defaultSettings.companyName,
-          agentState: defaultSettings.agentState,
-          agentCity: defaultSettings.agentCity,
+          agentName: defaultSettings.agentName || this._settings.agentName,
+          companyName: defaultSettings.companyName || this._settings.companyName,
+          agentState: defaultSettings.agentState || this._settings.agentState,
+          agentCity: defaultSettings.agentCity || this._settings.agentCity,
         };
         console.log("Agent settings initialized from UserSettings table");
       } else {
@@ -48,10 +67,10 @@ const agentSettings = {
 
       if (userSettings) {
         this._settings = {
-          agentName: userSettings.agentName,
-          companyName: userSettings.companyName,
-          agentState: userSettings.agentState,
-          agentCity: userSettings.agentCity,
+          agentName: userSettings.agentName || this._settings.agentName,
+          companyName: userSettings.companyName || this._settings.companyName,
+          agentState: userSettings.agentState || this._settings.agentState,
+          agentCity: userSettings.agentCity || this._settings.agentCity,
         };
       }
     } catch (error) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import settingsApi from "../api/settingsApi";
 import { UserSettings } from "../types/userSettings";
+import GoogleCalendarConnect from "./GoogleCalendarConnect";
 
 const Settings: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>({
@@ -102,7 +103,7 @@ const Settings: React.FC = () => {
       {settings && (
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-lg shadow-md p-6"
+          className="bg-white rounded-lg shadow-md p-6 mb-8"
         >
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
@@ -175,6 +176,12 @@ const Settings: React.FC = () => {
           </div>
         </form>
       )}
+      
+      {/* Google Calendar Integration Section */}
+      <div className="mt-8">
+        <h2 className="text-xl font-bold mb-4">Calendar Integration</h2>
+        <GoogleCalendarConnect />
+      </div>
     </div>
   );
 };
