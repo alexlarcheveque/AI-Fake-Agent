@@ -13,7 +13,41 @@ const MessagesCenter: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchParams] = useSearchParams();
 
-  // Fetch leads on component mount
+  // Handle URL params when they change
+  useEffect(() => {
+    const leadIdParam = searchParams.get("leadId");
+    if (leadIdParam) {
+      const leadId = parseInt(leadIdParam, 10);
+      if (!isNaN(leadId)) {
+        setSelectedLeadId(leadId);
+        
+        // If we're setting a new lead from URL params, make sure it's available in our leads list
+        if (!leads.some(lead => lead.id === leadId)) {
+          // Fetch the specific lead if it's not in our current list
+          const fetchSpecificLead = async () => {
+            try {
+              const response = await leadApi.getLead(leadId);
+              if (response) {
+                // Add this lead to our list if it's not already there
+                setLeads(prevLeads => {
+                  if (!prevLeads.some(l => l.id === response.id)) {
+                    return [...prevLeads, response];
+                  }
+                  return prevLeads;
+                });
+              }
+            } catch (err) {
+              console.error("Error fetching specific lead:", err);
+            }
+          };
+          
+          fetchSpecificLead();
+        }
+      }
+    }
+  }, [searchParams, leads]);
+
+  // Fetch leads on component mount and when page changes
   useEffect(() => {
     const fetchLeads = async () => {
       try {
@@ -23,12 +57,17 @@ const MessagesCenter: React.FC = () => {
         setLeads(response.leads);
         setTotalPages(response.totalPages);
 
-        // Check if leadId is in URL params
-        const leadIdParam = searchParams.get("leadId");
-        if (leadIdParam) {
-          const leadId = parseInt(leadIdParam, 10);
-          if (!isNaN(leadId)) {
-            setSelectedLeadId(leadId);
+        // Check if leadId is in URL params and we don't already have a selected lead
+        if (!selectedLeadId) {
+          const leadIdParam = searchParams.get("leadId");
+          if (leadIdParam) {
+            const leadId = parseInt(leadIdParam, 10);
+            if (!isNaN(leadId)) {
+              setSelectedLeadId(leadId);
+            }
+          } else if (response.leads.length > 0) {
+            // If no leadId in params and we have leads, select the first one
+            setSelectedLeadId(response.leads[0].id);
           }
         }
       } catch (err) {
@@ -40,7 +79,7 @@ const MessagesCenter: React.FC = () => {
     };
 
     fetchLeads();
-  }, [currentPage, searchParams]);
+  }, [currentPage]);
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-6">

@@ -215,7 +215,7 @@ const LeadManagement = () => {
 
       {/* Add Lead Modal */}
       {isCreateSingleLeadModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-8">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 overflow-y-auto py-8">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
@@ -251,7 +251,7 @@ const LeadManagement = () => {
 
       {/* Bulk Lead Modal */}
       {isCreateBulkLeadModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto py-8">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 overflow-y-auto py-8">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">

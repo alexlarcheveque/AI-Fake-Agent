@@ -96,6 +96,13 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
     }
   };
 
+  // Open a Google Calendar link if it exists
+  const openGoogleCalendarLink = (calendarLink: string | undefined) => {
+    if (calendarLink) {
+      window.open(calendarLink, '_blank');
+    }
+  };
+
   if (loading) {
     return <div className="p-4 text-center">Loading appointments...</div>;
   }
@@ -158,6 +165,14 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
                 </div>
               </div>
               <div className="flex space-x-2">
+                {appointment.googleCalendarEventLink && (
+                  <button
+                    onClick={() => openGoogleCalendarLink(appointment.googleCalendarEventLink)}
+                    className="inline-flex items-center px-3 py-1.5 border border-blue-600 text-xs font-medium rounded text-blue-600 bg-white hover:bg-blue-50"
+                  >
+                    View in Google Calendar
+                  </button>
+                )}
                 {(appointment.calendlyInviteeUri || appointment.calendlyEventUri) && (
                   <button
                     onClick={() => openCalendlyLink(appointment.calendlyInviteeUri || appointment.calendlyEventUri)}
