@@ -124,9 +124,15 @@ const messageController = {
             
             // Create appointment in database
             try {
+              console.log('Creating appointment from AI detected details', {
+                leadId: lead.id, 
+                userId: lead.userId,
+                appointmentDetails
+              });
+
               const appointment = await appointmentService.createAppointmentFromAI(
                 lead.id, 
-                lead.userId, 
+                lead.userId, // This could be null, but our updated appointmentService will handle that
                 appointmentDetails
               );
               
@@ -144,6 +150,7 @@ const messageController = {
             } catch (appointmentError) {
               console.error('Error creating appointment:', appointmentError);
               // Continue with the message even if appointment creation fails
+              // Don't add any calendar confirmation text since the appointment creation failed
             }
           }
         } else {
@@ -378,9 +385,15 @@ const messageController = {
                 
                 // Create appointment in database
                 try {
+                  console.log('Creating appointment from AI detected details', {
+                    leadId: lead.id, 
+                    userId: lead.userId,
+                    appointmentDetails
+                  });
+
                   const appointment = await appointmentService.createAppointmentFromAI(
                     lead.id, 
-                    lead.userId, 
+                    lead.userId, // This could be null, but our updated appointmentService will handle that
                     appointmentDetails
                   );
                   
@@ -398,6 +411,7 @@ const messageController = {
                 } catch (appointmentError) {
                   console.error('Error creating appointment:', appointmentError);
                   // Continue with the message even if appointment creation fails
+                  // Don't add any calendar confirmation text since the appointment creation failed
                 }
               }
             } else {

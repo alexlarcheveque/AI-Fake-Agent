@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { format, addHours, parse } from 'date-fns';
 import appointmentApi, { EventType, ApiError, CreateAppointmentRequest } from '../api/appointmentApi';
+import { useNotifications } from '../contexts/NotificationContext';
 
 interface AppointmentCreatorProps {
   leadId: number;
@@ -32,68 +33,20 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
   const [detectedAppointment, setDetectedAppointment] = useState<boolean>(false);
   const [eventTypesAttempted, setEventTypesAttempted] = useState(false);
 
-  // Method to directly create a Calendly link without showing the form
-  const createCalendlyLinkDirectly = async () => {
-    if (eventTypes.length === 0 || !selectedEventType) {
-      setError('No Calendly event types available. Please check your Calendly configuration.');
-      return;
-    }
-    
-    setLoading(true);
-    
-    try {
-      const result = await appointmentApi.createCalendlySchedulingLink({
-        eventTypeUuid: selectedEventType,
-        clientName: name || 'Client',
-        clientEmail: email || `${leadId}@example.com`,
-        leadId
-      });
-      
-      if (onSuccess && result.schedulingUrl) {
-        onSuccess(result.schedulingUrl);
-      }
-      
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Error creating Calendly link directly:', err);
-      
-      // Handle the ApiError structure
-      if (err && typeof err === 'object' && 'code' in err) {
-        const apiError = err as ApiError;
-        
-        if (apiError.isAuthError) {
-          setAuthError(true);
-          setError('Authentication error. Please log in again.');
-        } else if (apiError.isCalendlyError) {
-          setError('Calendly service unavailable. Please try manual scheduling instead.');
-          setShowForm(true);
-          setUseCalendlyDirectly(false);
-        } else {
-          setError(apiError.message || 'Failed to create Calendly link.');
-        }
-        
-        if (onError) onError(err);
-      } else {
-        setError('Failed to create Calendly link. Please try again.');
-        if (onError) onError('Failed to create Calendly link.');
-      }
-      
-      setLoading(false);
-    }
-  };
+  const { addNotification } = useNotifications();
 
   useEffect(() => {
     // Fetch Calendly event types
     const fetchEventTypes = async () => {
       try {
         setEventTypesAttempted(true);
-        const types = await appointmentApi.getEventTypes();
-        setEventTypes(types);
-        if (types.length > 0) {
-          // Get the event type ID from the URI
-          const uriParts = types[0].uri.split('/');
-          setSelectedEventType(uriParts[uriParts.length - 1]);
-        }
+        
+        // Skip Calendly API call as it's not available (returns 404)
+        // This prevents unnecessary 404 errors in console
+        setEventTypes([]);
+        setUseCalendlyDirectly(false);
+        
+        // No need for error handling since we're not making the API call
       } catch (err: any) {
         console.error('Error fetching event types:', err);
         
@@ -104,7 +57,7 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
           if (apiError.isAuthError) {
             setAuthError(true);
             setError('Authentication error. Please log in again.');
-          } else if (apiError.isCalendlyError || apiError.code === 503) {
+          } else if (apiError.code === 503 || apiError.code === 404) {
             setError('Calendly service unavailable. Switching to manual appointment scheduling.');
             // Automatically switch to manual scheduling when Calendly is unavailable
             setUseCalendlyDirectly(false);
@@ -122,6 +75,21 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
 
     fetchEventTypes();
   }, [onError]);
+
+  // Method to directly create a Calendly link without showing the form
+  const createCalendlyLinkDirectly = async () => {
+    // Since Calendly is not available, show a notification and switch to manual scheduling
+    setError('Calendly integration is not currently available. Please use manual scheduling instead.');
+    setShowForm(true);
+    setUseCalendlyDirectly(false);
+    
+    if (onError) {
+      onError({
+        message: 'Calendly service unavailable. Please use manual scheduling instead.',
+        code: 404
+      });
+    }
+  };
 
   useEffect(() => {
     // Check for direct commands to use Calendly in message
@@ -206,78 +174,55 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
     }
   }, [showForm, eventTypesAttempted, eventTypes.length]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setLoading(true);
-
-    // Validate form fields that should always be filled
-    if (!title) {
-      setError('Please enter a title for the appointment');
+    setError(null);
+    
+    if (!title || !date || !time) {
+      setError('Please fill in all required fields');
       setLoading(false);
       return;
-    }
-
-    // Only validate date and time if we're not using Calendly directly
-    if (!useCalendlyDirectly && (!date || !time)) {
-      setError('Date and time are required for manual appointment creation');
-      setLoading(false);
-      return;
-    }
-
-    // Additional validation for Calendly
-    if (useCalendlyDirectly) {
-      if (!selectedEventType) {
-        setError('Please select an event type');
-        setLoading(false);
-        return;
-      }
     }
 
     try {
-      let result;
+      // Manual appointment creation only (Calendly is disabled)
+      // Parse date and time
+      const dateTime = parseDateTime(date, time);
+      if (!dateTime.valid || !dateTime.date) {
+        setError(dateTime.error || 'Invalid date/time format');
+        setLoading(false);
+        return;
+      }
       
-      if (useCalendlyDirectly) {
-        // Create a direct Calendly scheduling link
-        result = await appointmentApi.createCalendlySchedulingLink({
-          eventTypeUuid: selectedEventType,
-          clientName: name || 'Client',
-          clientEmail: email || `${leadId}@example.com`,
-          leadId
-        });
-        
-        if (onSuccess && result.schedulingUrl) {
-          onSuccess(result.schedulingUrl);
+      const startDate = dateTime.date;
+      const endDate = new Date(startDate);
+      endDate.setHours(endDate.getHours() + 1);
+      
+      const appointmentData: CreateAppointmentRequest = {
+        leadId,
+        title,
+        startTime: startDate.toISOString(),
+        endTime: endDate.toISOString(),
+        location,
+        description
+      };
+      
+      const result = await appointmentApi.createAppointment(appointmentData);
+      
+      // Add notification for the new appointment
+      addNotification({
+        type: 'appointment',
+        title: 'New Appointment Created',
+        message: `${title} on ${format(startDate, 'MMMM d')} at ${format(startDate, 'h:mm a')}`,
+        data: { 
+          ...result.appointment,
+          leadId: leadId // Ensure the leadId is included in the notification data
         }
-      } else {
-        // Manual appointment creation
-        // Parse date and time
-        const dateTime = parseDateTime(date, time);
-        if (!dateTime.valid || !dateTime.date) {
-          setError(dateTime.error || 'Invalid date/time format');
-          setLoading(false);
-          return;
-        }
-        
-        const startDate = dateTime.date;
-        const endDate = new Date(startDate);
-        endDate.setHours(endDate.getHours() + 1);
-        
-        const appointmentData: CreateAppointmentRequest = {
-          leadId,
-          title,
-          startTime: startDate.toISOString(),
-          endTime: endDate.toISOString(),
-          location,
-          description,
-          eventTypeUuid: selectedEventType
-        };
-        
-        result = await appointmentApi.createAppointment(appointmentData);
-        
-        if (onSuccess) {
-          onSuccess(result.calendlyLink);
-        }
+      });
+      
+      if (onSuccess) {
+        onSuccess(null); // No Calendly link since it's not available
       }
       
       // Reset form
@@ -299,10 +244,6 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
         if (apiError.isAuthError) {
           setAuthError(true);
           setError('Authentication error. Please log in again.');
-        } else if (apiError.isCalendlyError) {
-          setError('Calendly service unavailable. Please try manual scheduling instead.');
-          // Switch to manual scheduling as fallback
-          setUseCalendlyDirectly(false);
         } else {
           setError(apiError.message || 'Failed to create appointment.');
         }
@@ -319,28 +260,23 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
 
   // Add Calendly troubleshooting information display
   const renderCalendlyStatusInfo = () => {
-    if (!eventTypesAttempted) return null;
-    
-    if (eventTypes.length === 0) {
-      return (
-        <div className="mt-2 p-3 bg-orange-50 border border-orange-100 rounded-md">
-          <div className="flex">
-            <svg className="h-5 w-5 text-orange-400 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <div>
-              <p className="text-sm font-medium text-orange-800">
-                Calendly Service Unavailable
-              </p>
-              <p className="text-xs text-orange-700 mt-1">
-                Manual scheduling is enabled as a fallback. Direct Calendly scheduling will be available once the service is configured.
-              </p>
-            </div>
+    return (
+      <div className="mt-2 p-3 bg-orange-50 border border-orange-100 rounded-md">
+        <div className="flex">
+          <svg className="h-5 w-5 text-orange-400 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-orange-800">
+              Calendly Integration Unavailable
+            </p>
+            <p className="text-xs text-orange-700 mt-1">
+              The Calendly integration is currently disabled. Manual scheduling is available instead.
+            </p>
           </div>
         </div>
-      );
-    }
-    return null;
+      </div>
+    );
   };
 
   // Helper to parse date and time with error handling
@@ -402,15 +338,6 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
           >
             Schedule Appointment
           </button>
-          {eventTypes.length > 0 && (
-            <button
-              onClick={createCalendlyLinkDirectly}
-              disabled={loading}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-green-300"
-            >
-              {loading ? 'Creating...' : 'Create Calendly Link'} 
-            </button>
-          )}
         </div>
       ) : (
         <div className="bg-white shadow sm:rounded-lg">
@@ -444,45 +371,6 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
             {renderCalendlyStatusInfo()}
             
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-              <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <div className="text-sm font-medium text-gray-700 mb-2">Scheduling Method:</div>
-                <div className="flex flex-col space-y-3">
-                  <label className={`flex items-start p-2 rounded ${eventTypes.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 cursor-pointer'}`}>
-                    <input
-                      type="radio"
-                      className="form-radio mt-1"
-                      name="schedulingMethod"
-                      checked={useCalendlyDirectly}
-                      onChange={() => eventTypes.length > 0 && setUseCalendlyDirectly(true)}
-                      disabled={eventTypes.length === 0}
-                    />
-                    <div className="ml-2">
-                      <span className="text-sm font-medium text-gray-700">Calendly Scheduling (Recommended)</span>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {eventTypes.length === 0 
-                          ? 'Currently unavailable - Calendly service is not properly configured'
-                          : 'Send your client a Calendly link where they can choose from your available time slots'}
-                      </p>
-                    </div>
-                  </label>
-                  <label className="flex items-start p-2 rounded hover:bg-gray-100 cursor-pointer">
-                    <input
-                      type="radio"
-                      className="form-radio mt-1"
-                      name="schedulingMethod"
-                      checked={!useCalendlyDirectly}
-                      onChange={() => setUseCalendlyDirectly(false)}
-                    />
-                    <div className="ml-2">
-                      <span className="text-sm font-medium text-gray-700">Manual Entry</span>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Set a specific date and time for the appointment
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-              
               <div>
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700">
                   Title
@@ -497,139 +385,66 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
                 />
               </div>
               
-              {useCalendlyDirectly && (
-                <div className="border border-blue-100 bg-blue-50 rounded-md p-4">
-                  <h4 className="text-sm font-medium text-blue-800 mb-2">Client Information (Optional)</h4>
-                  <p className="text-xs text-blue-700 mb-3">
-                    Pre-fill your client's information to make scheduling easier for them.
-                  </p>
-                  <div className="space-y-3">
+              <div className="border border-gray-200 rounded-md p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">Appointment Details</h4>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                        Client Name
+                      <label htmlFor="date" className="block text-sm font-medium text-gray-700">
+                        Date <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="text"
-                        id="name"
+                        type="date"
+                        id="date"
                         className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Client's full name"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        required
                       />
                     </div>
-                    
                     <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                        Client Email
+                      <label htmlFor="time" className="block text-sm font-medium text-gray-700">
+                        Time <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="email"
-                        id="email"
+                        type="time"
+                        id="time"
                         className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="client@example.com"
+                        value={time}
+                        onChange={(e) => setTime(e.target.value)}
+                        required
                       />
                     </div>
                   </div>
-                </div>
-              )}
-              
-              {!useCalendlyDirectly && (
-                <div className="border border-gray-200 rounded-md p-4">
-                  <h4 className="text-sm font-medium text-gray-800 mb-2">Appointment Details</h4>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="date" className="block text-sm font-medium text-gray-700">
-                          Date <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          id="date"
-                          className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                          value={date}
-                          onChange={(e) => setDate(e.target.value)}
-                          required={!useCalendlyDirectly}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="time" className="block text-sm font-medium text-gray-700">
-                          Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="time"
-                          id="time"
-                          className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                          value={time}
-                          onChange={(e) => setTime(e.target.value)}
-                          required={!useCalendlyDirectly}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="location" className="block text-sm font-medium text-gray-700">
-                        Location
-                      </label>
-                      <input
-                        type="text"
-                        id="location"
-                        className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="Property address or virtual meeting link"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                        Description
-                      </label>
-                      <textarea
-                        id="description"
-                        rows={3}
-                        className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Any additional details for the appointment"
-                      />
-                    </div>
+                  
+                  <div>
+                    <label htmlFor="location" className="block text-sm font-medium text-gray-700">
+                      Location
+                    </label>
+                    <input
+                      type="text"
+                      id="location"
+                      className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Property address or virtual meeting link"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                      Description
+                    </label>
+                    <textarea
+                      id="description"
+                      rows={3}
+                      className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Any additional details for the appointment"
+                    />
                   </div>
                 </div>
-              )}
-              
-              <div>
-                <label htmlFor="eventType" className="block text-sm font-medium text-gray-700">
-                  Calendly Event Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="eventType"
-                  className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
-                  value={selectedEventType}
-                  onChange={(e) => setSelectedEventType(e.target.value)}
-                  required
-                  disabled={eventTypes.length === 0}
-                >
-                  {eventTypes.length === 0 && (
-                    <option value="">Calendly service unavailable (Error 503)</option>
-                  )}
-                  {eventTypes.map((type) => {
-                    // Extract UUID from the URI
-                    const uriParts = type.uri.split('/');
-                    const uuid = uriParts[uriParts.length - 1];
-                    return (
-                      <option key={uuid} value={uuid}>
-                        {type.name} ({type.duration} min)
-                      </option>
-                    );
-                  })}
-                </select>
-                {eventTypes.length === 0 && (
-                  <p className="mt-1 text-xs text-orange-600">
-                    The Calendly service is currently unavailable. Please use manual scheduling instead or contact your administrator.
-                  </p>
-                )}
               </div>
               
               <div className="flex justify-end space-x-3">
@@ -645,7 +460,7 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
                   disabled={loading}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-300"
                 >
-                  {loading ? 'Creating...' : useCalendlyDirectly ? 'Create Calendly Link' : 'Schedule Appointment'}
+                  {loading ? 'Creating...' : 'Schedule Appointment'}
                 </button>
               </div>
             </form>

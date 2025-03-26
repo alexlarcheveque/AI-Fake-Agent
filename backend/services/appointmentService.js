@@ -35,10 +35,27 @@ const appointmentService = {
         throw new Error(`Lead with ID ${leadId} not found`);
       }
       
-      // Find the user to check Google Calendar connection
-      const user = await User.findByPk(userId);
-      if (!user) {
-        throw new Error(`User with ID ${userId} not found`);
+      // Check for user - if userId is null, try to find a user with Google Calendar connected
+      let user = null;
+      if (userId) {
+        user = await User.findByPk(userId);
+      } else {
+        logger.warn(`No userId provided for appointment creation. Looking for a user with Google Calendar connected.`);
+        // Find the first user with Google Calendar connected
+        user = await User.findOne({ 
+          where: { 
+            googleCalendarConnected: true 
+          }
+        });
+        
+        if (user) {
+          logger.info(`Found user ${user.id} with Google Calendar connected. Using their credentials.`);
+          // Update the lead to associate it with this user
+          await lead.update({ userId: user.id });
+          logger.info(`Updated lead ${leadId} to be associated with user ${user.id}`);
+        } else {
+          logger.warn(`No user with Google Calendar connected found. Using default system settings.`);
+        }
       }
 
       // Parse the date and time
@@ -85,7 +102,7 @@ const appointmentService = {
       // Create the appointment in the database
       const appointment = await Appointment.create({
         leadId,
-        userId,
+        userId: userId || (user ? user.id : null), // Use the found user's ID if available
         title,
         startTime: startDate,
         endTime: endDate,
@@ -102,10 +119,13 @@ const appointmentService = {
         endTime: endDate.toISOString()
       });
       
-      // Create Google Calendar event if the user has connected their account
-      if (user.googleCalendarConnected) {
+      // Create Google Calendar event if the user exists and has connected their account
+      if (user && user.googleCalendarConnected) {
         try {
-          logger.info('User has Google Calendar connected, creating calendar event');
+          logger.info('User has Google Calendar connected, creating calendar event', {
+            userId: user.id,
+            googleCalendarConnected: user.googleCalendarConnected
+          });
           
           // Prepare attendees - add lead's email if available
           const attendees = [];
@@ -115,7 +135,7 @@ const appointmentService = {
           
           // Create event in Google Calendar using OAuth
           const calendarResult = await googleCalendarService.createEvent(
-            userId, // Pass userId for OAuth authentication
+            user.id, // Use user.id directly instead of userId which could be null
             {
               title,
               description: `Appointment with ${lead.name} (Phone: ${lead.phoneNumber})`,
@@ -144,7 +164,7 @@ const appointmentService = {
           // Continue without Google Calendar integration if it fails
         }
       } else {
-        logger.info('User has not connected Google Calendar, skipping calendar integration');
+        logger.info('No user or Google Calendar connection, skipping calendar integration');
       }
       
       return appointment;

@@ -13,6 +13,13 @@ export interface Appointment {
   status: string;
   createdAt: string;
   updatedAt: string;
+  // Calendly fields (legacy)
+  calendlyEventUri?: string;
+  calendlyInviteeUri?: string;
+  // Google Calendar fields
+  googleCalendarEventId?: string;
+  googleCalendarEventLink?: string;
+  googleCalendarEventStatus?: string;
   Lead?: {
     id: number;
     name: string;
@@ -46,6 +53,7 @@ export interface ApiError {
   message: string;
   code: number;
   isAuthError?: boolean;
+  isCalendlyError?: boolean;
 }
 
 // Helper function to handle errors consistently
@@ -173,6 +181,28 @@ const appointmentApi = {
     // Look for "appointment" or "meeting" with date and time
     const appointmentRegex = /(?:appointment|meeting)\s+(?:for|on|at)\s+(\d{1,2}\/\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s+\d{4})?)\s+(?:at|@)?\s+(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i;
     match = message.match(appointmentRegex);
+    
+    if (match) {
+      return {
+        date: match[1],
+        time: match[2]
+      };
+    }
+    
+    // NEW: Look for rescheduled appointments
+    const rescheduleRegex = /(?:reschedule|rescheduled)\s+(?:for|to)\s+(\w+day|tomorrow|today|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s+\d{4})?|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?),?\s+(?:at|@)?\s+(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i;
+    match = message.match(rescheduleRegex);
+    
+    if (match) {
+      return {
+        date: match[1],
+        time: match[2]
+      };
+    }
+    
+    // NEW: Check for appointments that mention times like "Your appointment is now set for tomorrow at 9:00 AM"
+    const appointmentSetRegex = /appointment\s+(?:is\s+now|has\s+been)?\s+(?:set|scheduled|confirmed|rescheduled)\s+for\s+(\w+day|tomorrow|today|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s+\d{4})?|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?),?\s+(?:at|@)?\s+(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i;
+    match = message.match(appointmentSetRegex);
     
     if (match) {
       return {

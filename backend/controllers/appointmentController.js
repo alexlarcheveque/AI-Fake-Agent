@@ -82,6 +82,10 @@ exports.getAppointmentsByLead = async (req, res) => {
     
     const appointments = await Appointment.findAll({
       where: { leadId },
+      include: [{
+        model: Lead,
+        attributes: ['id', 'name', 'phoneNumber', 'email']
+      }],
       order: [['startTime', 'DESC']]
     });
     
