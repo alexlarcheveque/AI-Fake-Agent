@@ -330,19 +330,14 @@ const messageController = {
         deliveryStatus: "delivered",
       });
 
-      // Get the appropriate follow-up interval based on lead status
-      const leadStatus = lead.status;
-      const STATUS_FOLLOW_UP_INTERVALS = {
-        "New": 2,               // Follow up in 2 days if no response
-        "In Conversation": 3,   // Follow up more frequently during active conversation
-        "Qualified": 5,         // Follow up every 5 days once qualified
-        "Appointment Set": 1,   // Follow up day before appointment
-        "Converted": 14,        // Check in every 2 weeks after conversion
-        "Inactive": 30          // Try again after 30 days for inactive leads
-      };
+      // Get user settings for follow-up intervals
+      let settings = DEFAULT_SETTINGS;
+      if (lead.userId) {
+        settings = await userSettingsService.getAllSettings(lead.userId);
+      }
       
-      // Default to 7 days if status not found in the configuration
-      const daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus] || 7;
+      // Use the scheduledMessageService to get the appropriate follow-up interval
+      const daysToAdd = scheduledMessageService.getFollowUpInterval(lead.status, settings);
       
       // Update the lead with the current messageCount + 1, but DON'T schedule an immediate follow-up
       await lead.update({
@@ -353,7 +348,7 @@ const messageController = {
       });
 
       console.log(
-        `Updated lead ${lead.id} with new message count and future follow-up date using ${daysToAdd}-day interval based on status: ${leadStatus}`
+        `Updated lead ${lead.id} with new message count and future follow-up date using ${daysToAdd}-day interval based on status: ${lead.status}`
       );
 
       // Emit socket event with the new message
