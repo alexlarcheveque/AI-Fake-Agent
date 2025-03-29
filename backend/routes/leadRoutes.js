@@ -37,6 +37,15 @@ router.post("/fix-all-schedule-intervals", leadController.fixAllScheduleInterval
 // Schedule follow-up - MUST be before /:id route
 router.post("/schedule-followup/:id", leadController.scheduleFollowUp);
 
+// Mark lead as qualified - MUST be before /:id route
+router.post("/mark-qualified/:id", leadController.markLeadAsQualified);
+
+// Process inactive leads - MUST be before /:id route
+router.post("/process-inactive", leadController.processInactiveLeads);
+
+// Update lead status - MUST be before /:id route
+router.post("/status/:id", leadController.updateLeadStatus);
+
 // Get a single lead by id - Place parametrized routes AFTER specific routes
 router.get("/:id", leadController.getLeadById);
 

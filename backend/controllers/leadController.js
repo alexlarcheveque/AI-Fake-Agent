@@ -3,6 +3,7 @@ const Message = require("../models/Message");
 const { Op } = require("sequelize");
 const logger = require("../utils/logger");
 const scheduledMessageService = require("../services/scheduledMessageService");
+const leadStatusService = require("../services/leadStatusService");
 const csv = require('csv-parser');
 const { Readable } = require('stream');
 
@@ -547,6 +548,67 @@ const leadController = {
       });
     } catch (error) {
       logger.error("Error fixing all lead schedule intervals:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Update lead status
+  async updateLeadStatus(req, res) {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ error: "Status is required" });
+      }
+
+      const lead = await Lead.findByPk(id);
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      // Update lead status
+      await lead.update({ status });
+
+      // Schedule next follow-up based on new status
+      await scheduledMessageService.scheduleFollowUp(id, new Date());
+
+      res.json(lead);
+    } catch (error) {
+      logger.error("Error updating lead status:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Mark lead as qualified
+  async markLeadAsQualified(req, res) {
+    try {
+      const { id } = req.params;
+
+      const lead = await leadStatusService.markAsQualified(id);
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      res.json(lead);
+    } catch (error) {
+      logger.error("Error marking lead as qualified:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Process inactive leads
+  async processInactiveLeads(req, res) {
+    try {
+      const count = await leadStatusService.markInactiveLeads();
+      res.json({ 
+        success: true, 
+        message: `${count} leads marked as inactive` 
+      });
+    } catch (error) {
+      logger.error("Error processing inactive leads:", error);
       res.status(500).json({ error: error.message });
     }
   }

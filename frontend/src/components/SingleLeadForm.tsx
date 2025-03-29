@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import leadApi from "../api/leadApi";
-import { Lead } from "../types/lead";
+import { Lead, LeadStatus } from "../types/lead";
 
 // Validation constants
 const VALIDATION_RULES = {
@@ -23,7 +23,7 @@ const VALIDATION_RULES = {
       "Phone number can only contain numbers, spaces, +, -, and parentheses",
   },
   STATUS: {
-    VALID_VALUES: ["new", "contacted", "qualified", "lost"] as const,
+    VALID_VALUES: ["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"] as const,
   },
 } as const;
 
@@ -56,20 +56,22 @@ interface FormData {
   name: string;
   email: string;
   phoneNumber: string;
-  status: string;
+  status: LeadStatus;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
   firstMessageTiming: string;
+  messageCount: number;
 }
 
 const initialFormData: FormData = {
   name: "",
   email: "",
   phoneNumber: "",
-  status: "new",
+  status: "New",
   aiAssistantEnabled: true,
   enableFollowUps: true,
   firstMessageTiming: "immediate",
+  messageCount: 0
 };
 
 // Validation functions

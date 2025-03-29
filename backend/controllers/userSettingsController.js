@@ -14,6 +14,13 @@ const settingsController = {
           agentState: "",
           agentCity: "",
           aiAssistantEnabled: true,
+          // Default follow-up intervals
+          followUpIntervalNew: 2,
+          followUpIntervalInConversation: 3,
+          followUpIntervalQualified: 5,
+          followUpIntervalAppointmentSet: 1,
+          followUpIntervalConverted: 14,
+          followUpIntervalInactive: 30,
         });
       }
 
@@ -29,6 +36,13 @@ const settingsController = {
           agentState: "",
           agentCity: "",
           aiAssistantEnabled: true,
+          // Default follow-up intervals
+          followUpIntervalNew: 2,
+          followUpIntervalInConversation: 3,
+          followUpIntervalQualified: 5,
+          followUpIntervalAppointmentSet: 1,
+          followUpIntervalConverted: 14,
+          followUpIntervalInactive: 30,
         });
       }
 
@@ -38,6 +52,13 @@ const settingsController = {
         agentState: settings.agentState || "",
         agentCity: settings.agentCity || "",
         aiAssistantEnabled: settings.aiAssistantEnabled || false,
+        // Follow-up intervals
+        followUpIntervalNew: settings.followUpIntervalNew || 2,
+        followUpIntervalInConversation: settings.followUpIntervalInConversation || 3,
+        followUpIntervalQualified: settings.followUpIntervalQualified || 5,
+        followUpIntervalAppointmentSet: settings.followUpIntervalAppointmentSet || 1,
+        followUpIntervalConverted: settings.followUpIntervalConverted || 14,
+        followUpIntervalInactive: settings.followUpIntervalInactive || 30,
       });
     } catch (error) {
       logger.error("Error fetching settings:", error);
@@ -68,6 +89,13 @@ const settingsController = {
             req.body.aiAssistantEnabled !== undefined
               ? req.body.aiAssistantEnabled
               : true,
+          // Default follow-up intervals
+          followUpIntervalNew: req.body.followUpIntervalNew || 2,
+          followUpIntervalInConversation: req.body.followUpIntervalInConversation || 3,
+          followUpIntervalQualified: req.body.followUpIntervalQualified || 5,
+          followUpIntervalAppointmentSet: req.body.followUpIntervalAppointmentSet || 1,
+          followUpIntervalConverted: req.body.followUpIntervalConverted || 14,
+          followUpIntervalInactive: req.body.followUpIntervalInactive || 30,
         },
       });
 
@@ -82,6 +110,25 @@ const settingsController = {
             req.body.aiAssistantEnabled !== undefined
               ? req.body.aiAssistantEnabled
               : settings.aiAssistantEnabled,
+          // Update follow-up intervals if provided
+          followUpIntervalNew: req.body.followUpIntervalNew !== undefined 
+            ? req.body.followUpIntervalNew 
+            : settings.followUpIntervalNew,
+          followUpIntervalInConversation: req.body.followUpIntervalInConversation !== undefined 
+            ? req.body.followUpIntervalInConversation 
+            : settings.followUpIntervalInConversation,
+          followUpIntervalQualified: req.body.followUpIntervalQualified !== undefined 
+            ? req.body.followUpIntervalQualified 
+            : settings.followUpIntervalQualified,
+          followUpIntervalAppointmentSet: req.body.followUpIntervalAppointmentSet !== undefined 
+            ? req.body.followUpIntervalAppointmentSet 
+            : settings.followUpIntervalAppointmentSet,
+          followUpIntervalConverted: req.body.followUpIntervalConverted !== undefined 
+            ? req.body.followUpIntervalConverted 
+            : settings.followUpIntervalConverted,
+          followUpIntervalInactive: req.body.followUpIntervalInactive !== undefined 
+            ? req.body.followUpIntervalInactive 
+            : settings.followUpIntervalInactive,
         });
       }
 
@@ -91,6 +138,13 @@ const settingsController = {
         agentState: settings.agentState || "",
         agentCity: settings.agentCity || "",
         aiAssistantEnabled: settings.aiAssistantEnabled || false,
+        // Follow-up intervals
+        followUpIntervalNew: settings.followUpIntervalNew || 2,
+        followUpIntervalInConversation: settings.followUpIntervalInConversation || 3,
+        followUpIntervalQualified: settings.followUpIntervalQualified || 5,
+        followUpIntervalAppointmentSet: settings.followUpIntervalAppointmentSet || 1,
+        followUpIntervalConverted: settings.followUpIntervalConverted || 14,
+        followUpIntervalInactive: settings.followUpIntervalInactive || 30,
       });
     } catch (error) {
       logger.error("Error updating settings:", error);
@@ -113,6 +167,13 @@ const settingsController = {
           agentCity: "",
           agentState: "",
           aiAssistantEnabled: true,
+          // Default follow-up intervals
+          followUpIntervalNew: 2,
+          followUpIntervalInConversation: 3,
+          followUpIntervalQualified: 5,
+          followUpIntervalAppointmentSet: 1,
+          followUpIntervalConverted: 14,
+          followUpIntervalInactive: 30,
         },
       });
 

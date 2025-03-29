@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import leadApi from "../api/leadApi";
-import { Lead, LeadFormData } from "../types/lead";
+import { Lead, LeadFormData, LeadStatus } from "../types/lead";
 
 // Validation constants
 const VALIDATION_RULES = {
@@ -23,7 +23,7 @@ const VALIDATION_RULES = {
       "Phone number can only contain numbers, spaces, +, -, and parentheses",
   },
   STATUS: {
-    VALID_VALUES: ["new", "contacted", "qualified", "lost"] as const,
+    VALID_VALUES: ["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"] as const,
   },
 } as const;
 
@@ -62,7 +62,7 @@ const initialFormData: LeadFormData = {
   name: "",
   email: "",
   phoneNumber: "",
-  status: "new",
+  status: "New",
   aiAssistantEnabled: true,
   enableFollowUps: true,
   firstMessageTiming: "immediate",

@@ -7,6 +7,12 @@ const DEFAULT_SETTINGS = {
   agentCity: "Your City",
   agentState: "Your State",
   aiAssistantEnabled: true,
+  followUpIntervalNew: 2,
+  followUpIntervalInConversation: 3,
+  followUpIntervalQualified: 5,
+  followUpIntervalAppointmentSet: 1,
+  followUpIntervalConverted: 14,
+  followUpIntervalInactive: 30,
 };
 
 const userSettingsService = {
@@ -77,7 +83,14 @@ const userSettingsService = {
         AGENT_CITY: userSettings.agentCity || DEFAULT_SETTINGS.AGENT_CITY,
         AI_ASSISTANT_ENABLED: userSettings.aiAssistantEnabled !== undefined ? 
                              userSettings.aiAssistantEnabled : 
-                             DEFAULT_SETTINGS.AI_ASSISTANT_ENABLED
+                             DEFAULT_SETTINGS.AI_ASSISTANT_ENABLED,
+        // Add follow-up interval settings with proper mapping
+        FOLLOW_UP_INTERVAL_NEW: userSettings.followUpIntervalNew || DEFAULT_SETTINGS.followUpIntervalNew,
+        FOLLOW_UP_INTERVAL_IN_CONVERSATION: userSettings.followUpIntervalInConversation || DEFAULT_SETTINGS.followUpIntervalInConversation,
+        FOLLOW_UP_INTERVAL_QUALIFIED: userSettings.followUpIntervalQualified || DEFAULT_SETTINGS.followUpIntervalQualified,
+        FOLLOW_UP_INTERVAL_APPOINTMENT_SET: userSettings.followUpIntervalAppointmentSet || DEFAULT_SETTINGS.followUpIntervalAppointmentSet,
+        FOLLOW_UP_INTERVAL_CONVERTED: userSettings.followUpIntervalConverted || DEFAULT_SETTINGS.followUpIntervalConverted,
+        FOLLOW_UP_INTERVAL_INACTIVE: userSettings.followUpIntervalInactive || DEFAULT_SETTINGS.followUpIntervalInactive,
       };
       
       console.log(`Retrieved settings for user ${userId}:`, settingsMap);

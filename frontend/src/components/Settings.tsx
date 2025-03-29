@@ -10,6 +10,13 @@ const Settings: React.FC = () => {
     agentState: "",
     agentCity: "",
     aiAssistantEnabled: true,
+    // Default follow-up intervals
+    followUpIntervalNew: 2,
+    followUpIntervalInConversation: 3,
+    followUpIntervalQualified: 5,
+    followUpIntervalAppointmentSet: 1,
+    followUpIntervalConverted: 14,
+    followUpIntervalInactive: 30,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -45,6 +52,14 @@ const Settings: React.FC = () => {
 
     setSettings((prev: UserSettings) => {
       if (!prev) return prev;
+
+      // Handle number inputs for follow-up intervals
+      if (name.startsWith('followUpInterval')) {
+        return {
+          ...prev,
+          [name]: type === "number" ? parseInt(value) || 0 : value,
+        };
+      }
 
       return {
         ...prev,
@@ -105,6 +120,8 @@ const Settings: React.FC = () => {
           onSubmit={handleSubmit}
           className="bg-white rounded-lg shadow-md p-6 mb-8"
         >
+          {/* Agent Information Section */}
+          <h2 className="text-xl font-bold mb-4">Agent Information</h2>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -162,6 +179,112 @@ const Settings: React.FC = () => {
                 Enable AI Assistant for new leads
               </span>
             </label>
+          </div>
+
+          {/* Follow-up Intervals Section */}
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-4">Follow-up Intervals</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Customize how many days to wait before sending follow-up messages to leads based on their status.
+            </p>
+            
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  New Lead <span className="text-gray-500">(days)</span>
+                </label>
+                <input
+                  type="number"
+                  name="followUpIntervalNew"
+                  value={settings.followUpIntervalNew}
+                  onChange={handleChange}
+                  min="1"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 2 days</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  In Conversation <span className="text-gray-500">(days)</span>
+                </label>
+                <input
+                  type="number"
+                  name="followUpIntervalInConversation"
+                  value={settings.followUpIntervalInConversation}
+                  onChange={handleChange}
+                  min="1"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 3 days</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Qualified <span className="text-gray-500">(days)</span>
+                </label>
+                <input
+                  type="number"
+                  name="followUpIntervalQualified"
+                  value={settings.followUpIntervalQualified}
+                  onChange={handleChange}
+                  min="1"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 5 days</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Appointment Set <span className="text-gray-500">(days)</span>
+                </label>
+                <input
+                  type="number"
+                  name="followUpIntervalAppointmentSet"
+                  value={settings.followUpIntervalAppointmentSet}
+                  onChange={handleChange}
+                  min="1"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 1 day</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Converted <span className="text-gray-500">(days)</span>
+                </label>
+                <input
+                  type="number"
+                  name="followUpIntervalConverted"
+                  value={settings.followUpIntervalConverted}
+                  onChange={handleChange}
+                  min="1"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 14 days</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Inactive <span className="text-gray-500">(days)</span>
+                </label>
+                <input
+                  type="number"
+                  name="followUpIntervalInactive"
+                  value={settings.followUpIntervalInactive}
+                  onChange={handleChange}
+                  min="1"
+                  max="90"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Default: 30 days</p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 flex justify-end">
