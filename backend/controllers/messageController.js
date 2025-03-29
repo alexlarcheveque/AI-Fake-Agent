@@ -176,7 +176,10 @@ const messageController = {
         // Schedule follow-up after sending message - ensure we use the current time as lastMessageDate
         const currentTime = new Date();
         await lead.update({ lastMessageDate: currentTime });
-        await scheduledMessageService.scheduleFollowUp(leadId, currentTime);
+        
+        // Schedule the next message based on lead status using the service
+        const result = await scheduledMessageService.scheduleFollowUp(leadId, currentTime);
+        console.log(`Scheduled next follow-up for lead ${leadId} based on status: ${lead.status}, next message in ${result.interval} days`);
 
         res.json({ message, aiMessage });
       } else {
@@ -290,17 +293,28 @@ const messageController = {
         deliveryStatus: "delivered",
       });
 
+      // Get the appropriate follow-up interval based on lead status
+      const leadStatus = lead.status;
+      const STATUS_FOLLOW_UP_INTERVALS = {
+        "New": 7,        // Message weekly
+        "Contacted": 7,  // Message weekly
+        "Qualified": 7,  // Message weekly
+        "Lost": 30       // Message monthly
+      };
+      
+      // Default to 7 days if status not found in the configuration
+      const daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus] || 7;
+      
       // Update the lead with the current messageCount + 1, but DON'T schedule an immediate follow-up
       await lead.update({
         lastMessageAt: new Date(),
         messageCount: lead.messageCount + 1,
-        // Set nextScheduledMessage to a future date (e.g., 3 days from now)
-        // This ensures we don't send another follow-up too soon after the AI response
-        nextScheduledMessage: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days later
+        // Set nextScheduledMessage based on status-specific interval
+        nextScheduledMessage: new Date(Date.now() + daysToAdd * 24 * 60 * 60 * 1000),
       });
 
       console.log(
-        `Updated lead ${lead.id} with new message count and future follow-up date`
+        `Updated lead ${lead.id} with new message count and future follow-up date using ${daysToAdd}-day interval based on status: ${leadStatus}`
       );
 
       // Emit socket event with the new message
@@ -465,8 +479,13 @@ const messageController = {
             await lead.update({ 
               lastMessageDate: now,
               messageCount: lead.messageCount + 1 
+              // Don't set nextScheduledMessage directly - let scheduledMessageService handle it
             });
             console.log(`Updated lead ${lead.id} lastMessageDate to: ${now}`);
+            
+            // Schedule the next follow-up message based on lead status using the service
+            await scheduledMessageService.scheduleFollowUp(lead.id, now);
+            console.log(`Scheduled next follow-up for lead ${lead.id} based on status: ${lead.status}`);
 
             // Emit socket event for the AI response
             if (io) {

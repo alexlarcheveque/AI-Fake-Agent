@@ -257,8 +257,15 @@ const scheduledMessageService = {
         return;
       }
       
-      // Always use a 7-day interval after a message is sent
-      const daysToAdd = 7; // Force 7 days regardless of status
+      // Get the appropriate follow-up interval based on lead status
+      const leadStatus = lead.status; // Status is already properly capitalized
+      let daysToAdd = 7; // Default to weekly
+      
+      if (STATUS_FOLLOW_UP_INTERVALS[leadStatus]) {
+        daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus];
+      } else {
+        logger.warn(`Unknown lead status: ${lead.status}, defaulting to weekly follow-up`);
+      }
       
       // Calculate next message date based on last message date
       const nextScheduledMessage = new Date(lastMessageDate || new Date());
@@ -268,13 +275,15 @@ const scheduledMessageService = {
       await lead.update({ nextScheduledMessage });
       
       logger.info(
-        `Scheduled next message for lead ${leadId} (status: ${lead.status}) at ${nextScheduledMessage}, using fixed interval of ${daysToAdd} days`
+        `Scheduled next message for lead ${leadId} (status: ${lead.status}) at ${nextScheduledMessage}, using status-based interval of ${daysToAdd} days`
       );
       
       return { 
         success: true, 
         leadId,
-        nextScheduledMessage
+        nextScheduledMessage,
+        interval: daysToAdd,
+        status: lead.status
       };
     } catch (error) {
       logger.error(`Error in scheduleFollowUp for lead ${leadId}:`, error);
