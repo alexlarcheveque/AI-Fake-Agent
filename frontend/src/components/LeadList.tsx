@@ -36,6 +36,11 @@ const LeadList: React.FC<LeadListProps> = ({
       onError(null);
       setUpdateLoading(editingLead.id);
 
+      // Get the original lead to compare AI assistant status
+      const originalLead = leads.find(lead => lead.id === editingLead.id);
+      const wasAiEnabled = originalLead?.aiAssistantEnabled;
+      const isTogglingOn = !wasAiEnabled && editingLead.aiAssistantEnabled;
+
       // Only send the fields that can be updated
       const updateData = {
         name: editingLead.name,
@@ -45,12 +50,39 @@ const LeadList: React.FC<LeadListProps> = ({
         aiAssistantEnabled: editingLead.aiAssistantEnabled,
       };
 
-      await leadApi.updateLead(editingLead.id, updateData);
+      // If we're turning off AI assistant, clear the next scheduled message
+      if (wasAiEnabled && !editingLead.aiAssistantEnabled) {
+        Object.assign(updateData, { nextScheduledMessage: null });
+      }
 
-      // Update the local state optimistically
+      const updatedLead = await leadApi.updateLead(editingLead.id, updateData);
+
+      // If we're turning ON AI Assistant, schedule a new follow-up message
+      if (isTogglingOn) {
+        try {
+          // Call the schedule-followup endpoint
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/leads/schedule-followup/${editingLead.id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          
+          if (response.ok) {
+            // Refresh lead data to get the updated scheduled message
+            const refreshedLead = await leadApi.getLead(editingLead.id);
+            updatedLead.nextScheduledMessage = refreshedLead.nextScheduledMessage;
+          }
+        } catch (err) {
+          console.error("Error scheduling follow-up:", err);
+          // We'll still continue even if scheduling fails
+        }
+      }
+
+      // Update the local state using the server response to ensure we have the complete updated lead
       onLeadsChange(
         leads.map((lead) =>
-          lead.id === editingLead.id ? { ...lead, ...updateData } : lead
+          lead.id === editingLead.id ? updatedLead : lead
         )
       );
 

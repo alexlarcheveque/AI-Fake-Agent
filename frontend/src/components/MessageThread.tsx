@@ -39,7 +39,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   leadEmail,
   leadPhone,
   leadSource,
-  nextScheduledMessage,
+  nextScheduledMessage: propNextScheduledMessage,
   messageCount,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -51,7 +51,40 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [latestMessage, setLatestMessage] = useState<string | null>(null);
   const [appointmentSuccess, setAppointmentSuccess] = useState<string | null>(null);
   const [calendarConfigurationError, setCalendarConfigurationError] = useState(false);
-  const { socket } = useSocket();
+  const [nextScheduledMessage, setNextScheduledMessage] = useState<string | undefined>(propNextScheduledMessage);
+  const { socket, connected, reconnect, lastEventTime } = useSocket();
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setNextScheduledMessage(propNextScheduledMessage);
+  }, [propNextScheduledMessage]);
+
+  // Helper function to validate and normalize messages
+  const validateAndNormalizeMessage = (message: any): Message | null => {
+    if (!message) return null;
+    
+    // Check required fields
+    if (!message.id || !message.text || !message.sender) {
+      console.error("Message missing required fields:", message);
+      return null;
+    }
+    
+    // Ensure all required fields are present
+    const normalizedMessage: Message = {
+      id: Number(message.id),
+      leadId: Number(message.leadId || leadId), // Use leadId from props if not in message
+      text: String(message.text),
+      sender: message.sender === 'lead' ? 'lead' : 'agent', // Normalize sender
+      direction: message.direction || (message.sender === 'lead' ? 'inbound' : 'outbound'),
+      isAiGenerated: Boolean(message.isAiGenerated),
+      createdAt: message.createdAt || new Date().toISOString(),
+      twilioSid: message.twilioSid || undefined,
+      deliveryStatus: message.deliveryStatus || 'delivered'
+    };
+    
+    console.log("Normalized message:", normalizedMessage);
+    return normalizedMessage;
+  };
 
   // Use the Calendly hook
   const { 
@@ -60,6 +93,47 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     createCalendlyLink, 
     loading: calendlyLoading 
   } = useCalendly(leadId);
+
+  // Format next scheduled message date and time
+  const formatScheduledDate = (dateString?: string) => {
+    if (!dateString) return null;
+    
+    try {
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn("Invalid date format for nextScheduledMessage:", dateString);
+        return null;
+      }
+      
+      // Calculate days until scheduled message
+      const now = new Date();
+      const diffTime = date.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      // Format with day of week, month date, and time
+      return {
+        date: date.toLocaleDateString(undefined, { 
+          weekday: 'long', 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        }),
+        time: date.toLocaleTimeString([], {
+          hour: '2-digit', 
+          minute: '2-digit'
+        }),
+        daysUntil: diffDays
+      };
+    } catch (error) {
+      console.error("Error formatting scheduled date:", error);
+      return null;
+    }
+  };
+  
+  // Get formatted scheduled message date and time
+  const scheduledDateTime = formatScheduledDate(nextScheduledMessage);
 
   // Fetch messages and lead settings on component mount and when leadId changes
   useEffect(() => {
@@ -82,32 +156,186 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       fetchData();
     }
   }, [leadId]);
+  
+  // Listen for lead-updated events to update the nextScheduledMessage without requiring a refresh
+  useEffect(() => {
+    const handleLeadUpdated = (event: CustomEvent<{leadId: number, nextScheduledMessage: string | null}>) => {
+      const { leadId: updatedLeadId, nextScheduledMessage: updatedSchedule } = event.detail;
+      
+      // Only update if this event is for our lead
+      if (updatedLeadId === leadId) {
+        console.log("Received lead-updated event, updating nextScheduledMessage:", updatedSchedule);
+        
+        // Update our local state for immediate UI refresh
+        setNextScheduledMessage(updatedSchedule || undefined);
+        
+        // Update the parent component's props through the window event
+        // This is just to maintain consistent data state, the actual UI update comes from
+        // the nextScheduledMessage prop which will be updated by the parent component
+        window.dispatchEvent(new CustomEvent('lead-updated', { 
+          detail: { 
+            leadId: leadId,
+            nextScheduledMessage: updatedSchedule
+          } 
+        }));
+      }
+    };
+    
+    // Add the event listener
+    window.addEventListener('lead-updated', handleLeadUpdated as EventListener);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('lead-updated', handleLeadUpdated as EventListener);
+    };
+  }, [leadId]);
+
+  // Force refresh messages function with improved error handling
+  const refreshMessages = async () => {
+    try {
+      setError(null);
+      console.log("Force refreshing messages for lead:", leadId);
+      const fetchedMessages = await messageApi.getMessages(leadId.toString());
+      console.log("Refreshed messages:", fetchedMessages);
+      
+      // Make a copy to avoid potential mutability issues
+      const newMessages = [...fetchedMessages];
+      
+      // Add any messages that might be missing
+      setMessages(prevMessages => {
+        // Find messages that aren't in the API response but are in our state
+        // This could happen if a socket message was received but the API hasn't synced yet
+        const localOnlyMessages = prevMessages.filter(
+          existingMsg => !newMessages.some(fetchedMsg => fetchedMsg.id === existingMsg.id)
+        );
+        
+        // If we have any socket-only messages, log them for debugging
+        if (localOnlyMessages.length > 0) {
+          console.log("Found messages only in local state (not yet in API):", localOnlyMessages);
+        }
+        
+        // Merge the fetched messages with any socket-received messages not yet in the API
+        const mergedMessages = [...newMessages, ...localOnlyMessages];
+        
+        // Sort by createdAt to ensure chronological order
+        mergedMessages.sort((a, b) => 
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        
+        console.log("Final merged message count:", mergedMessages.length);
+        return mergedMessages;
+      });
+      
+      // Also refresh lead data
+      const lead = await leadApi.getLead(leadId);
+      setAiAssistantEnabled(lead.aiAssistantEnabled);
+      
+      return true;
+    } catch (err) {
+      setError("Failed to refresh messages");
+      console.error("Error refreshing data:", err);
+      return false;
+    }
+  };
+
+  // Set up an interval to periodically refresh messages only when socket is not connected
+  useEffect(() => {
+    // Only set up auto-refresh if socket is not connected (as a fallback)
+    if (!connected || !socket) {
+      console.log("Socket not connected or unavailable, setting up auto-refresh fallback");
+      const intervalId = setInterval(() => {
+        console.log("Auto-refreshing messages (socket fallback)...");
+        refreshMessages();
+      }, 60000); // 60 seconds - longer interval since this is a fallback
+      
+      return () => clearInterval(intervalId);
+    }
+    
+    // No interval needed when socket is connected and working
+    console.log("Socket connected, no auto-refresh interval needed");
+    return () => {};
+  }, [connected, socket, leadId]);
+  
+  // Add a refresh when socket connects or reconnects
+  useEffect(() => {
+    if (connected && socket) {
+      console.log("Socket connected, refreshing messages to ensure latest state");
+      refreshMessages();
+    }
+  }, [connected, socket]);
 
   // Listen for new messages
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.log("Socket not available, can't listen for messages");
+      return;
+    }
 
     const handleNewMessage = (data: SocketMessageData) => {
+      // Log raw data received from socket for inspection
+      console.log("🔍 RAW SOCKET MESSAGE DATA:", JSON.stringify(data));
+      
       // Make sure we're checking the correct lead ID format
       const currentLeadId =
         typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
 
-      if (data.leadId === currentLeadId) {
-        console.log("Received new message via socket:", data.message);
+      // Ensure data and data.message have all required fields
+      if (!data || !data.message) {
+        console.error("❌ Received invalid message data:", data);
+        return;
+      }
+
+      // Check for missing critical fields
+      if (!data.message.id || !data.message.text || !data.message.sender) {
+        console.error("❌ Message is missing critical fields:", data.message);
+        return;
+      }
+
+      // Log detailed matching criteria for debugging
+      console.log("🔄 LEAD ID COMPARISON:", {
+        messageData: data,
+        currentLeadId: currentLeadId,
+        dataLeadId: data.leadId,
+        dataLeadIdType: typeof data.leadId,
+        messageLeadId: data.message.leadId,
+        messageLeadIdType: typeof data.message.leadId,
+        outerMatches: data.leadId === currentLeadId,
+        innerMatches: data.message.leadId === currentLeadId,
+        socketConnected: connected,
+        messageType: data.message.sender,
+        direction: data.message.direction || 'unknown',
+        isAI: data.message.isAiGenerated
+      });
+
+      // Check if the leadIds match - try both the outer and inner leadId
+      const outerIdMatch = data.leadId === currentLeadId;
+      const innerIdMatch = data.message.leadId === currentLeadId;
+      
+      if (outerIdMatch || innerIdMatch) {
+        console.log("✅ LEAD ID MATCH! Received new message via socket:", data.message);
+
+        // Validate and normalize message
+        const normalizedMessage = validateAndNormalizeMessage(data.message);
+        if (!normalizedMessage) {
+          console.error("❌ Failed to validate message:", data.message);
+          return;
+        }
+
+        console.log("✅ MESSAGE NORMALIZED:", normalizedMessage);
 
         // Check if message contains appointment information or Calendly requests
         // Check all messages, not just inbound, since the AI could be confirming appointments
-        if (data.message.isAiGenerated) {
+        if (normalizedMessage.isAiGenerated) {
           // Check for appointment information
-          const appointmentDetails = appointmentApi.parseAppointmentFromAIMessage(data.message.text);
+          const appointmentDetails = appointmentApi.parseAppointmentFromAIMessage(normalizedMessage.text);
           if (appointmentDetails) {
-            console.log("Appointment details detected:", appointmentDetails);
-            setLatestMessage(data.message.text);
+            console.log("📅 Appointment details detected:", appointmentDetails);
+            setLatestMessage(normalizedMessage.text);
           }
           
           // Check for Calendly-related requests using the hook
-          if (isCalendlyRequest(data.message.text)) {
-            console.log("Calendly request detected in message");
+          if (isCalendlyRequest(normalizedMessage.text)) {
+            console.log("📅 Calendly request detected in message");
             
             // If Calendly is available, create a link automatically
             if (isCalendlyAvailable && !calendlyLoading) {
@@ -123,18 +351,66 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               );
             } else {
               // Show the appointment form
-              setLatestMessage(data.message.text);
+              setLatestMessage(normalizedMessage.text);
             }
           }
+          
+          // If this is an AI generated message, refresh the lead data to get the updated next scheduled message
+          const refreshLeadData = async () => {
+            try {
+              console.log("Refreshing lead data to update next scheduled message");
+              const refreshedLead = await leadApi.getLead(leadId);
+              
+              // If the next scheduled message has changed, update it in the UI
+              if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
+                console.log("Next scheduled message updated:", refreshedLead.nextScheduledMessage);
+                
+                // First update our local state for immediate UI refresh
+                setNextScheduledMessage(refreshedLead.nextScheduledMessage);
+                
+                // Then dispatch an event to update any parent components
+                window.dispatchEvent(new CustomEvent('lead-updated', { 
+                  detail: { 
+                    leadId: leadId,
+                    nextScheduledMessage: refreshedLead.nextScheduledMessage 
+                  } 
+                }));
+              }
+            } catch (err) {
+              console.error("Error refreshing lead data:", err);
+            }
+          };
+          
+          // Refresh lead data after a short delay to allow the backend to update
+          setTimeout(refreshLeadData, 1000);
         }
 
         // Check if this message is already in our state to avoid duplicates
         setMessages((prevMessages) => {
           const messageExists = prevMessages.some(
-            (msg) => msg.id === data.message.id
+            (msg) => msg.id === normalizedMessage.id
           );
-          if (messageExists) return prevMessages;
-          return [...prevMessages, data.message];
+          if (messageExists) {
+            console.log("⚠️ Message already exists in state, skipping:", normalizedMessage.id);
+            return prevMessages;
+          }
+          console.log("✅ Adding new message to state:", normalizedMessage);
+          
+          // Let's log the current messages for debugging
+          console.log("Current messages state before update:", prevMessages.map(m => ({ id: m.id, text: m.text.substring(0, 20) + "...", sender: m.sender })));
+          
+          // Add the new message to the state
+          const updatedMessages = [...prevMessages, normalizedMessage];
+          
+          // Sort by creation time to ensure correct order
+          updatedMessages.sort((a, b) => 
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          );
+          
+          console.log("✅ New message count:", updatedMessages.length);
+          
+          // Return the updated state
+          return updatedMessages;
         });
 
         // Play a notification sound
@@ -142,16 +418,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         audio
           .play()
           .catch((err) => console.log("Error playing notification:", err));
+      } else {
+        console.log(`⚠️ Message for different lead (received: ${data.leadId}, current: ${currentLeadId}), ignoring`);
       }
     };
 
     // Listen for both sent and received messages
     socket.on("new-message", handleNewMessage);
 
+    // Log initial connection and subscription
+    console.log(`🔌 Socket subscribed to new-message events for lead ${leadId}, socket ID: ${socket.id}, connected: ${connected}`);
+
     return () => {
       socket.off("new-message", handleNewMessage);
+      console.log(`🔌 Socket unsubscribed from new-message events for lead ${leadId}`);
     };
-  }, [socket, leadId]);
+  }, [socket, leadId, connected, leadName, leadEmail, isCalendlyAvailable, isCalendlyRequest, calendlyLoading]);
 
   // Add this useEffect to listen for status updates
   useEffect(() => {
@@ -186,10 +468,77 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   // Toggle AI Assistant
   const handleToggleAiAssistant = async () => {
     try {
-      const updatedLead = await leadApi.updateLead(leadId, {
-        aiAssistantEnabled: !aiAssistantEnabled,
-      });
+      const isTogglingOn = !aiAssistantEnabled;
+      
+      // Prepare updated fields
+      const updatedFields = {
+        aiAssistantEnabled: isTogglingOn,
+      };
+
+      // Update lead with new AI Assistant setting
+      const updatedLead = await leadApi.updateLead(leadId, updatedFields);
       setAiAssistantEnabled(updatedLead.aiAssistantEnabled);
+      
+      if (isTogglingOn) {
+        // If we're turning ON AI Assistant, schedule a new follow-up message
+        try {
+          // First, get the full lead to have access to the current status
+          const lead = await leadApi.getLead(leadId);
+          
+          // Schedule a new follow-up message based on the lead's status
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/leads/schedule-followup/${leadId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            
+            // Refresh the lead data to get the new nextScheduledMessage
+            const refreshedLead = await leadApi.getLead(leadId);
+            
+            // Update parent component with new scheduled message
+            if (refreshedLead.nextScheduledMessage) {
+              window.dispatchEvent(new CustomEvent('lead-updated', { 
+                detail: { 
+                  leadId: leadId,
+                  nextScheduledMessage: refreshedLead.nextScheduledMessage 
+                } 
+              }));
+              
+              // Show success message
+              setAppointmentSuccess(`AI Assistant is enabled. Next follow-up scheduled based on ${lead.status} status.`);
+              setTimeout(() => setAppointmentSuccess(null), 5000);
+            }
+          } else {
+            const errorData = await response.json();
+            setError(`Failed to schedule follow-up: ${errorData.error || 'Unknown error'}`);
+            setTimeout(() => setError(null), 5000);
+          }
+        } catch (err) {
+          console.error("Error scheduling follow-up:", err);
+          setError("Failed to schedule follow-up message");
+          setTimeout(() => setError(null), 5000);
+        }
+      } else {
+        // If we just disabled AI Assistant, we need to update local state to clear the nextScheduledMessage UI
+        if (scheduledDateTime) {
+          // Force refresh to get the latest lead data including the cleared scheduled message
+          const refreshedLead = await leadApi.getLead(leadId);
+          
+          // Update parent component by simulating navigation (this will re-render with updated data)
+          if (!refreshedLead.nextScheduledMessage) {
+            window.dispatchEvent(new CustomEvent('lead-updated', { 
+              detail: { 
+                leadId: leadId,
+                nextScheduledMessage: null 
+              } 
+            }));
+          }
+        }
+      }
     } catch (err) {
       setError("Failed to update AI Assistant setting");
       console.error("Error updating lead:", err);
@@ -219,6 +568,34 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
       // Instead of fetching all messages again, just add the new one to state
       setMessages((prev) => [...prev, sentMessage]);
+      
+      // If AI is enabled, refresh lead data after a short delay to get the updated nextScheduledMessage
+      if (aiAssistantEnabled) {
+        setTimeout(async () => {
+          try {
+            console.log("Refreshing lead data after sending message to get updated nextScheduledMessage");
+            const refreshedLead = await leadApi.getLead(leadId);
+            
+            // If the next scheduled message has changed, update it in the UI
+            if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
+              console.log("Next scheduled message updated:", refreshedLead.nextScheduledMessage);
+              
+              // Update our local state for immediate UI refresh
+              setNextScheduledMessage(refreshedLead.nextScheduledMessage);
+              
+              // Dispatch an event to update any parent components
+              window.dispatchEvent(new CustomEvent('lead-updated', { 
+                detail: { 
+                  leadId: leadId,
+                  nextScheduledMessage: refreshedLead.nextScheduledMessage 
+                } 
+              }));
+            }
+          } catch (err) {
+            console.error("Error refreshing lead data after sending message:", err);
+          }
+        }, 5000); // Wait 5 seconds for AI to respond
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       setIsSending(false);
@@ -336,9 +713,30 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 • <span className="text-gray-500">Messages: {messageCount}</span>
               </>
             )}
+            {socket && (
+              <span className="ml-2" title={connected ? "Connected to realtime updates" : "Realtime updates unavailable"}>
+                <span className={`inline-block w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center">
+          {!connected && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                reconnect();
+              }}
+              className="mr-3 px-3 py-1.5 text-sm rounded-md flex items-center bg-red-100 text-red-700 hover:bg-red-200"
+              title="Reconnect to server"
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reconnect
+              <span className="ml-1 text-xs opacity-75">(Auto-refreshing)</span>
+            </button>
+          )}
           <button
             onClick={() => setShowAppointments(!showAppointments)}
             className={`mr-3 px-3 py-1.5 text-sm rounded-md flex items-center ${
@@ -370,6 +768,31 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
       </div>
 
+      {/* Next Scheduled Message Indicator */}
+      {scheduledDateTime && (
+        <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center">
+          <svg className="w-4 h-4 text-blue-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
+          </svg>
+          <div className="text-sm text-blue-700 flex flex-wrap items-center">
+            <span className="mr-2">Next scheduled message:</span>
+            <span className="font-medium mr-2">{scheduledDateTime.date}</span> 
+            <span>at</span>
+            <span className="font-medium mx-1">{scheduledDateTime.time}</span>
+            {scheduledDateTime.daysUntil > 0 && (
+              <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                {scheduledDateTime.daysUntil === 1 ? 'Tomorrow' : `in ${scheduledDateTime.daysUntil} days`}
+              </span>
+            )}
+            {scheduledDateTime.daysUntil === 0 && (
+              <span className="ml-2 bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded">
+                Today
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main scrollable container */}
       <div className="flex-1 overflow-y-auto flex flex-col">
         {/* Error Message - Enhanced to provide more context */}
@@ -384,6 +807,83 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 <p>{error}</p>
               </div>
             </div>
+          </div>
+        )}
+        
+        {/* Socket Debug Panel (only shown in development) */}
+        {import.meta.env.DEV && (
+          <div className="p-2 bg-gray-100 border-b border-gray-200">
+            <details className="text-xs">
+              <summary className="font-medium text-gray-700 cursor-pointer">Socket Debug Tools</summary>
+              <div className="mt-2 p-2 bg-white rounded-md">
+                <div className="flex items-center mb-2">
+                  <span className="mr-2">Socket Status:</span>
+                  <span 
+                    className={`inline-block w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} 
+                    title={connected ? 'Connected' : 'Disconnected'}
+                  ></span>
+                  <span className="ml-1">{connected ? 'Connected' : 'Disconnected'}</span>
+                  
+                  {lastEventTime && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      Last activity: {new Date(lastEventTime).toLocaleTimeString()}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex space-x-2 mb-2">
+                  <button 
+                    onClick={() => reconnect()} 
+                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                  >
+                    Reconnect
+                  </button>
+                  
+                  <button 
+                    onClick={() => refreshMessages()}
+                    className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                  >
+                    Force Refresh (Testing)
+                  </button>
+                </div>
+                
+                <div className="flex space-x-2 mb-2">
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const result = await messageApi.testSocketMessage(leadId, `Test message at ${new Date().toLocaleTimeString()}`);
+                        console.log("Test socket message result:", result);
+                      } catch (err) {
+                        console.error("Error testing socket:", err);
+                        setError("Failed to send test socket message. See console for details.");
+                      }
+                    }}
+                    className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
+                  >
+                    Send Test Lead Message
+                  </button>
+                  
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const result = await messageApi.simulateAiResponse(leadId, `Simulated AI response at ${new Date().toLocaleTimeString()}`);
+                        console.log("Simulated AI response result:", result);
+                      } catch (err) {
+                        console.error("Error simulating AI response:", err);
+                        setError("Failed to simulate AI response. See console for details.");
+                      }
+                    }}
+                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                  >
+                    Simulate AI Response
+                  </button>
+                </div>
+                
+                <div className="mt-2 text-xs text-gray-500">
+                  Check browser console for detailed socket logs.
+                </div>
+              </div>
+            </details>
           </div>
         )}
         
@@ -598,11 +1098,24 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             </button>
           </div>
         </div>
-        <MessageInput
-          leadId={leadId}
-          onSendMessage={handleSendMessage}
-          isLoading={isSending}
-        />
+        
+        {/* Manual message input is disabled when AI Assistant is enabled */}
+        {aiAssistantEnabled ? (
+          <div className="p-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-center text-gray-500 text-sm border border-gray-200 rounded-lg p-3 bg-gray-100">
+              <svg className="w-5 h-5 mr-2 text-purple-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+              </svg>
+              AI Assistant is enabled and will automatically follow up with this lead.
+            </div>
+          </div>
+        ) : (
+          <MessageInput
+            leadId={leadId}
+            onSendMessage={handleSendMessage}
+            isLoading={isSending}
+          />
+        )}
       </div>
     </div>
   );

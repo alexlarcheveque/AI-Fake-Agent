@@ -1,23 +1,14 @@
 export interface Message {
-  id: number | string;
+  id: number;
   leadId: number;
   text: string;
-  direction: "inbound" | "outbound";
+  sender: 'agent' | 'lead';
+  direction?: 'inbound' | 'outbound';
   isAiGenerated: boolean;
-  sender: string;
-  twilioSid: string;
-  timestamp: string;
+  twilioSid?: string;
   createdAt: string;
-  updatedAt: string;
-  useAiResponse: boolean;
-  deliveryStatus?:
-    | "queued"
-    | "sending"
-    | "sent"
-    | "delivered"
-    | "failed"
-    | "undelivered"
-    | "read";
-  errorMessage?: string;
-  statusUpdatedAt?: string;
+  updatedAt?: string;
+  deliveryStatus?: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
 }

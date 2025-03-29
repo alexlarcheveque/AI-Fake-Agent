@@ -4,8 +4,7 @@ const UserSettings = require("../models/UserSettings");
 const twilioService = require("../services/twilioService");
 const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
-const followUpService = require("../services/followUpService");
-const FollowUp = require("../models/FollowUp");
+const scheduledMessageService = require("../services/scheduledMessageService");
 const userSettingsService = require("../services/userSettingsService");
 const { Op } = require("sequelize");
 const sequelize = require("sequelize");
@@ -166,7 +165,7 @@ const messageController = {
 
         // Save AI response to database
         const aiMessage = await Message.create({
-          leadId,
+          leadId: lead.id,
           text: aiResponseText,
           sender: "agent",
           direction: "outbound",
@@ -174,8 +173,13 @@ const messageController = {
           isAiGenerated: true,
         });
 
-        // Schedule follow-up after sending message
-        await followUpService.scheduleFollowUp(leadId, new Date());
+        // Schedule follow-up after sending message - ensure we use the current time as lastMessageDate
+        const currentTime = new Date();
+        await lead.update({ lastMessageDate: currentTime });
+        
+        // Schedule the next message based on lead status using the service
+        const result = await scheduledMessageService.scheduleFollowUp(leadId, currentTime);
+        console.log(`Scheduled next follow-up for lead ${leadId} based on status: ${lead.status}, next message in ${result.interval} days`);
 
         res.json({ message, aiMessage });
       } else {
@@ -289,33 +293,66 @@ const messageController = {
         deliveryStatus: "delivered",
       });
 
+      // Get the appropriate follow-up interval based on lead status
+      const leadStatus = lead.status;
+      const STATUS_FOLLOW_UP_INTERVALS = {
+        "New": 7,        // Message weekly
+        "Contacted": 7,  // Message weekly
+        "Qualified": 7,  // Message weekly
+        "Lost": 30       // Message monthly
+      };
+      
+      // Default to 7 days if status not found in the configuration
+      const daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus] || 7;
+      
       // Update the lead with the current messageCount + 1, but DON'T schedule an immediate follow-up
       await lead.update({
         lastMessageAt: new Date(),
         messageCount: lead.messageCount + 1,
-        // Set nextScheduledMessage to a future date (e.g., 3 days from now)
-        // This ensures we don't send another follow-up too soon after the AI response
-        nextScheduledMessage: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days later
+        // Set nextScheduledMessage based on status-specific interval
+        nextScheduledMessage: new Date(Date.now() + daysToAdd * 24 * 60 * 60 * 1000),
       });
 
       console.log(
-        `Updated lead ${lead.id} with new message count and future follow-up date`
+        `Updated lead ${lead.id} with new message count and future follow-up date using ${daysToAdd}-day interval based on status: ${leadStatus}`
       );
 
       // Emit socket event with the new message
       const io = req.app.get("io");
       if (io) {
-        io.emit("new-message", {
+        console.log(`Emitting new-message event for lead ${lead.id}. Message ID: ${message.id}, Sender: ${message.sender}`);
+        
+        // Log the message object before emission for debugging
+        console.log("Lead message object before emission:", {
+          id: message.id,
           leadId: lead.id,
+          text: message.text,
+          sender: message.sender,
+          direction: message.direction,
+          isAiGenerated: false
+        });
+        
+        // Add all required fields for proper display in UI
+        io.emit("new-message", {
+          leadId: parseInt(lead.id, 10), // Ensure leadId is a number
           message: {
             id: message.id,
+            leadId: parseInt(lead.id, 10), // Explicitly include leadId as a number
             text: message.text,
             sender: message.sender,
+            direction: message.direction || 'inbound',
             createdAt: message.createdAt,
             leadName: lead.name,
             phoneNumber: lead.phoneNumber,
+            deliveryStatus: message.deliveryStatus || "delivered",
+            isAiGenerated: false, // Explicitly specify false for lead messages
+            twilioSid: message.twilioSid || null
           },
         });
+        
+        console.log("Socket event emitted successfully");
+      } else {
+        console.warn("Socket.io instance not available - unable to emit message event");
       }
 
       // After creating the message, log it
@@ -437,20 +474,54 @@ const messageController = {
 
             console.log(`AI response sent to lead ${lead.id}: ${aiResponseText}`);
 
+            // Update lead's lastMessageDate to help with follow-up scheduling
+            const now = new Date();
+            await lead.update({ 
+              lastMessageDate: now,
+              messageCount: lead.messageCount + 1 
+              // Don't set nextScheduledMessage directly - let scheduledMessageService handle it
+            });
+            console.log(`Updated lead ${lead.id} lastMessageDate to: ${now}`);
+            
+            // Schedule the next follow-up message based on lead status using the service
+            await scheduledMessageService.scheduleFollowUp(lead.id, now);
+            console.log(`Scheduled next follow-up for lead ${lead.id} based on status: ${lead.status}`);
+
             // Emit socket event for the AI response
             if (io) {
+              console.log(`Emitting AI response via socket for lead ${lead.id}. Message ID: ${aiMessage.id}`);
+              
+              // Ensure we're using the correct format and all required fields are present
+              console.log("AI Message object before emission:", {
+                id: aiMessage.id,
+                leadId: lead.id, // Explicitly include leadId
+                text: aiMessage.text,
+                sender: aiMessage.sender,
+                direction: aiMessage.direction,
+                isAiGenerated: true
+              });
+              
+              // Add all required fields for proper display in UI
               io.emit("new-message", {
-                leadId: lead.id,
+                leadId: parseInt(lead.id, 10), // Ensure leadId is a number
                 message: {
                   id: aiMessage.id,
+                  leadId: parseInt(lead.id, 10), // Explicitly include leadId as a number
                   text: aiMessage.text,
                   sender: aiMessage.sender,
+                  direction: aiMessage.direction || 'outbound',
                   createdAt: aiMessage.createdAt,
                   leadName: lead.name,
                   phoneNumber: lead.phoneNumber,
-                  deliveryStatus: aiMessage.deliveryStatus,
+                  deliveryStatus: aiMessage.deliveryStatus || "sent",
+                  isAiGenerated: true,
+                  twilioSid: aiMessage.twilioSid || null
                 },
               });
+              
+              console.log("AI response socket event emitted successfully");
+            } else {
+              console.warn("Socket.io instance not available - unable to emit AI message event");
             }
 
             console.log("Lead info:", {
@@ -782,6 +853,70 @@ const messageController = {
 
     return normalize(phone1) === normalize(phone2);
   },
+
+  // Debug endpoint to check for recent messages
+  async getRecentMessages(req, res) {
+    try {
+      const { leadId } = req.params;
+      
+      // Get messages from the last hour
+      const oneHourAgo = new Date();
+      oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+      
+      const messages = await Message.findAll({
+        where: { 
+          leadId,
+          createdAt: {
+            [Op.gte]: oneHourAgo
+          }
+        },
+        order: [["createdAt", "DESC"]],
+        limit: 50
+      });
+      
+      res.json({
+        count: messages.length,
+        messages: messages,
+        timestamp: new Date().toISOString(),
+        period: {
+          from: oneHourAgo.toISOString(),
+          to: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      logger.error("Error fetching recent messages:", error);
+      res.status(500).json({ error: "Failed to fetch recent messages" });
+    }
+  },
+  
+  // Get all messages with optional status filter
+  async getAllMessages(req, res) {
+    try {
+      const { status } = req.query;
+      const whereClause = status && status !== "all" 
+        ? { deliveryStatus: status } 
+        : {};
+
+      const messages = await Message.findAll({
+        where: whereClause,
+        order: [["createdAt", "DESC"]],
+        limit: 100,
+        include: [
+          {
+            model: Lead,
+            attributes: ['id', 'name', 'phoneNumber'],
+            required: false
+          }
+        ]
+      });
+
+      logger.info(`Retrieved ${messages.length} messages${status ? ` with status ${status}` : ''}`);
+      res.json(messages);
+    } catch (error) {
+      logger.error("Error fetching all messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  }
 };
 
 module.exports = messageController;

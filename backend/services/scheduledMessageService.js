@@ -5,8 +5,16 @@ const logger = require("../utils/logger");
 const { Op } = require("sequelize");
 const Message = require("../models/Message");
 
-// Follow-up intervals in days
-const FOLLOW_UP_INTERVALS = [7, 14, 30]; // 1 week, 2 weeks, 1 month
+// Follow-up intervals based on lead status (in days)
+const STATUS_FOLLOW_UP_INTERVALS = {
+  "New": 7,        // Message weekly
+  "Contacted": 7,  // Message weekly
+  "Qualified": 7,  // Message weekly
+  "Lost": 30       // Message monthly
+};
+
+// Legacy follow-up intervals for backward compatibility - NO LONGER USED
+// const FOLLOW_UP_INTERVALS = [7, 14, 30]; // 1 week, 2 weeks, 1 month
 
 const scheduledMessageService = {
   async scheduleNextMessage(leadId) {
@@ -17,9 +25,14 @@ const scheduledMessageService = {
         return;
       }
 
-      // If we've sent all follow-ups, don't schedule more
-      if (lead.messageCount >= FOLLOW_UP_INTERVALS.length) {
-        return;
+      // Get the appropriate follow-up interval based on lead status
+      const leadStatus = lead.status; // Status is already properly capitalized
+      let daysToAdd = 7; // Default to weekly
+
+      if (STATUS_FOLLOW_UP_INTERVALS[leadStatus]) {
+        daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus];
+      } else {
+        logger.warn(`Unknown lead status: ${lead.status}, defaulting to weekly follow-up`);
       }
 
       // Calculate next message date
@@ -46,9 +59,8 @@ const scheduledMessageService = {
             break;
         }
       } else {
-        // For follow-up messages, use the existing logic
-        const daysToAdd = FOLLOW_UP_INTERVALS[lead.messageCount - 1];
-        nextScheduledMessage = new Date(lead.lastMessageDate);
+        // For all follow-up messages, use status-based intervals
+        nextScheduledMessage = new Date(lead.lastMessageDate || new Date());
         nextScheduledMessage.setDate(
           nextScheduledMessage.getDate() + daysToAdd
         );
@@ -58,7 +70,7 @@ const scheduledMessageService = {
       await lead.update({ nextScheduledMessage });
 
       logger.info(
-        `Scheduled next message for lead ${leadId} at ${nextScheduledMessage}`
+        `Scheduled next message for lead ${leadId} (status: ${lead.status}) at ${nextScheduledMessage}, using interval of ${daysToAdd} days`
       );
     } catch (error) {
       logger.error(`Error scheduling next message for lead ${leadId}:`, error);
@@ -80,13 +92,17 @@ const scheduledMessageService = {
 
       for (const lead of leads) {
         try {
+          // Get the appropriate follow-up interval based on lead status
+          const leadStatus = lead.status; // Status is already properly capitalized
+          let followUpInterval = 7; // Default to weekly
+          
+          if (STATUS_FOLLOW_UP_INTERVALS[leadStatus]) {
+            followUpInterval = STATUS_FOLLOW_UP_INTERVALS[leadStatus];
+          }
+
           // Generate and send follow-up message
           const aiResponseData = await openaiService.generateResponse(
-            `Generate follow-up message #${
-              lead.messageCount
-            } for a lead who hasn't responded in ${
-              FOLLOW_UP_INTERVALS[lead.messageCount - 1]
-            } days. Keep it casual but professional.`,
+            `Generate follow-up message #${lead.messageCount + 1} for a lead with status "${lead.status}" who hasn't responded in ${followUpInterval} days. Keep it casual but professional.`,
             {},
             [] // No previous messages needed for follow-up
           );
@@ -108,9 +124,10 @@ const scheduledMessageService = {
           await lead.update({
             lastMessageDate: new Date(),
             nextScheduledMessage: null, // Clear the scheduled message after sending
+            messageCount: lead.messageCount + 1
           });
 
-          // Schedule next message if available
+          // Schedule next message
           await this.scheduleNextMessage(lead.id);
         } catch (error) {
           logger.error(
@@ -146,13 +163,17 @@ const scheduledMessageService = {
       // Send messages for each lead
       for (const lead of leadsWithDueMessages) {
         try {
+          // Get the appropriate follow-up interval based on lead status
+          const leadStatus = lead.status; // Status is already properly capitalized
+          let followUpInterval = 7; // Default to weekly
+          
+          if (STATUS_FOLLOW_UP_INTERVALS[leadStatus]) {
+            followUpInterval = STATUS_FOLLOW_UP_INTERVALS[leadStatus];
+          }
+
           // Generate message text
           const aiResponseData = await openaiService.generateResponse(
-            `Generate follow-up message #${
-              lead.messageCount
-            } for a lead who hasn't responded in ${
-              FOLLOW_UP_INTERVALS[lead.messageCount - 1]
-            } days. Keep it casual but professional.`,
+            `Generate follow-up message #${lead.messageCount + 1} for a lead with status "${lead.status}" who hasn't responded in ${followUpInterval} days. Keep it casual but professional. Use the same tone and style as previous messages.`,
             {},
             [] // No previous messages needed
           );
@@ -172,7 +193,8 @@ const scheduledMessageService = {
             leadId: lead.id,
             text: messageText,
             sender: "agent",
-            status: "scheduled",
+            isAiGenerated: true,
+            deliveryStatus: "queued",
             direction: "outbound",
           });
 
@@ -185,15 +207,19 @@ const scheduledMessageService = {
             );
 
             // Update message status to sent
-            await message.update({ status: "sent" });
+            await message.update({ deliveryStatus: "sent" });
 
             // Update lead record
             await lead.update({
               nextScheduledMessage: null,
               messageCount: lead.messageCount + 1,
+              lastMessageDate: new Date()
             });
 
-            logger.info(`Sent scheduled message to lead ${lead.id}`);
+            logger.info(`Sent scheduled message to lead ${lead.id} with status ${lead.status}, using interval of ${followUpInterval} days`);
+            
+            // Schedule the next follow-up
+            await this.scheduleNextMessage(lead.id);
           } catch (twilioError) {
             // Handle Twilio errors
             logger.error(
@@ -202,8 +228,8 @@ const scheduledMessageService = {
 
             // Update message status to failed
             await message.update({
-              status: "failed",
-              statusDetails: twilioError.message,
+              deliveryStatus: "failed",
+              errorMessage: twilioError.message,
             });
 
             // Don't update the lead's nextScheduledMessage so we can try again later
@@ -219,6 +245,95 @@ const scheduledMessageService = {
       logger.error("Error checking for scheduled messages:", error);
     }
   },
+
+  // Add this new method for compatibility with old code
+  async scheduleFollowUp(leadId, lastMessageDate) {
+    logger.info(`ScheduledMessageService: Scheduling next message for lead ${leadId} instead of using old followUpService`);
+    
+    try {
+      const lead = await Lead.findByPk(leadId);
+      
+      if (!lead || !lead.enableFollowUps) {
+        return;
+      }
+      
+      // Get the appropriate follow-up interval based on lead status
+      const leadStatus = lead.status; // Status is already properly capitalized
+      let daysToAdd = 7; // Default to weekly
+      
+      if (STATUS_FOLLOW_UP_INTERVALS[leadStatus]) {
+        daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus];
+      } else {
+        logger.warn(`Unknown lead status: ${lead.status}, defaulting to weekly follow-up`);
+      }
+      
+      // Calculate next message date based on last message date
+      const nextScheduledMessage = new Date(lastMessageDate || new Date());
+      nextScheduledMessage.setDate(nextScheduledMessage.getDate() + daysToAdd);
+      
+      // Update lead with next scheduled message
+      await lead.update({ nextScheduledMessage });
+      
+      logger.info(
+        `Scheduled next message for lead ${leadId} (status: ${lead.status}) at ${nextScheduledMessage}, using status-based interval of ${daysToAdd} days`
+      );
+      
+      return { 
+        success: true, 
+        leadId,
+        nextScheduledMessage,
+        interval: daysToAdd,
+        status: lead.status
+      };
+    } catch (error) {
+      logger.error(`Error in scheduleFollowUp for lead ${leadId}:`, error);
+      throw error;
+    }
+  },
+
+  // Utility function to reset a lead's next scheduled message based on status
+  async resetScheduledMessage(leadId) {
+    try {
+      const lead = await Lead.findByPk(leadId);
+      
+      if (!lead) {
+        logger.error(`Lead ${leadId} not found for reset`);
+        return { success: false, message: 'Lead not found' };
+      }
+      
+      // Get the appropriate follow-up interval based on lead status
+      const leadStatus = lead.status;
+      let daysToAdd = 7; // Default to weekly
+      
+      if (STATUS_FOLLOW_UP_INTERVALS[leadStatus]) {
+        daysToAdd = STATUS_FOLLOW_UP_INTERVALS[leadStatus];
+      }
+      
+      // If there's a lastMessageDate, use that. Otherwise use current date
+      const lastMessageDate = lead.lastMessageDate || new Date();
+      const nextScheduledMessage = new Date(lastMessageDate);
+      nextScheduledMessage.setDate(nextScheduledMessage.getDate() + daysToAdd);
+      
+      // Update lead with corrected next scheduled message
+      await lead.update({ nextScheduledMessage });
+      
+      logger.info(
+        `Reset next scheduled message for lead ${leadId} (status: ${lead.status}) to ${nextScheduledMessage}, using interval of ${daysToAdd} days`
+      );
+      
+      return { 
+        success: true, 
+        message: `Next message scheduled for ${nextScheduledMessage}`,
+        leadStatus: lead.status,
+        interval: daysToAdd,
+        lastMessageDate: lastMessageDate,
+        nextMessageDate: nextScheduledMessage
+      };
+    } catch (error) {
+      logger.error(`Error resetting scheduled message for lead ${leadId}:`, error);
+      return { success: false, message: error.message };
+    }
+  }
 };
 
 module.exports = scheduledMessageService;

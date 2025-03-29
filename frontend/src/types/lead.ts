@@ -1,3 +1,5 @@
+import { Message } from "./message";
+
 export interface Lead {
   id: number;
   name: string;
@@ -15,7 +17,11 @@ export interface Lead {
   createdAt?: string;
   updatedAt?: string;
   messages?: Message[];
-  followUps?: FollowUp[];
+  calendlyEventUri?: string;
+  calendlyInviteeUri?: string;
+  googleCalendarEventId?: string;
+  googleCalendarEventLink?: string;
+  googleCalendarEventStatus?: string;
 }
 
 export interface LeadFormData {

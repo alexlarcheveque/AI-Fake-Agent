@@ -95,20 +95,7 @@ app.post("/messages/receive", (req, res) => {
   messageController.receiveMessage(req, res);
 });
 
-// Add this route at the root level
-app.post("/messages/receive", (req, res) => {
-  console.log("========== INCOMING WEBHOOK ==========");
-  console.log("Body:", req.body);
-  console.log("From:", req.body.From);
-  console.log("To:", req.body.To);
-  console.log("Body:", req.body.Body);
-  console.log("MessageSid:", req.body.MessageSid);
-  console.log("======================================");
-
-  messageController.receiveMessage(req, res);
-});
-
-// Add this route at the root level
+// Add this route at the root level - CONSOLIDATED THE TWO DUPLICATE BLOCKS INTO ONE
 app.post("/messages/receive", (req, res) => {
   console.log("========== INCOMING WEBHOOK ==========");
   console.log("Body:", req.body);
