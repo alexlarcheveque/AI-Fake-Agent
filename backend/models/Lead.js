@@ -36,7 +36,10 @@ const Lead = sequelize.define(
     status: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "new",
+      defaultValue: "New",
+      validate: {
+        isIn: [["New", "Contacted", "Qualified", "Lost"]]
+      }
     },
     aiAssistantEnabled: {
       type: DataTypes.BOOLEAN,
@@ -83,6 +86,15 @@ const Lead = sequelize.define(
   },
   {
     timestamps: true,
+    hooks: {
+      // Add a hook to clear nextScheduledMessage when aiAssistantEnabled is set to false
+      beforeUpdate: async (lead, options) => {
+        // Check if aiAssistantEnabled is being changed to false
+        if (lead.changed('aiAssistantEnabled') && lead.aiAssistantEnabled === false) {
+          lead.nextScheduledMessage = null;
+        }
+      },
+    },
   }
 );
 

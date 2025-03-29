@@ -114,8 +114,8 @@ const MessageStatusDashboard: React.FC = () => {
                     {new Date(message.createdAt).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {message.statusUpdatedAt
-                      ? new Date(message.statusUpdatedAt).toLocaleString()
+                    {message.updatedAt
+                      ? new Date(message.updatedAt).toLocaleString()
                       : "-"}
                   </td>
                 </tr>

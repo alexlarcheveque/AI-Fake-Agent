@@ -4,6 +4,7 @@ const logger = require("../utils/logger");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const settingsController = require("./userSettingsController");
+const { Op } = require("sequelize");
 
 // Generate JWT token
 const generateToken = (user) => {
@@ -13,13 +14,34 @@ const generateToken = (user) => {
 };
 
 // Create email transporter
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+let transporter;
+try {
+  // Check if we're using Gmail
+  if (process.env.EMAIL_SERVICE === 'gmail') {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+  } else {
+    // For other custom SMTP providers
+    transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+      port: process.env.EMAIL_PORT || 587,
+      secure: process.env.EMAIL_SECURE === 'true',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+  }
+  
+  logger.info('Email transporter configured successfully');
+} catch (error) {
+  logger.error('Error configuring email transporter:', error);
+}
 
 const authController = {
   // Register new user
@@ -156,16 +178,23 @@ const authController = {
       // Send reset email
       const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-      await transporter.sendMail({
-        to: email,
-        subject: "Password Reset Request",
-        html: `
-          <p>You requested a password reset.</p>
-          <p>Click this <a href="${resetUrl}">link</a> to reset your password.</p>
-          <p>If you didn't request this, please ignore this email.</p>
-          <p>This link will expire in 1 hour.</p>
-        `,
-      });
+      try {
+        await transporter.sendMail({
+          to: email,
+          subject: "Password Reset Request",
+          html: `
+            <p>You requested a password reset.</p>
+            <p>Click this <a href="${resetUrl}">link</a> to reset your password.</p>
+            <p>If you didn't request this, please ignore this email.</p>
+            <p>This link will expire in 1 hour.</p>
+          `,
+        });
+        logger.info(`Password reset email sent to: ${email}`);
+      } catch (emailError) {
+        // Log the error but don't reveal it to the user
+        logger.error("Email sending error:", emailError);
+        // We still return success to avoid leaking info about valid emails
+      }
 
       res.json({
         message:

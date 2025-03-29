@@ -47,6 +47,32 @@ const MessagesCenter: React.FC = () => {
     }
   }, [searchParams, leads]);
 
+  // Listen for lead-updated custom events (e.g., when AI Assistant is toggled off)
+  useEffect(() => {
+    const handleLeadUpdated = (event: Event) => {
+      // Type assertion for the custom event
+      const customEvent = event as CustomEvent<{leadId: number, nextScheduledMessage: string | null}>;
+      const { leadId, nextScheduledMessage } = customEvent.detail;
+      
+      // Update the lead in our state
+      setLeads(prevLeads => 
+        prevLeads.map(lead => 
+          lead.id === leadId 
+            ? { ...lead, nextScheduledMessage: nextScheduledMessage || undefined } 
+            : lead
+        )
+      );
+    };
+    
+    // Add event listener
+    window.addEventListener('lead-updated', handleLeadUpdated);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('lead-updated', handleLeadUpdated);
+    };
+  }, []);
+
   // Fetch leads on component mount and when page changes
   useEffect(() => {
     const fetchLeads = async () => {
@@ -179,7 +205,7 @@ const MessagesCenter: React.FC = () => {
             {selectedLeadId ? (
               <MessageThread
                 leadId={selectedLeadId}
-                leadName={leads.find((l) => l.id === selectedLeadId)?.name}
+                leadName={leads.find((l) => l.id === selectedLeadId)?.name || 'Unknown Lead'}
                 leadEmail={leads.find((l) => l.id === selectedLeadId)?.email}
                 leadPhone={
                   leads.find((l) => l.id === selectedLeadId)?.phoneNumber

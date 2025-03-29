@@ -28,6 +28,15 @@ router.get("/template", leadController.downloadLeadTemplate);
 // Bulk import leads from CSV - MUST be before /:id route
 router.post("/bulk", upload.single('file'), leadController.bulkImportLeads);
 
+// Fix lead scheduling - MUST be before /:id route
+router.post("/fix-scheduling/:id", leadController.fixLeadScheduling);
+
+// Fix all lead schedule intervals - MUST be before /:id route
+router.post("/fix-all-schedule-intervals", leadController.fixAllScheduleIntervals);
+
+// Schedule follow-up - MUST be before /:id route
+router.post("/schedule-followup/:id", leadController.scheduleFollowUp);
+
 // Get a single lead by id - Place parametrized routes AFTER specific routes
 router.get("/:id", leadController.getLeadById);
 

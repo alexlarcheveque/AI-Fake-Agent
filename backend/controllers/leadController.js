@@ -1,6 +1,5 @@
 const Lead = require("../models/Lead");
 const Message = require("../models/Message");
-const FollowUp = require("../models/FollowUp");
 const { Op } = require("sequelize");
 const logger = require("../utils/logger");
 const scheduledMessageService = require("../services/scheduledMessageService");
@@ -398,6 +397,159 @@ const leadController = {
       res.status(500).json({ error: "Failed to generate lead template" });
     }
   },
+
+  // Fix lead scheduling
+  async fixLeadScheduling(req, res) {
+    try {
+      const { id } = req.params;
+      
+      logger.info(`Fixing scheduling for lead ${id}`);
+      
+      // Use the utility function to reset the lead's next scheduled message
+      const result = await scheduledMessageService.resetScheduledMessage(id);
+      
+      if (!result.success) {
+        return res.status(404).json({ error: result.message });
+      }
+      
+      // Return detailed information about the fix
+      res.json({
+        message: "Lead scheduling fixed successfully",
+        details: result
+      });
+    } catch (error) {
+      logger.error("Error fixing lead scheduling:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Schedule a new follow-up message
+  async scheduleFollowUp(req, res) {
+    try {
+      const { id } = req.params;
+      
+      logger.info(`Scheduling new follow-up for lead ${id} after AI Assistant toggle`);
+      
+      // First, find the lead to verify it exists and get its current state
+      const lead = await Lead.findByPk(id);
+      
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+      
+      // Verify AI Assistant is enabled
+      if (!lead.aiAssistantEnabled) {
+        return res.status(400).json({ 
+          error: "Cannot schedule follow-up when AI Assistant is disabled"
+        });
+      }
+      
+      // Schedule the next message based on lead status
+      await scheduledMessageService.scheduleNextMessage(id);
+      
+      // Fetch the updated lead to get the new scheduled message date
+      const updatedLead = await Lead.findByPk(id);
+      
+      res.json({
+        message: "Follow-up scheduled successfully",
+        nextScheduledMessage: updatedLead.nextScheduledMessage,
+        status: updatedLead.status
+      });
+    } catch (error) {
+      logger.error("Error scheduling follow-up:", error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+  
+  // Fix all lead schedule intervals to be 7 days
+  async fixAllScheduleIntervals(req, res) {
+    try {
+      logger.info('Starting fix for all lead schedule intervals...');
+      
+      // Find all leads with scheduled messages
+      const leads = await Lead.findAll({
+        where: {
+          nextScheduledMessage: {
+            [Op.not]: null
+          },
+          aiAssistantEnabled: true
+        }
+      });
+      
+      logger.info(`Found ${leads.length} leads with scheduled messages to check`);
+      
+      let fixedCount = 0;
+      const results = [];
+      
+      for (const lead of leads) {
+        try {
+          // Skip leads without a lastMessageDate
+          if (!lead.lastMessageDate) {
+            results.push({
+              leadId: lead.id,
+              status: 'skipped',
+              reason: 'No last message date'
+            });
+            continue;
+          }
+          
+          const lastMessageDate = new Date(lead.lastMessageDate);
+          const currentScheduledDate = new Date(lead.nextScheduledMessage);
+          
+          // Calculate the current interval in milliseconds and convert to days
+          const currentIntervalMs = currentScheduledDate.getTime() - lastMessageDate.getTime();
+          const currentIntervalDays = Math.round(currentIntervalMs / (1000 * 60 * 60 * 24));
+          
+          // If the interval is not 7 days, fix it
+          if (currentIntervalDays !== 7) {
+            // Calculate the correct date (7 days from last message)
+            const correctedDate = new Date(lastMessageDate);
+            correctedDate.setDate(correctedDate.getDate() + 7);
+            
+            // Update the lead
+            await lead.update({ 
+              nextScheduledMessage: correctedDate 
+            });
+            
+            results.push({
+              leadId: lead.id,
+              status: 'fixed',
+              oldInterval: currentIntervalDays,
+              oldDate: currentScheduledDate.toISOString(),
+              newDate: correctedDate.toISOString()
+            });
+            
+            fixedCount++;
+          } else {
+            results.push({
+              leadId: lead.id,
+              status: 'ok',
+              interval: currentIntervalDays
+            });
+          }
+        } catch (error) {
+          logger.error(`Error processing lead ${lead.id}:`, error);
+          results.push({
+            leadId: lead.id,
+            status: 'error',
+            error: error.message
+          });
+        }
+      }
+      
+      logger.info(`Fixed ${fixedCount} leads with incorrect intervals`);
+      
+      res.json({
+        message: `Fixed ${fixedCount} out of ${leads.length} leads with incorrect follow-up intervals`,
+        fixedCount,
+        totalCount: leads.length,
+        results
+      });
+    } catch (error) {
+      logger.error("Error fixing all lead schedule intervals:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
 };
 
 module.exports = leadController;
