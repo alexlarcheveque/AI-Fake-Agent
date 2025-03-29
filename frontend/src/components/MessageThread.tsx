@@ -39,7 +39,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   leadEmail,
   leadPhone,
   leadSource,
-  nextScheduledMessage,
+  nextScheduledMessage: propNextScheduledMessage,
   messageCount,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -51,7 +51,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [latestMessage, setLatestMessage] = useState<string | null>(null);
   const [appointmentSuccess, setAppointmentSuccess] = useState<string | null>(null);
   const [calendarConfigurationError, setCalendarConfigurationError] = useState(false);
+  const [nextScheduledMessage, setNextScheduledMessage] = useState<string | undefined>(propNextScheduledMessage);
   const { socket, connected, reconnect, lastEventTime } = useSocket();
+
+  // Update local state when prop changes
+  useEffect(() => {
+    setNextScheduledMessage(propNextScheduledMessage);
+  }, [propNextScheduledMessage]);
 
   // Helper function to validate and normalize messages
   const validateAndNormalizeMessage = (message: any): Message | null => {
@@ -150,6 +156,39 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       fetchData();
     }
   }, [leadId]);
+  
+  // Listen for lead-updated events to update the nextScheduledMessage without requiring a refresh
+  useEffect(() => {
+    const handleLeadUpdated = (event: CustomEvent<{leadId: number, nextScheduledMessage: string | null}>) => {
+      const { leadId: updatedLeadId, nextScheduledMessage: updatedSchedule } = event.detail;
+      
+      // Only update if this event is for our lead
+      if (updatedLeadId === leadId) {
+        console.log("Received lead-updated event, updating nextScheduledMessage:", updatedSchedule);
+        
+        // Update our local state for immediate UI refresh
+        setNextScheduledMessage(updatedSchedule || undefined);
+        
+        // Update the parent component's props through the window event
+        // This is just to maintain consistent data state, the actual UI update comes from
+        // the nextScheduledMessage prop which will be updated by the parent component
+        window.dispatchEvent(new CustomEvent('lead-updated', { 
+          detail: { 
+            leadId: leadId,
+            nextScheduledMessage: updatedSchedule
+          } 
+        }));
+      }
+    };
+    
+    // Add the event listener
+    window.addEventListener('lead-updated', handleLeadUpdated as EventListener);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('lead-updated', handleLeadUpdated as EventListener);
+    };
+  }, [leadId]);
 
   // Force refresh messages function with improved error handling
   const refreshMessages = async () => {
@@ -199,15 +238,23 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }
   };
 
-  // Set up an interval to periodically refresh messages (every 30 seconds)
+  // Set up an interval to periodically refresh messages only when socket is not connected
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      console.log("Auto-refreshing messages...");
-      refreshMessages();
-    }, 30000); // 30 seconds
+    // Only set up auto-refresh if socket is not connected (as a fallback)
+    if (!connected || !socket) {
+      console.log("Socket not connected or unavailable, setting up auto-refresh fallback");
+      const intervalId = setInterval(() => {
+        console.log("Auto-refreshing messages (socket fallback)...");
+        refreshMessages();
+      }, 60000); // 60 seconds - longer interval since this is a fallback
+      
+      return () => clearInterval(intervalId);
+    }
     
-    return () => clearInterval(intervalId);
-  }, [leadId]);
+    // No interval needed when socket is connected and working
+    console.log("Socket connected, no auto-refresh interval needed");
+    return () => {};
+  }, [connected, socket, leadId]);
   
   // Add a refresh when socket connects or reconnects
   useEffect(() => {
@@ -307,6 +354,35 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               setLatestMessage(normalizedMessage.text);
             }
           }
+          
+          // If this is an AI generated message, refresh the lead data to get the updated next scheduled message
+          const refreshLeadData = async () => {
+            try {
+              console.log("Refreshing lead data to update next scheduled message");
+              const refreshedLead = await leadApi.getLead(leadId);
+              
+              // If the next scheduled message has changed, update it in the UI
+              if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
+                console.log("Next scheduled message updated:", refreshedLead.nextScheduledMessage);
+                
+                // First update our local state for immediate UI refresh
+                setNextScheduledMessage(refreshedLead.nextScheduledMessage);
+                
+                // Then dispatch an event to update any parent components
+                window.dispatchEvent(new CustomEvent('lead-updated', { 
+                  detail: { 
+                    leadId: leadId,
+                    nextScheduledMessage: refreshedLead.nextScheduledMessage 
+                  } 
+                }));
+              }
+            } catch (err) {
+              console.error("Error refreshing lead data:", err);
+            }
+          };
+          
+          // Refresh lead data after a short delay to allow the backend to update
+          setTimeout(refreshLeadData, 1000);
         }
 
         // Check if this message is already in our state to avoid duplicates
@@ -492,6 +568,34 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
       // Instead of fetching all messages again, just add the new one to state
       setMessages((prev) => [...prev, sentMessage]);
+      
+      // If AI is enabled, refresh lead data after a short delay to get the updated nextScheduledMessage
+      if (aiAssistantEnabled) {
+        setTimeout(async () => {
+          try {
+            console.log("Refreshing lead data after sending message to get updated nextScheduledMessage");
+            const refreshedLead = await leadApi.getLead(leadId);
+            
+            // If the next scheduled message has changed, update it in the UI
+            if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
+              console.log("Next scheduled message updated:", refreshedLead.nextScheduledMessage);
+              
+              // Update our local state for immediate UI refresh
+              setNextScheduledMessage(refreshedLead.nextScheduledMessage);
+              
+              // Dispatch an event to update any parent components
+              window.dispatchEvent(new CustomEvent('lead-updated', { 
+                detail: { 
+                  leadId: leadId,
+                  nextScheduledMessage: refreshedLead.nextScheduledMessage 
+                } 
+              }));
+            }
+          } catch (err) {
+            console.error("Error refreshing lead data after sending message:", err);
+          }
+        }, 5000); // Wait 5 seconds for AI to respond
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       setIsSending(false);
@@ -630,21 +734,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               Reconnect
+              <span className="ml-1 text-xs opacity-75">(Auto-refreshing)</span>
             </button>
           )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              refreshMessages();
-            }}
-            className="mr-3 px-3 py-1.5 text-sm rounded-md flex items-center bg-gray-100 text-gray-700 hover:bg-gray-200"
-            title="Refresh messages"
-          >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
           <button
             onClick={() => setShowAppointments(!showAppointments)}
             className={`mr-3 px-3 py-1.5 text-sm rounded-md flex items-center ${
@@ -751,7 +843,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     onClick={() => refreshMessages()}
                     className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
                   >
-                    Refresh Messages
+                    Force Refresh (Testing)
                   </button>
                 </div>
                 

@@ -54,28 +54,33 @@ const userSettingsService = {
   // Add this new function
   async getAllSettings(userId) {
     try {
-      const settings = await UserSettings.findAll({
+      if (!userId) {
+        console.log("No userId provided, returning default settings");
+        return DEFAULT_SETTINGS;
+      }
+      
+      // Find the settings for this user
+      const userSettings = await UserSettings.findOne({
         where: { userId },
       });
 
-      // Convert to a map
-      const settingsMap = {};
-      settings.forEach((setting) => {
-        settingsMap[setting.key] = setting.value;
-      });
-
-      console.log(
-        `Retrieved ${settings.length} settings for user ${userId}:`,
-        settingsMap
-      );
-
-      // Fill in any missing settings with defaults
-      Object.keys(DEFAULT_SETTINGS).forEach((key) => {
-        if (!settingsMap[key]) {
-          settingsMap[key] = DEFAULT_SETTINGS[key];
-        }
-      });
-
+      if (!userSettings) {
+        console.log(`No settings found for user ${userId}, using defaults`);
+        return DEFAULT_SETTINGS;
+      }
+      
+      // Map the database column names to the uppercase keys expected by OpenAI service
+      const settingsMap = {
+        AGENT_NAME: userSettings.agentName || DEFAULT_SETTINGS.AGENT_NAME,
+        COMPANY_NAME: userSettings.companyName || DEFAULT_SETTINGS.COMPANY_NAME,
+        AGENT_STATE: userSettings.agentState || DEFAULT_SETTINGS.AGENT_STATE,
+        AGENT_CITY: userSettings.agentCity || DEFAULT_SETTINGS.AGENT_CITY,
+        AI_ASSISTANT_ENABLED: userSettings.aiAssistantEnabled !== undefined ? 
+                             userSettings.aiAssistantEnabled : 
+                             DEFAULT_SETTINGS.AI_ASSISTANT_ENABLED
+      };
+      
+      console.log(`Retrieved settings for user ${userId}:`, settingsMap);
       return settingsMap;
     } catch (error) {
       console.error(`Error getting settings for user ${userId}:`, error);
