@@ -7,10 +7,12 @@ const Message = require("../models/Message");
 
 // Follow-up intervals based on lead status (in days)
 const STATUS_FOLLOW_UP_INTERVALS = {
-  "New": 7,        // Message weekly
-  "Contacted": 7,  // Message weekly
-  "Qualified": 7,  // Message weekly
-  "Lost": 30       // Message monthly
+  "New": 2,               // Follow up in 2 days if no response to initial message
+  "In Conversation": 3,   // Follow up more frequently during active conversation
+  "Qualified": 5,         // Follow up every 5 days once qualified
+  "Appointment Set": 1,   // Follow up day before appointment
+  "Converted": 14,        // Check in every 2 weeks after conversion
+  "Inactive": 30          // Try again after 30 days for inactive leads
 };
 
 // Legacy follow-up intervals for backward compatibility - NO LONGER USED

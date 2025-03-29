@@ -8,10 +8,22 @@ const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
 const openai = new OpenAI({ apiKey });
 
 const openaiService = {
-  async generateResponse(text, settings = null, previousMessages = []) {
+  async generateResponse(
+    userMessage,
+    settingsMap = {},
+    previousMessages = [],
+    promptContext = {}
+  ) {
     try {
+      // Destructure promptContext to get lead information
+      const { 
+        leadName = "the client", 
+        leadStatus = "New",
+        qualifyingLeadDetected = false
+      } = promptContext;
+      
       // Get settings from agentSettings if not provided
-      const configSettings = settings || agentSettings.getAll();
+      const configSettings = settingsMap || agentSettings.getAll();
 
       // Get current date for proper date references in the system prompt
       const currentDate = new Date();
@@ -46,22 +58,36 @@ const openaiService = {
       // If this is the first message and there's lead context, add it as the first user message
       if (
         messageHistory.length === 0 &&
-        text.startsWith("Initial warm and engaging introduction")
+        userMessage.startsWith("Initial warm and engaging introduction")
       ) {
         messageHistory.push({
           role: "user",
           content:
             "Here's my situation: " +
-            text.replace(
+            userMessage.replace(
               "Initial warm and engaging introduction message with the following context: ",
               ""
             ),
         });
         // Set an empty text so the AI just responds to the context
-        text = "";
+        userMessage = "";
       }
 
       console.log("messageHistory", messageHistory);
+
+      // If qualifying lead detected, add instructions to ask qualification questions
+      let qualificationInstructions = "";
+      if (qualifyingLeadDetected) {
+        qualificationInstructions = `
+        IMPORTANT: This lead has shown interest in buying/selling real estate. Ask 1-2 friendly 
+        questions to gather more information about their needs in ONE of these areas:
+        - Timeline (When they want to buy/sell)
+        - Budget (What price range they're considering)
+        - Location (What areas they're interested in)
+        
+        Keep it conversational, not like a formal survey. Don't ask about all three at once.
+        `;
+      }
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -132,14 +158,16 @@ const openaiService = {
 
               - Ensure responses meet the buyer's or seller's immediate needs and encourage the desired next steps.
               - NEVER use placeholder text for dates. Always convert day names (like "Saturday") to a specific date (like "${saturdayFormatted}").
-              - For appointments, always use the exact format "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" with real dates and times.`,
+              - For appointments, always use the exact format "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" with real dates and times.
+
+              ${qualificationInstructions}`,
           },
           ...messageHistory,
-          ...(text
+          ...(userMessage
             ? [
                 {
                   role: "user",
-                  content: text,
+                  content: userMessage,
                 },
               ]
             : []),

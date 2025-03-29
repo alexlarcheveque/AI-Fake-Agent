@@ -1,11 +1,19 @@
 import { Message } from "./message";
 
+export type LeadStatus = 
+  | "New" 
+  | "In Conversation" 
+  | "Qualified" 
+  | "Appointment Set" 
+  | "Converted" 
+  | "Inactive";
+
 export interface Lead {
   id: number;
   name: string;
   email: string;
   phoneNumber: string;
-  status: string;
+  status: LeadStatus;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
   firstMessageTiming: string;
@@ -28,7 +36,7 @@ export interface LeadFormData {
   name: string;
   email: string;
   phoneNumber: string;
-  status: string;
+  status: LeadStatus;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
   firstMessageTiming: string;

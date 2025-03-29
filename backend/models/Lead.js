@@ -38,7 +38,7 @@ const Lead = sequelize.define(
       allowNull: false,
       defaultValue: "New",
       validate: {
-        isIn: [["New", "Contacted", "Qualified", "Lost"]]
+        isIn: [["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"]]
       }
     },
     aiAssistantEnabled: {

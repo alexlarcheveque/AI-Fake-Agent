@@ -6,6 +6,7 @@ const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
 const scheduledMessageService = require("../services/scheduledMessageService");
 const userSettingsService = require("../services/userSettingsService");
+const leadStatusService = require("../services/leadStatusService");
 const { Op } = require("sequelize");
 const sequelize = require("sequelize");
 const { MessagingResponse } = require("twilio").twiml;
@@ -283,6 +284,42 @@ const messageController = {
         );
       }
 
+      // Update the lead status based on received message
+      console.log(`[DEBUG MAJOR] About to call leadStatusService.updateStatusBasedOnMessage for lead ${lead.id}, sender=lead, message: ${Body}`);
+      await leadStatusService.updateStatusBasedOnMessage(lead.id, Body, "lead");
+      console.log(`[DEBUG MAJOR] Finished calling leadStatusService.updateStatusBasedOnMessage for lead ${lead.id}`);
+      
+      // Fetch the lead again to get the potentially updated status
+      lead = await Lead.findByPk(lead.id);
+      console.log(`[DEBUG MAJOR] After status update, lead status is now: ${lead.status}`);
+      
+      // Define qualifyingLeadDetected variable before using it
+      let qualifyingLeadDetected = false;
+
+      // Simple keyword detection for potential qualification
+      // This is a very basic implementation that could be enhanced with NLP in the future
+      const isInConversationStatus = lead.status === "In Conversation";
+      if (isInConversationStatus) {
+        // Check for budget keywords
+        const hasBudgetKeywords = /\b(budget|afford|price|cost|spend|range|financing|mortgage|loan|pre.?approv|qualify|qualify for)\b/i.test(Body);
+        
+        // Check for timeline keywords
+        const hasTimelineKeywords = /\b(timeline|when|soon|move|moving|relocate|timeframe|month|year|asap|urgently|quickly)\b/i.test(Body);
+        
+        // Check for area/location keywords
+        const hasAreaKeywords = /\b(area|location|neighborhood|school|district|community|live|north|south|east|west|downtown|suburb)\b/i.test(Body);
+        
+        // If message contains at least two of the three qualification criteria, mark for agent review
+        if ([hasBudgetKeywords, hasTimelineKeywords, hasAreaKeywords].filter(Boolean).length >= 2) {
+          logger.info(`Potential qualification detected for lead ${lead.id} - contains 2+ qualification criteria`);
+          // We don't automatically change status, but we add a flag for agent review
+          // This could trigger an email/notification to the agent in a future enhancement
+          
+          // For now, let's add an AI question in the response to gather more qualifying info
+          qualifyingLeadDetected = true;
+        }
+      }
+
       // Create the message record
       const message = await Message.create({
         leadId: lead.id,
@@ -296,10 +333,12 @@ const messageController = {
       // Get the appropriate follow-up interval based on lead status
       const leadStatus = lead.status;
       const STATUS_FOLLOW_UP_INTERVALS = {
-        "New": 7,        // Message weekly
-        "Contacted": 7,  // Message weekly
-        "Qualified": 7,  // Message weekly
-        "Lost": 30       // Message monthly
+        "New": 2,               // Follow up in 2 days if no response
+        "In Conversation": 3,   // Follow up more frequently during active conversation
+        "Qualified": 5,         // Follow up every 5 days once qualified
+        "Appointment Set": 1,   // Follow up day before appointment
+        "Converted": 14,        // Check in every 2 weeks after conversion
+        "Inactive": 30          // Try again after 30 days for inactive leads
       };
       
       // Default to 7 days if status not found in the configuration
@@ -307,7 +346,7 @@ const messageController = {
       
       // Update the lead with the current messageCount + 1, but DON'T schedule an immediate follow-up
       await lead.update({
-        lastMessageAt: new Date(),
+        lastMessageDate: new Date(), // Corrected field name from lastMessageAt to lastMessageDate
         messageCount: lead.messageCount + 1,
         // Set nextScheduledMessage based on status-specific interval
         nextScheduledMessage: new Date(Date.now() + daysToAdd * 24 * 60 * 60 * 1000),
@@ -401,11 +440,25 @@ const messageController = {
             // Reverse to get chronological order
             const messageHistory = previousMessages.reverse();
 
-            // Generate AI response with proper settings and context
+            // First, check if this lead has AI messages disabled
+            if (!lead.aiAssistantEnabled) {
+              console.log(`AI Messages disabled for lead ${lead.id}`);
+              return res.send('<Response></Response>');
+            } 
+
+            // Generate AI response
+            console.log(`Generating AI response for lead ${lead.id}`);
+            const promptContext = {
+              leadName: lead.name,
+              leadStatus: lead.status,
+              qualifyingLeadDetected: qualifyingLeadDetected // Add this flag
+            };
+            
             const aiResponseData = await openaiService.generateResponse(
-              Body, // The incoming message text
+              Body,
               settingsMap,
-              messageHistory // Include previous messages for context
+              messageHistory,
+              promptContext // Pass the prompt context here
             );
 
             // Check if aiResponseData contains appointment details
