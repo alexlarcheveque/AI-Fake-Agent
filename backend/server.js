@@ -26,6 +26,8 @@ require("./models/associations");
 const http = require("http");
 const { Server } = require("socket.io");
 const messageController = require("./controllers/messageController");
+const propertyRoutes = require("./routes/propertyRoutes");
+const propertyMatcherService = require("./services/propertyMatcherService");
 
 const app = express();
 
@@ -75,6 +77,7 @@ app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
+app.use("/api/properties", propertyRoutes);
 app.use("/api/oauth", oauthRoutes);
 
 // Add this before your other routes
@@ -172,6 +175,9 @@ const initializeApp = async () => {
 
     // Keep the agentSettings initialization which is now updated to use the new model
     await agentSettings.initialize();
+
+    // Initialize the property matcher service
+    propertyMatcherService.init();
 
     // Start the server (use server instead of app)
     server.listen(PORT, () => {

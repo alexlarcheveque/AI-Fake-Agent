@@ -1,4 +1,13 @@
 const { Sequelize } = require("sequelize");
+require("dotenv").config();
+
+// Add debug logging for database config
+console.log("Database Config:", {
+  database: process.env.DB_NAME,
+  username: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  // Don't log password for security
+});
 
 const sequelize = new Sequelize({
   database: process.env.DB_NAME,

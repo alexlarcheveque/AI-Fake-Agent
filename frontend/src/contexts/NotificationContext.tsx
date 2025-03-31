@@ -5,7 +5,7 @@ import { format, isToday, isTomorrow, addDays } from 'date-fns';
 
 export interface Notification {
   id: string;
-  type: 'appointment' | 'message' | 'lead' | 'system';
+  type: 'appointment' | 'message' | 'lead' | 'system' | 'property_search';
   title: string;
   message: string;
   timestamp: Date;

@@ -123,7 +123,7 @@ const messageApi = {
       console.log("🧪 Emitted message should match this format:", {
         leadId: numericLeadId,
         message: {
-          id: expect.any(Number),
+          id: "any-number",
           leadId: numericLeadId,
           text: text || "This is a test message from the server",
           sender: "lead",
@@ -164,7 +164,7 @@ const messageApi = {
       console.log("🤖 Emitted message should match this format:", {
         leadId: numericLeadId,
         message: {
-          id: expect.any(Number),
+          id: "any-number",
           leadId: numericLeadId,
           text: text || "This is a simulated AI response message.",
           sender: "agent",

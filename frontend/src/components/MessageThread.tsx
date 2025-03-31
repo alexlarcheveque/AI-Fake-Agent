@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import messageApi from "../api/messageApi";
 import leadApi from "../api/leadApi";
 import appointmentApi, { ApiError } from "../api/appointmentApi";
+import propertySearchApi, { PropertySearchCriteria } from "../api/propertySearchApi";
 import { Message } from "../types/message";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
@@ -10,6 +11,10 @@ import AppointmentsList from "./AppointmentsList";
 import FollowUpIndicator from "./FollowUpIndicator";
 import { useSocket } from "../contexts/SocketContext";
 import useCalendly from "../hooks/useCalendly";
+import PropertySearchInfo from "../components/PropertySearchInfo";
+import PropertySearchCriteriaSummary from "../components/PropertySearchCriteriaSummary";
+import { useNotifications } from "../contexts/NotificationContext";
+import { toast } from "react-hot-toast";
 
 interface MessageThreadProps {
   leadId: number;
@@ -53,11 +58,235 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [calendarConfigurationError, setCalendarConfigurationError] = useState(false);
   const [nextScheduledMessage, setNextScheduledMessage] = useState<string | undefined>(propNextScheduledMessage);
   const { socket, connected, reconnect, lastEventTime } = useSocket();
+  const [searchCriteria, setSearchCriteria] = useState<any>(null);
+  const [showSearchButton, setShowSearchButton] = useState(false);
+  const [showFullPropertySearch, setShowFullPropertySearch] = useState(false);
+  const [showCriteriaDetails, setShowCriteriaDetails] = useState(false);
+  const { addNotification } = useNotifications();
+  const [highlightSearchCriteria, setHighlightSearchCriteria] = useState(false);
 
   // Update local state when prop changes
   useEffect(() => {
     setNextScheduledMessage(propNextScheduledMessage);
   }, [propNextScheduledMessage]);
+
+  // Initialize search criteria from session storage
+  useEffect(() => {
+    // Create a storage key specific to this lead
+    const storageKey = `propertySearchCriteria_${leadId}`;
+    
+    // Try to get search criteria from session storage
+    const savedCriteria = sessionStorage.getItem(storageKey);
+    if (savedCriteria) {
+      try {
+        const parsedCriteria = JSON.parse(savedCriteria);
+        console.log("Restored search criteria from session storage:", parsedCriteria);
+        setSearchCriteria(parsedCriteria);
+        setShowSearchButton(true);
+      } catch (err) {
+        console.error("Error parsing saved search criteria:", err);
+        // Remove invalid data
+        sessionStorage.removeItem(storageKey);
+      }
+    }
+  }, [leadId]); // Only run on mount and when leadId changes
+
+  // Update debugging for searchCriteria
+  useEffect(() => {
+    console.log("Current searchCriteria state:", searchCriteria);
+    
+    // Save search criteria to session storage when it changes
+    if (searchCriteria) {
+      const storageKey = `propertySearchCriteria_${leadId}`;
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(searchCriteria));
+        console.log("Saved search criteria to session storage");
+        
+        // Also update the database when search criteria changes
+        propertySearchApi.savePropertySearchCriteria(leadId, searchCriteria)
+          .then((success: boolean) => {
+            if (success) {
+              console.log("Successfully saved updated property search to database");
+            } else {
+              console.error("Failed to save updated property search to database");
+            }
+          });
+      } catch (err) {
+        console.error("Error saving search criteria to session storage:", err);
+      }
+      
+      // REMOVE AUTO-HIGHLIGHT: This was causing continuous modal popups
+      // handleHighlightSearchCriteria();
+    }
+  }, [searchCriteria, leadId]);
+
+  // Helper function to highlight search criteria
+  const handleHighlightSearchCriteria = useCallback(() => {
+    console.log("handleHighlightSearchCriteria clicked - starting function execution");
+    
+    // Ensure we have search criteria to highlight
+    if (!searchCriteria) {
+      console.log("No search criteria available to highlight");
+      return;
+    }
+    
+    // Just highlight without showing modal by default
+    console.log("Highlighting search criteria section");
+    setHighlightSearchCriteria(true);
+    
+    // Reset highlight after animation completes
+    setTimeout(() => {
+      setHighlightSearchCriteria(false);
+    }, 2000);
+    
+  }, [searchCriteria]);
+  
+  // Helper function to parse and extract property search criteria from messages
+  const findPropertySearchCriteriaInMessages = useCallback((messageArray: Message[]) => {
+    if (!messageArray || messageArray.length === 0) return null;
+    
+    // Get the current criteria to build upon
+    let accumulatedCriteria: PropertySearchCriteria = {};
+    
+    // First check if we have existing criteria in state to use as base
+    if (searchCriteria) {
+      accumulatedCriteria = { ...searchCriteria };
+      console.log("Starting with existing search criteria:", accumulatedCriteria);
+    }
+    
+    // Process messages from newest to oldest to get the most recent criteria updates
+    for (const message of [...messageArray].reverse()) {
+      // Only check agent messages with content
+      if (message.sender !== 'agent' || !message.text) continue;
+      
+      console.log(`Checking message ${message.id} for property search criteria`);
+      
+      // Try to parse using all available methods
+      let messageCriteria = propertySearchApi.parseStructuredPropertySearch(message.text);
+      
+      // Also check metadata if it exists
+      if (!messageCriteria && message.metadata?.isPropertySearch && message.metadata.propertySearchCriteria) {
+        messageCriteria = propertySearchApi.parseSearchCriteriaFromAIMessage(message.metadata.propertySearchCriteria);
+      }
+      
+      if (messageCriteria && Object.keys(messageCriteria).length > 0) {
+        console.log(`Found property search criteria in message ${message.id}:`, messageCriteria);
+        
+        // Handle special case for null values (explicitly clearing fields)
+        for (const [key, value] of Object.entries(messageCriteria)) {
+          if (value === null) {
+            // Null means explicitly clear this field
+            delete accumulatedCriteria[key as keyof PropertySearchCriteria];
+            console.log(`Cleared field '${key}' from criteria`);
+          }
+        }
+        
+        // Merge non-null values with accumulated criteria
+        accumulatedCriteria = {
+          ...accumulatedCriteria,
+          ...Object.entries(messageCriteria)
+            .filter(([_, value]) => value !== null)
+            .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {})
+        };
+        
+        console.log("Updated accumulated criteria:", accumulatedCriteria);
+      }
+    }
+    
+    // Only return if we have criteria
+    if (Object.keys(accumulatedCriteria).length > 0) {
+      console.log("Final accumulated criteria:", accumulatedCriteria);
+      return accumulatedCriteria;
+    }
+    
+    return null;
+  }, [searchCriteria]);
+  
+  // Function to handle manual sync of property search criteria
+  const handleSyncPropertySearchCriteria = async () => {
+    if (!leadId) return;
+    
+    try {
+      console.log("Manually syncing property search criteria for lead", leadId);
+      
+      // Extract criteria from messages
+      const criteriaFromMessages = findPropertySearchCriteriaInMessages(messages);
+      
+      if (criteriaFromMessages && Object.keys(criteriaFromMessages).length > 0) {
+        console.log("Found property search criteria to sync:", criteriaFromMessages);
+        
+        // First save to the database
+        const success = await propertySearchApi.savePropertySearchCriteria(leadId, criteriaFromMessages);
+        
+        if (success) {
+          // Only update local state after successful database sync
+          setSearchCriteria(criteriaFromMessages);
+          
+          // Show success message
+          toast.success("Property search criteria synced successfully");
+          
+          // Highlight the criteria to show it was updated (but don't show modal)
+          handleHighlightSearchCriteria();
+          
+          console.log("Successfully synchronized property search criteria");
+        } else {
+          toast.error("Failed to sync property search criteria with database");
+          console.error("Failed to synchronize property search criteria");
+        }
+      } else {
+        toast("No property search criteria found in messages");
+        console.log("No property search criteria found in messages");
+      }
+    } catch (error) {
+      toast.error("Error syncing property search criteria");
+      console.error("Error syncing property search criteria:", error);
+    }
+  };
+
+  // Function to handle "View Matches" button click
+  const handleViewMatches = async () => {
+    console.log("handleViewMatches clicked - starting function execution");
+    if (!leadId) {
+      console.error("handleViewMatches: No leadId found");
+      return;
+    }
+    
+    try {
+      // First, make sure our search criteria is up to date in the database
+      if (searchCriteria) {
+        console.log("Saving property search criteria before viewing matches:", searchCriteria);
+        const success = await propertySearchApi.savePropertySearchCriteria(leadId, searchCriteria);
+        if (success) {
+          console.log("Successfully saved property search criteria before viewing matches");
+        } else {
+          console.error("Failed to save property search criteria before viewing matches");
+        }
+      } else {
+        console.log("No search criteria to save before viewing matches");
+      }
+      
+      console.log("Setting showFullPropertySearch to true");
+      setShowFullPropertySearch(true);
+    } catch (error) {
+      console.error("Error in handleViewMatches:", error);
+    }
+  };
+
+  // Function to save search criteria from scratch or after manual entry
+  const saveNewSearchCriteria = async (criteria: PropertySearchCriteria) => {
+    if (!leadId) return;
+    
+    console.log("Saving new search criteria:", criteria);
+    const success = await propertySearchApi.savePropertySearchCriteria(leadId, criteria);
+    
+    if (success) {
+      console.log("Successfully saved new property search criteria");
+      setSearchCriteria(criteria);
+      setShowFullPropertySearch(false);
+    } else {
+      console.error("Failed to save new property search criteria");
+    }
+  };
 
   // Helper function to validate and normalize messages
   const validateAndNormalizeMessage = (message: any): Message | null => {
@@ -79,11 +308,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       isAiGenerated: Boolean(message.isAiGenerated),
       createdAt: message.createdAt || new Date().toISOString(),
       twilioSid: message.twilioSid || undefined,
-      deliveryStatus: message.deliveryStatus || 'delivered'
+      deliveryStatus: message.deliveryStatus || 'delivered',
+      metadata: message.metadata || null
     };
     
     console.log("Normalized message:", normalizedMessage);
     return normalizedMessage;
+  };
+
+  // Helper to get the most recent property search criteria from messages
+  const getMostRecentSearchCriteria = () => {
+    if (!searchCriteria) return null;
+    
+    // For now we're just displaying the searchCriteria directly from state,
+    // but in the future if we track multiple search criteria, this function
+    // would return the most recent one
+    return searchCriteria;
   };
 
   // Use the Calendly hook
@@ -146,6 +386,32 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         ]);
         setMessages(fetchedMessages);
         setAiAssistantEnabled(lead.aiAssistantEnabled);
+        
+        // First try to get saved property searches from the database
+        const savedSearchCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+        if (savedSearchCriteria) {
+          console.log("Found saved property search criteria in database:", savedSearchCriteria);
+          setSearchCriteria(savedSearchCriteria);
+          setShowSearchButton(true);
+        } else {
+          // If no saved searches, scan loaded messages for property search criteria
+          const propertyCriteria = findPropertySearchCriteriaInMessages(fetchedMessages);
+          if (propertyCriteria) {
+            console.log("Found property search criteria in initial messages:", propertyCriteria);
+            setSearchCriteria(propertyCriteria);
+            setShowSearchButton(true);
+            
+            // Save the detected criteria to the database
+            propertySearchApi.savePropertySearchCriteria(leadId, propertyCriteria)
+              .then((success: boolean) => {
+                if (success) {
+                  console.log("Successfully saved detected property search to database");
+                } else {
+                  console.error("Failed to save detected property search to database");
+                }
+              });
+          }
+        }
       } catch (err) {
         setError("Failed to load messages");
         console.error("Error fetching data:", err);
@@ -156,7 +422,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       fetchData();
     }
   }, [leadId]);
-  
+
   // Listen for lead-updated events to update the nextScheduledMessage without requiring a refresh
   useEffect(() => {
     const handleLeadUpdated = (event: CustomEvent<{leadId: number, nextScheduledMessage: string | null}>) => {
@@ -230,6 +496,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       const lead = await leadApi.getLead(leadId);
       setAiAssistantEnabled(lead.aiAssistantEnabled);
       
+      // Refresh property search criteria from the database
+      await handleSyncPropertySearchCriteria();
+      
       return true;
     } catch (err) {
       setError("Failed to refresh messages");
@@ -243,10 +512,17 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     // Only set up auto-refresh if socket is not connected (as a fallback)
     if (!connected || !socket) {
       console.log("Socket not connected or unavailable, setting up auto-refresh fallback");
+      
+      // Don't set up interval if any modal is open
+      if (showCriteriaDetails || showFullPropertySearch || showAppointments) {
+        console.log("Not setting up auto-refresh while modals are open");
+        return () => {};
+      }
+      
       const intervalId = setInterval(() => {
         console.log("Auto-refreshing messages (socket fallback)...");
         refreshMessages();
-      }, 60000); // 60 seconds - longer interval since this is a fallback
+      }, 120000); // 2 minutes instead of 60 seconds
       
       return () => clearInterval(intervalId);
     }
@@ -254,7 +530,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     // No interval needed when socket is connected and working
     console.log("Socket connected, no auto-refresh interval needed");
     return () => {};
-  }, [connected, socket, leadId]);
+  }, [connected, socket, leadId, showCriteriaDetails, showFullPropertySearch, showAppointments]);
   
   // Add a refresh when socket connects or reconnects
   useEffect(() => {
@@ -271,7 +547,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       return;
     }
 
-    const handleNewMessage = (data: SocketMessageData) => {
+    const handleNewMessage = async (data: SocketMessageData) => {
       // Log raw data received from socket for inspection
       console.log("🔍 RAW SOCKET MESSAGE DATA:", JSON.stringify(data));
       
@@ -322,6 +598,46 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         }
 
         console.log("✅ MESSAGE NORMALIZED:", normalizedMessage);
+
+        // Check if message contains property search criteria
+        const propertySearchCriteria = normalizedMessage.metadata?.isPropertySearch 
+          ? propertySearchApi.parseSearchCriteriaFromAIMessage(normalizedMessage.metadata.propertySearchCriteria || '')
+          : propertySearchApi.parseSearchCriteriaFromAIMessage(normalizedMessage.text);
+        
+        // Add detailed logging for property search detection
+        console.log("🔍 Checking for property search in message:", normalizedMessage.id);
+        console.log("📋 Message text:", normalizedMessage.text);
+        console.log("🏷️ Message metadata:", normalizedMessage.metadata);
+        
+        if (propertySearchCriteria) {
+          console.log("🏠 Property search criteria detected:", propertySearchCriteria);
+          
+          // Save to the database first, to ensure it's persisted
+          const savedToDb = await propertySearchApi.savePropertySearchCriteria(leadId, propertySearchCriteria);
+          
+          if (savedToDb) {
+            console.log("Successfully saved property search to database");
+            
+            // Set in local state after successful database save
+            setSearchCriteria(propertySearchCriteria);
+            setShowSearchButton(true);
+            
+            // Add a notification about the search
+            const formattedCriteria = propertySearchApi.formatSearchCriteria(propertySearchCriteria);
+            
+            addNotification({
+              type: 'property_search',
+              title: 'New Property Search',
+              message: `${leadName} is looking for ${formattedCriteria}`,
+              data: { leadId, criteria: propertySearchCriteria }
+            });
+          } else {
+            // If database save failed, still update local state as fallback
+            console.error("Failed to save property search to database, using local state only");
+            setSearchCriteria(propertySearchCriteria);
+            setShowSearchButton(true);
+          }
+        }
 
         // Check if message contains appointment information or Calendly requests
         // Check all messages, not just inbound, since the AI could be confirming appointments
@@ -690,423 +1006,452 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }, 8000);
   };
 
+  // Function to update the property search criteria based on messages
+  const refreshPropertySearchCriteria = useCallback(async () => {
+    if (!leadId) return;
+    
+    // Don't refresh if we're showing the criteria modal - this prevents UI jumps
+    if (showCriteriaDetails || showFullPropertySearch) {
+      console.log("Not refreshing property search criteria while modal is open");
+      return;
+    }
+    
+    // Extract criteria from messages
+    const criteriaFromMessages = findPropertySearchCriteriaInMessages(messages);
+    
+    if (criteriaFromMessages && Object.keys(criteriaFromMessages).length > 0) {
+      console.log("Found property search criteria in messages:", criteriaFromMessages);
+      
+      // Compare with current criteria to avoid unnecessary updates
+      const currentCriteriaStr = JSON.stringify(searchCriteria || {});
+      const newCriteriaStr = JSON.stringify(criteriaFromMessages);
+      
+      if (currentCriteriaStr !== newCriteriaStr) {
+        console.log("Criteria has changed, updating...");
+        
+        // Save the criteria to the database
+        const success = await propertySearchApi.savePropertySearchCriteria(leadId, criteriaFromMessages);
+        
+        if (success) {
+          console.log("Successfully saved property search criteria");
+          // Refresh the local state
+          setSearchCriteria(criteriaFromMessages);
+        } else {
+          console.error("Failed to save property search criteria");
+        }
+      } else {
+        console.log("Criteria unchanged, skipping update");
+      }
+    } else {
+      console.log("No property search criteria found in messages");
+    }
+  }, [leadId, messages, findPropertySearchCriteriaInMessages, searchCriteria, showCriteriaDetails, showFullPropertySearch]);
+
+  // Add a periodic refresh of property search criteria - REDUCING FREQUENCY FURTHER
+  useEffect(() => {
+    // Only set up the refresh if we have a valid leadId
+    if (!leadId) return;
+    
+    // Don't set up refresh if any modal is open
+    if (showCriteriaDetails || showFullPropertySearch || showAppointments) {
+      console.log("Not setting up property search criteria refresh while modals are open");
+      return;
+    }
+    
+    console.log("Setting up periodic refresh of property search criteria");
+    
+    // Initial fetch after a longer delay to let other operations complete
+    const initialTimeoutId = setTimeout(() => {
+      refreshPropertySearchCriteria();
+    }, 15000); // 15 seconds instead of 5
+    
+    // Set up an interval to refresh the criteria VERY INFREQUENTLY (15 minutes)
+    const intervalId = setInterval(() => {
+      refreshPropertySearchCriteria();
+    }, 900000); // 15 minutes (was 300000 - 5 minutes)
+    
+    // Cleanup function
+    return () => {
+      clearTimeout(initialTimeoutId);
+      clearInterval(intervalId);
+    };
+  }, [leadId, refreshPropertySearchCriteria, showCriteriaDetails, showFullPropertySearch, showAppointments]);
+
+  // Monitor state changes for debugging
+  useEffect(() => {
+    console.log("showFullPropertySearch state changed:", showFullPropertySearch);
+  }, [showFullPropertySearch]);
+
+  useEffect(() => {
+    console.log("showCriteriaDetails state changed:", showCriteriaDetails);
+  }, [showCriteriaDetails]);
+
+  useEffect(() => {
+    console.log("showAppointments state changed:", showAppointments);
+  }, [showAppointments]);
+
+  useEffect(() => {
+    console.log("aiAssistantEnabled state changed:", aiAssistantEnabled);
+  }, [aiAssistantEnabled]);
+
+  useEffect(() => {
+    console.log("highlightSearchCriteria state changed:", highlightSearchCriteria);
+  }, [highlightSearchCriteria]);
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Status Bar */}
-      <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
-        <div>
-          <h2 className="text-xl font-semibold">{leadName}</h2>
-          <div className="text-sm text-gray-500">
-            {leadPhone}{" "}
-            {leadEmail && (
-              <>
-                • <span className="text-blue-500">{leadEmail}</span>
-              </>
-            )}
-            {leadSource && (
-              <>
-                • <span className="text-gray-500">Source: {leadSource}</span>
-              </>
-            )}
-            {messageCount && (
-              <>
-                • <span className="text-gray-500">Messages: {messageCount}</span>
-              </>
-            )}
-            {socket && (
-              <span className="ml-2" title={connected ? "Connected to realtime updates" : "Realtime updates unavailable"}>
-                <span className={`inline-block w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center">
-          {!connected && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                reconnect();
-              }}
-              className="mr-3 px-3 py-1.5 text-sm rounded-md flex items-center bg-red-100 text-red-700 hover:bg-red-200"
-              title="Reconnect to server"
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Reconnect
-              <span className="ml-1 text-xs opacity-75">(Auto-refreshing)</span>
-            </button>
-          )}
-          <button
-            onClick={() => setShowAppointments(!showAppointments)}
-            className={`mr-3 px-3 py-1.5 text-sm rounded-md flex items-center ${
-              showAppointments
-                ? "bg-blue-100 text-blue-800"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            {showAppointments ? "Hide Appointments" : "Show Appointments"}
-          </button>
+    <div className="flex flex-col h-full bg-white">
+      {/* Header with lead info and actions */}
+      <div className="border-b border-gray-200 shadow-sm">
+        <div className="p-3 flex justify-between items-center">
+          {/* Left side - Lead info */}
           <div className="flex items-center">
-            <span className="mr-2 text-sm text-gray-600">AI Assistant:</span>
-            <button 
-              onClick={handleToggleAiAssistant} 
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                aiAssistantEnabled ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span 
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  aiAssistantEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`} 
-              />
-            </button>
+            <div className="mr-3">
+              <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold text-lg">
+                {leadName ? leadName.charAt(0).toUpperCase() : "L"}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">{leadName}</h2>
+              <div className="flex items-center text-sm">
+                {leadPhone && (
+                  <span className="text-gray-500 mr-3 flex items-center">
+                    <svg className="w-3.5 h-3.5 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    {leadPhone}
+                  </span>
+                )}
+                {leadEmail && (
+                  <span className="text-gray-500 flex items-center">
+                    <svg className="w-3.5 h-3.5 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    {leadEmail}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Right side - Status and actions */}
+          <div className="flex items-center">
+            <div className="flex items-center mr-4">
+              {connected && (
+                <span className="flex items-center" title="Connected to realtime updates">
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1.5"></span>
+                  <span className="text-xs text-gray-500">Connected</span>
+                </span>
+              )}
+            </div>
+            
+            <div className="flex items-center">
+              <span className="mr-2 text-sm text-gray-600">AI Assistant</span>
+              <button 
+                onClick={() => {
+                  console.log("AI Assistant toggle button clicked");
+                  handleToggleAiAssistant();
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                  aiAssistantEnabled ? 'bg-blue-500' : 'bg-gray-300'
+                }`}
+                type="button"
+              >
+                <span 
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    aiAssistantEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`} 
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Next Scheduled Message Indicator */}
-      {scheduledDateTime && (
-        <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center">
-          <svg className="w-4 h-4 text-blue-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
-          </svg>
-          <div className="text-sm text-blue-700 flex flex-wrap items-center">
-            <span className="mr-2">Next scheduled message:</span>
-            <span className="font-medium mr-2">{scheduledDateTime.date}</span> 
-            <span>at</span>
-            <span className="font-medium mx-1">{scheduledDateTime.time}</span>
-            {scheduledDateTime.daysUntil > 0 && (
-              <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
-                {scheduledDateTime.daysUntil === 1 ? 'Tomorrow' : `in ${scheduledDateTime.daysUntil} days`}
-              </span>
-            )}
-            {scheduledDateTime.daysUntil === 0 && (
-              <span className="ml-2 bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded">
-                Today
-              </span>
-            )}
+      {/* Info rows for next message and search criteria */}
+      <div>
+        {/* Next scheduled message */}
+        {scheduledDateTime && (
+          <div className="px-4 py-2 flex items-center border-b border-gray-100">
+            <div className="mr-3 text-blue-500">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
+              </svg>
+            </div>
+            <div className="flex items-center">
+              <span className="text-xs text-gray-500 mr-2">Next:</span>
+              <span className="text-sm font-medium">{scheduledDateTime.date} at {scheduledDateTime.time}</span>
+              {scheduledDateTime.daysUntil > 0 && (
+                <span className="ml-2 text-xs text-blue-600">
+                  in {scheduledDateTime.daysUntil} days
+                </span>
+              )}
+              {scheduledDateTime.daysUntil === 0 && (
+                <span className="ml-2 text-xs text-green-600 font-medium">
+                  Today
+                </span>
+              )}
+            </div>
           </div>
+        )}
+        
+        {/* Property search criteria */}
+        {searchCriteria && (
+          <div className={`px-4 py-2 flex items-center justify-between border-b border-gray-100 property-search-criteria-section ${highlightSearchCriteria ? 'bg-blue-50' : ''}`}>
+            <div className="flex items-center">
+              <div className="mr-3 text-blue-500">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="flex items-center flex-wrap">
+                <span className="text-xs text-gray-500 mr-2">Search:</span>
+                <div className="flex items-center text-sm flex-wrap">
+                  {searchCriteria.minBedrooms && <span className="font-medium">{searchCriteria.minBedrooms}+ beds</span>}
+                  {searchCriteria.minBathrooms && (
+                    <>
+                      <span className="mx-1.5 text-gray-400">•</span>
+                      <span className="font-medium">{searchCriteria.minBathrooms}+ baths</span>
+                    </>
+                  )}
+                  {searchCriteria.minPrice && searchCriteria.maxPrice && (
+                    <>
+                      <span className="mx-1.5 text-gray-400">•</span>
+                      <span className="font-medium">${searchCriteria.minPrice.toLocaleString()} - ${searchCriteria.maxPrice.toLocaleString()}</span>
+                    </>
+                  )}
+                  {searchCriteria.location && (
+                    <>
+                      <span className="mx-1.5 text-gray-400">•</span>
+                      <span className="font-medium">{searchCriteria.location}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex space-x-1">
+              <button
+                onClick={() => {
+                  console.log("View Matches button clicked");
+                  handleViewMatches();
+                }}
+                className="px-2 py-1 text-xs bg-blue-500 text-white rounded flex items-center"
+                type="button"
+              >
+                <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                View
+              </button>
+              <button
+                onClick={() => {
+                  console.log("Edit Criteria button clicked");
+                  setShowFullPropertySearch(true);
+                }}
+                className="px-2 py-1 text-xs text-gray-600 rounded flex items-center border border-gray-200"
+                type="button"
+              >
+                <svg className="w-3 h-3 mr-1 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Edit
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-3 flex items-start">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+          <button 
+            className="ml-auto text-red-400"
+            onClick={() => setError(null)}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
-      {/* Main scrollable container */}
-      <div className="flex-1 overflow-y-auto flex flex-col">
-        {/* Error Message - Enhanced to provide more context */}
-        {error && (
-          <div className="p-3 bg-red-100 text-red-700 text-sm flex-shrink-0 border-l-4 border-red-500">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <p className="font-medium">Error</p>
-                <p>{error}</p>
-              </div>
-            </div>
+      {/* Success message */}
+      {appointmentSuccess && (
+        <div className="bg-green-50 border-l-4 border-green-400 p-3 flex items-start">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-        )}
-        
-        {/* Socket Debug Panel (only shown in development) */}
-        {import.meta.env.DEV && (
-          <div className="p-2 bg-gray-100 border-b border-gray-200">
-            <details className="text-xs">
-              <summary className="font-medium text-gray-700 cursor-pointer">Socket Debug Tools</summary>
-              <div className="mt-2 p-2 bg-white rounded-md">
-                <div className="flex items-center mb-2">
-                  <span className="mr-2">Socket Status:</span>
-                  <span 
-                    className={`inline-block w-3 h-3 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} 
-                    title={connected ? 'Connected' : 'Disconnected'}
-                  ></span>
-                  <span className="ml-1">{connected ? 'Connected' : 'Disconnected'}</span>
-                  
-                  {lastEventTime && (
-                    <span className="ml-2 text-xs text-gray-500">
-                      Last activity: {new Date(lastEventTime).toLocaleTimeString()}
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex space-x-2 mb-2">
-                  <button 
-                    onClick={() => reconnect()} 
-                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                  >
-                    Reconnect
-                  </button>
-                  
-                  <button 
-                    onClick={() => refreshMessages()}
-                    className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
-                  >
-                    Force Refresh (Testing)
-                  </button>
-                </div>
-                
-                <div className="flex space-x-2 mb-2">
-                  <button 
-                    onClick={async () => {
-                      try {
-                        const result = await messageApi.testSocketMessage(leadId, `Test message at ${new Date().toLocaleTimeString()}`);
-                        console.log("Test socket message result:", result);
-                      } catch (err) {
-                        console.error("Error testing socket:", err);
-                        setError("Failed to send test socket message. See console for details.");
-                      }
-                    }}
-                    className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
-                  >
-                    Send Test Lead Message
-                  </button>
-                  
-                  <button 
-                    onClick={async () => {
-                      try {
-                        const result = await messageApi.simulateAiResponse(leadId, `Simulated AI response at ${new Date().toLocaleTimeString()}`);
-                        console.log("Simulated AI response result:", result);
-                      } catch (err) {
-                        console.error("Error simulating AI response:", err);
-                        setError("Failed to simulate AI response. See console for details.");
-                      }
-                    }}
-                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                  >
-                    Simulate AI Response
-                  </button>
-                </div>
-                
-                <div className="mt-2 text-xs text-gray-500">
-                  Check browser console for detailed socket logs.
-                </div>
-              </div>
-            </details>
+          <div className="ml-3">
+            <p className="text-sm text-green-600">{appointmentSuccess}</p>
           </div>
-        )}
-        
-        {/* Success Message */}
-        {appointmentSuccess && (
-          <div className="p-3 bg-green-100 text-green-700 text-sm flex-shrink-0 border-l-4 border-green-500">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <p className="font-medium">Success</p>
-                <p>{appointmentSuccess}</p>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Calendar Configuration Error - Enhanced with more specific help */}
-        {calendarConfigurationError && (
-          <div className="p-4 border-b border-orange-200 bg-orange-50">
-            <h3 className="text-orange-700 font-medium flex items-center">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              Calendar Integration Issue
-            </h3>
-            <p className="text-sm text-orange-600 mt-1">
-              {error || 'There appears to be an issue with the calendar integration.'}
-            </p>
-            <ul className="list-disc ml-5 mt-1 text-sm text-orange-600">
-              <li>The Calendly service might be temporarily unavailable</li>
-              <li>There might be a missing or invalid Calendly API token</li>
-              <li>There could be insufficient permissions on your Calendly account</li>
-            </ul>
-            <p className="text-sm text-orange-600 mt-1 font-medium">
-              You can continue to use manual appointment scheduling in the meantime.
-            </p>
-            <div className="flex mt-2">
-              <button 
-                onClick={() => {
-                  setCalendarConfigurationError(false);
-                  setError(null);
-                }}
-                className="px-3 py-1 text-xs bg-white text-orange-700 border border-orange-300 rounded hover:bg-orange-50"
-              >
-                Dismiss
-              </button>
-              <button 
-                onClick={() => window.open('https://docs.calendly.com/getting-started/authentication', '_blank')}
-                className="ml-2 px-3 py-1 text-xs bg-orange-700 text-white rounded hover:bg-orange-800"
-              >
-                Calendly Documentation
-              </button>
-              <button 
-                onClick={() => {
-                  setCalendarConfigurationError(false);
-                  setError(null);
-                  setShowAppointments(true);
-                }}
-                className="ml-2 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Try Manual Scheduling
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Appointments Section */}
-        {showAppointments && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
-            <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-auto">
-              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="text-xl font-medium text-gray-900">Manage Appointments</h2>
-                <button 
-                  onClick={() => setShowAppointments(false)} 
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                  </svg>
-                </button>
-              </div>
-              <div className="p-4">
-                <AppointmentsList leadId={leadId} />
-                <div className="mt-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Appointment</h3>
-                  <AppointmentCreator
-                    leadId={leadId}
-                    messageText={latestMessage || undefined}
-                    onSuccess={handleAppointmentSuccess}
-                    onError={handleAppointmentError}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* AI Detected Appointment */}
-        {!calendarConfigurationError && latestMessage && appointmentApi.parseAppointmentFromAIMessage(latestMessage) && (
-          <div className="p-4 border-b border-gray-200 bg-yellow-50">
-            <div className="text-sm text-yellow-800 mb-2">
-              {latestMessage.toLowerCase().includes('reschedule') ? (
-                <strong>AI detected a rescheduled appointment.</strong> 
-              ) : (
-                <strong>AI detected a potential appointment request.</strong> 
-              )}
-              Would you like to {latestMessage.toLowerCase().includes('reschedule') ? 'update it in your calendar' : 'schedule it'}?
-            </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setShowAppointments(true)}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                {latestMessage.toLowerCase().includes('reschedule') ? 'Update Appointment' : 'Schedule Now'}
-              </button>
-              <button
-                onClick={() => setLatestMessage(null)}
-                className="px-3 py-1 text-xs bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
-              >
-                Dismiss
-              </button>
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              {(() => {
-                const details = appointmentApi.parseAppointmentFromAIMessage(latestMessage);
-                return details ? (
-                  <span>
-                    Date: <strong>{details.date}</strong>, 
-                    Time: <strong>{details.time}</strong>
-                  </span>
-                ) : null;
-              })()}
-            </div>
-          </div>
-        )}
-        
-        {/* Calendly Request Detected */}
-        {!calendarConfigurationError && latestMessage && isCalendlyRequest(latestMessage) && !appointmentApi.parseAppointmentFromAIMessage(latestMessage) && (
-          <div className="p-4 border-b border-gray-200 bg-blue-50">
-            <div className="text-sm text-blue-800 mb-2">
-              <strong>Calendly scheduling requested.</strong> Would you like to create a Calendly link?
-            </div>
-            <div className="flex space-x-2">
-              {isCalendlyAvailable ? (
-                <button
-                  onClick={() => {
-                    const clientName = leadName || "Client";
-                    const clientEmail = leadEmail || `${leadId}@example.com`;
-                    createCalendlyLink(clientName, clientEmail, handleCalendlySuccess, handleCalendlyError);
-                  }}
-                  disabled={calendlyLoading}
-                  className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-green-300"
-                >
-                  {calendlyLoading ? "Creating..." : "Create Calendly Link"}
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowAppointments(true)}
-                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Use Manual Scheduling
-                </button>
-              )}
-              <button
-                onClick={() => setLatestMessage(null)}
-                className="px-3 py-1 text-xs bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        )}
+          <button 
+            className="ml-auto text-green-400"
+            onClick={() => setAppointmentSuccess(null)}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
-        {/* Messages Container */}
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto flex flex-col message-thread-container" id="message-container">
+        {/* Messages container */}
         <div className="flex-1">
           <MessageList messages={messages} />
         </div>
       </div>
 
-      {/* Input */}
-      <div className="flex-shrink-0">
-        {/* Quick Actions */}
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-          <div className="text-xs text-gray-500">Quick Actions:</div>
-          <div className="flex space-x-2">
-            {isCalendlyAvailable && (
-              <button
-                onClick={() => {
-                  const clientName = leadName || "Client";
-                  const clientEmail = leadEmail || `${leadId}@example.com`;
-                  createCalendlyLink(clientName, clientEmail, handleCalendlySuccess, handleCalendlyError);
-                }}
-                disabled={calendlyLoading}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 flex items-center"
+      {/* Property Search Info Modal - Only shown when needed */}
+      {showFullPropertySearch && searchCriteria && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            // Close the modal when clicking on the background overlay
+            if (e.target === e.currentTarget) {
+              console.log("Closing property search modal by clicking outside");
+              setShowFullPropertySearch(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-lg font-medium">Property Search Criteria</h2>
+              <button 
+                onClick={() => setShowFullPropertySearch(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
-                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
-                {calendlyLoading ? "Creating..." : "Create Calendly Link"}
               </button>
-            )}
+            </div>
+            <div className="p-4">
+              <PropertySearchInfo 
+                leadId={leadId}
+                criteria={searchCriteria} 
+                leadName={leadName || "Lead"}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Show appointments if requested */}
+      {showAppointments && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            // Close the modal when clicking on the background overlay
+            if (e.target === e.currentTarget) {
+              console.log("Closing appointments modal by clicking outside");
+              setShowAppointments(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-lg font-medium">Appointments</h2>
+              <button 
+                onClick={() => setShowAppointments(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <AppointmentsList leadId={leadId} />
+              <div className="mt-4 pt-4 border-t">
+                <AppointmentCreator 
+                  leadId={leadId}
+                  messageText={latestMessage || undefined}
+                  onSuccess={handleAppointmentSuccess}
+                  onError={handleAppointmentError}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Actions bar */}
+      <div className="border-t border-gray-200 bg-white">
+        <div className="px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center">
+            <div className="w-1 h-4 bg-blue-500 rounded-r mr-2"></div>
+            <span className="text-xs font-medium text-gray-700">Actions</span>
+          </div>
+          <div className="flex space-x-1">
             <button
-              onClick={() => setShowAppointments(true)}
-              className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center"
+              onClick={() => {
+                console.log("View Criteria button clicked");
+                if (searchCriteria) {
+                  setShowCriteriaDetails(true);
+                } else {
+                  console.log("No search criteria available to view");
+                  toast.error("No search criteria available");
+                }
+              }}
+              className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
+              type="button"
             >
-              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-3 h-3 mr-1 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Edit Criteria
+            </button>
+            <button
+              onClick={() => {
+                console.log("Property Matches button clicked");
+                handleViewMatches();
+              }}
+              className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
+              type="button"
+            >
+              <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Property Matches
+            </button>
+            <button
+              onClick={() => {
+                console.log("Appointments button clicked");
+                setShowAppointments(true);
+              }}
+              className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
+              type="button"
+            >
+              <svg className="w-3 h-3 mr-1 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
               </svg>
-              Manage Appointments
+              Appointments
             </button>
           </div>
         </div>
         
-        {/* Manual message input is disabled when AI Assistant is enabled */}
+        {/* AI Assistant message or input */}
         {aiAssistantEnabled ? (
-          <div className="p-4 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-center text-gray-500 text-sm border border-gray-200 rounded-lg p-3 bg-gray-100">
-              <svg className="w-5 h-5 mr-2 text-purple-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <div className="px-4 py-2 border-t border-gray-100">
+            <div className="flex items-center justify-center text-gray-600 text-sm border border-gray-200 rounded-md p-2 bg-gray-50">
+              <svg className="w-4 h-4 mr-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
               </svg>
-              AI Assistant is enabled and will automatically follow up with this lead.
+              <span>AI Assistant is enabled and will automatically follow up with this lead</span>
             </div>
           </div>
         ) : (
@@ -1117,6 +1462,77 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           />
         )}
       </div>
+
+      {/* Property Search Criteria Details Modal */}
+      {showCriteriaDetails && searchCriteria && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={(e) => {
+            // Close the modal when clicking on the background overlay
+            if (e.target === e.currentTarget) {
+              console.log("Closing criteria details modal by clicking outside");
+              setShowCriteriaDetails(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-lg font-medium">Property Search Criteria Details</h2>
+              <button 
+                onClick={() => setShowCriteriaDetails(false)}
+                className="text-gray-500 hover:text-gray-700"
+                type="button"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <PropertySearchCriteriaSummary criteria={searchCriteria} compact={false} />
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowCriteriaDetails(false)}
+                  className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50"
+                  type="button"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCriteriaDetails(false);
+                    setShowFullPropertySearch(true);
+                  }}
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  type="button"
+                >
+                  Edit Criteria
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add style for highlight pulse animation */}
+      <style>
+        {`
+        @keyframes highlight-pulse {
+          0% { background-color: #ffffff; }
+          50% { background-color: #dbeafe; } /* bg-blue-100 */
+          100% { background-color: #ffffff; }
+        }
+        
+        .highlight-pulse {
+          animation: highlight-pulse 2s ease-in-out;
+        }
+        
+        .property-search-criteria-section {
+          transition: background-color 0.5s ease;
+        }
+        `}
+      </style>
     </div>
   );
 };

@@ -184,6 +184,10 @@ const openaiService = {
       const appointmentRegex = /NEW APPOINTMENT SET:\s*(\d{1,2}\/\d{1,2}\/\d{4}|\w+\/\w+\/\w+)\s*at\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/i;
       const appointmentMatch = responseContent.match(appointmentRegex);
       
+      // Check for "NEW SEARCH CRITERIA:" in the response
+      const searchCriteriaRegex = /NEW SEARCH CRITERIA:.*?(?:\n|$)/i;
+      const searchCriteriaMatch = responseContent.match(searchCriteriaRegex);
+      
       if (appointmentMatch) {
         let appointmentDate = appointmentMatch[1];
         const appointmentTime = appointmentMatch[2];
@@ -256,9 +260,29 @@ const openaiService = {
             time: appointmentTime
           }
         };
+      } else if (searchCriteriaMatch) {
+        // Handle property search criteria
+        console.log(`Detected property search criteria: ${searchCriteriaMatch[0]}`);
+        
+        // Extract the raw search criteria text
+        const rawSearchCriteria = searchCriteriaMatch[0].replace(/NEW SEARCH CRITERIA:\s*/i, '').trim();
+        
+        // Clean up the response by removing the search criteria text
+        const cleanedResponse = responseContent.replace(/NEW SEARCH CRITERIA:.*/gs, '').trim();
+        
+        // Parse the search criteria in a more structured way
+        const searchCriteria = this.parsePropertySearchCriteria(rawSearchCriteria);
+        
+        // Return both the cleaned response and a flag indicating it's a property search
+        return {
+          text: cleanedResponse,
+          isPropertySearch: true,
+          searchCriteria: rawSearchCriteria,
+          parsedCriteria: searchCriteria
+        };
       }
       
-      // If no appointment detected, return the original response
+      // If no appointment or search criteria detected, return the original response
       return responseContent;
     } catch (error) {
       logger.error("Error generating OpenAI response:", error);
@@ -307,6 +331,120 @@ const openaiService = {
       );
       // Return a default message in case of error
       return `Hi ${lead.name}, just checking in to see if you have any questions about real estate opportunities. Let me know if you'd like to chat!`;
+    }
+  },
+
+  // Handle property search criteria from AI-detected text
+  async handlePropertySearchCriteria(leadId, searchCriteria) {
+    try {
+      const propertyService = require('./propertyService');
+      
+      // Log the detected search criteria
+      logger.info(`Handling property search criteria for lead ${leadId}:`, searchCriteria);
+      
+      // Convert AI-detected search criteria to database format
+      const dbSearchCriteria = {
+        minBedrooms: searchCriteria.beds || null,
+        maxBedrooms: null,
+        minBathrooms: searchCriteria.baths || null,
+        maxBathrooms: null,
+        minPrice: searchCriteria.minPrice || null,
+        maxPrice: searchCriteria.maxPrice || null,
+        minSquareFeet: searchCriteria.minSqft || null,
+        maxSquareFeet: searchCriteria.maxSqft || null,
+        locations: searchCriteria.locations || [],
+        propertyTypes: ['Single Family Home'], // Default, can be overridden if detected
+        originalSearchText: searchCriteria.originalText || null
+      };
+      
+      // Save the search and run matching
+      const search = await propertyService.saveLeadPropertySearch(leadId, dbSearchCriteria);
+      
+      logger.info(`Created property search for lead ${leadId} with ID ${search.id}`);
+      return search.id;
+    } catch (error) {
+      logger.error('Error handling property search criteria:', error);
+      return null;
+    }
+  },
+
+  // Parse property search criteria from text
+  parsePropertySearchCriteria(criteriaText) {
+    try {
+      const criteria = {
+        originalText: criteriaText,
+      };
+      
+      // Match beds, e.g., "BED:3" or "BEDS:3"
+      const bedsMatch = criteriaText.match(/BED(?:S)?:?\s*(\d+)/i);
+      if (bedsMatch) {
+        criteria.beds = parseInt(bedsMatch[1]);
+      }
+      
+      // Match baths, e.g., "BATH:2" or "BATHS:2"
+      const bathsMatch = criteriaText.match(/BATH(?:S)?:?\s*(\d+(?:\.\d+)?)/i);
+      if (bathsMatch) {
+        criteria.baths = parseFloat(bathsMatch[1]);
+      }
+      
+      // Match price range, e.g., "PRICE:$800,000" or "PRICE:$500,000-$800,000"
+      const priceRangeMatch = criteriaText.match(/PRICE:?\s*\$?([\d,]+)(?:\s*-\s*\$?([\d,]+))?/i);
+      if (priceRangeMatch) {
+        const minPrice = priceRangeMatch[1].replace(/,/g, '');
+        criteria.minPrice = parseInt(minPrice);
+        
+        if (priceRangeMatch[2]) {
+          const maxPrice = priceRangeMatch[2].replace(/,/g, '');
+          criteria.maxPrice = parseInt(maxPrice);
+        } else {
+          // If only one price is specified, treat it as the maximum price
+          criteria.maxPrice = criteria.minPrice;
+          criteria.minPrice = undefined;
+        }
+      }
+      
+      // Match square footage, e.g., "SQFT:1500-2500" or "SQFT:2000+"
+      const sqftMatch = criteriaText.match(/SQFT:?\s*([\d,]+)(?:\s*-\s*([\d,]+)|\s*\+)?/i);
+      if (sqftMatch) {
+        const minSqft = sqftMatch[1].replace(/,/g, '');
+        criteria.minSqft = parseInt(minSqft);
+        
+        if (sqftMatch[2]) {
+          const maxSqft = sqftMatch[2].replace(/,/g, '');
+          criteria.maxSqft = parseInt(maxSqft);
+        }
+      }
+      
+      // Match locations (look for any text not part of the other criteria)
+      const locationMatches = criteriaText.match(/(?:IN|LOCATION|AREA):\s*([^,]+(?:,\s*[^,]+)*)/i);
+      if (locationMatches) {
+        criteria.locations = locationMatches[1].split(',').map(loc => loc.trim());
+      } else {
+        // Try to find standalone location mentions (not tagged with LOCATION:)
+        // This is a simplified approach and might pick up false positives
+        const words = criteriaText.split(/\s+/);
+        const potentialLocations = words.filter(word => 
+          !word.match(/BED|BATH|PRICE|SQFT|:|\d+/i) && 
+          word.length > 3
+        );
+        
+        if (potentialLocations.length > 0) {
+          criteria.locations = potentialLocations;
+        }
+      }
+      
+      // Remove any empty locations
+      if (criteria.locations) {
+        criteria.locations = criteria.locations.filter(loc => loc && loc.trim().length > 0);
+        if (criteria.locations.length === 0) {
+          delete criteria.locations;
+        }
+      }
+      
+      return criteria;
+    } catch (error) {
+      logger.error('Error parsing property search criteria:', error);
+      return { originalText: criteriaText };
     }
   },
 };

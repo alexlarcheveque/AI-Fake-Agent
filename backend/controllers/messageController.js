@@ -110,51 +110,83 @@ const messageController = {
           settingsMap
         );
 
-        // Check if aiResponseData contains appointment details
+        // Check if aiResponseData contains appointment details or property search
         let aiResponseText;
         let appointmentDetails = null;
+        let isPropertySearch = false;
+        let propertySearchCriteria = null;
+        let parsedSearchCriteria = null;
+        let propertySearchMeta = null;
         
         if (typeof aiResponseData === 'object' && aiResponseData.text) {
-          // It's the new format with appointment details
+          // It's the new format with additional data
           aiResponseText = aiResponseData.text;
-          appointmentDetails = aiResponseData.appointmentDetails;
           
-          if (appointmentDetails) {
-            console.log('Appointment detected:', appointmentDetails);
+          if (aiResponseData.appointmentDetails) {
+            // It has appointment details
+            appointmentDetails = aiResponseData.appointmentDetails;
             
-            // Create appointment in database
-            try {
-              console.log('Creating appointment from AI detected details', {
-                leadId: lead.id, 
-                userId: lead.userId,
-                appointmentDetails
-              });
+            if (appointmentDetails) {
+              console.log('Appointment detected:', appointmentDetails);
+              
+              // Create appointment in database
+              try {
+                console.log('Creating appointment from AI detected details', {
+                  leadId: lead.id, 
+                  userId: lead.userId,
+                  appointmentDetails
+                });
 
-              const appointment = await appointmentService.createAppointmentFromAI(
+                const appointment = await appointmentService.createAppointmentFromAI(
+                  lead.id, 
+                  lead.userId, // This could be null, but our updated appointmentService will handle that
+                  appointmentDetails
+                );
+                
+                console.log('Appointment created successfully:', appointment.id);
+                
+                // Add a Google Calendar confirmation if a calendar link was created
+                if (appointment.googleCalendarEventLink) {
+                  // Check if the lead has an email
+                  const leadWithEmail = await Lead.findByPk(lead.id);
+                  if (leadWithEmail && leadWithEmail.email) {
+                    // If lead has an email, they'll receive a calendar invitation
+                    aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
+                  }
+                }
+              } catch (appointmentError) {
+                console.error('Error creating appointment:', appointmentError);
+                // Continue with the message even if appointment creation fails
+                // Don't add any calendar confirmation text since the appointment creation failed
+              }
+            }
+          } else if (aiResponseData.isPropertySearch) {
+            // It has property search criteria
+            isPropertySearch = true;
+            propertySearchCriteria = aiResponseData.searchCriteria;
+            parsedSearchCriteria = aiResponseData.parsedCriteria;
+            console.log('Property search criteria detected in AI response, using cleaned text:', aiResponseData.text);
+            
+            // Create a property search in the database
+            try {
+              const searchId = await openaiService.handlePropertySearchCriteria(
                 lead.id, 
-                lead.userId, // This could be null, but our updated appointmentService will handle that
-                appointmentDetails
+                parsedSearchCriteria
               );
               
-              console.log('Appointment created successfully:', appointment.id);
-              
-              // Add a Google Calendar confirmation if a calendar link was created
-              if (appointment.googleCalendarEventLink) {
-                // Check if the lead has an email
-                const leadWithEmail = await Lead.findByPk(lead.id);
-                if (leadWithEmail && leadWithEmail.email) {
-                  // If lead has an email, they'll receive a calendar invitation
-                  aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
-                }
-              }
-            } catch (appointmentError) {
-              console.error('Error creating appointment:', appointmentError);
-              // Continue with the message even if appointment creation fails
-              // Don't add any calendar confirmation text since the appointment creation failed
+              // Store search info in metadata
+              propertySearchMeta = {
+                isPropertySearch: true,
+                propertySearchCriteria: propertySearchCriteria,
+                propertySearchId: searchId
+              };
+            } catch (searchError) {
+              console.error('Error creating property search:', searchError);
+              // Continue with the message even if search creation fails
             }
           }
         } else {
-          // It's just a string (old format or no appointment detected)
+          // It's just a string (old format or no appointment/search detected)
           aiResponseText = aiResponseData;
         }
 
@@ -172,6 +204,7 @@ const messageController = {
           direction: "outbound",
           twilioSid: aiTwilioMessage.sid,
           isAiGenerated: true,
+          metadata: isPropertySearch ? propertySearchMeta : undefined
         });
 
         // Schedule follow-up after sending message - ensure we use the current time as lastMessageDate
@@ -456,51 +489,83 @@ const messageController = {
               promptContext // Pass the prompt context here
             );
 
-            // Check if aiResponseData contains appointment details
+            // Check if aiResponseData contains appointment details or property search
             let aiResponseText;
             let appointmentDetails = null;
+            let isPropertySearch = false;
+            let propertySearchCriteria = null;
+            let parsedSearchCriteria = null;
+            let propertySearchMeta = null;
             
             if (typeof aiResponseData === 'object' && aiResponseData.text) {
-              // It's the new format with appointment details
+              // It's the new format with additional data
               aiResponseText = aiResponseData.text;
-              appointmentDetails = aiResponseData.appointmentDetails;
               
-              if (appointmentDetails) {
-                console.log('Appointment detected:', appointmentDetails);
+              if (aiResponseData.appointmentDetails) {
+                // It has appointment details
+                appointmentDetails = aiResponseData.appointmentDetails;
                 
-                // Create appointment in database
-                try {
-                  console.log('Creating appointment from AI detected details', {
-                    leadId: lead.id, 
-                    userId: lead.userId,
-                    appointmentDetails
-                  });
+                if (appointmentDetails) {
+                  console.log('Appointment detected:', appointmentDetails);
+                  
+                  // Create appointment in database
+                  try {
+                    console.log('Creating appointment from AI detected details', {
+                      leadId: lead.id, 
+                      userId: lead.userId,
+                      appointmentDetails
+                    });
 
-                  const appointment = await appointmentService.createAppointmentFromAI(
+                    const appointment = await appointmentService.createAppointmentFromAI(
+                      lead.id, 
+                      lead.userId, // This could be null, but our updated appointmentService will handle that
+                      appointmentDetails
+                    );
+                    
+                    console.log('Appointment created successfully:', appointment.id);
+                    
+                    // Add a Google Calendar confirmation if a calendar link was created
+                    if (appointment.googleCalendarEventLink) {
+                      // Check if the lead has an email
+                      const leadWithEmail = await Lead.findByPk(lead.id);
+                      if (leadWithEmail && leadWithEmail.email) {
+                        // If lead has an email, they'll receive a calendar invitation
+                        aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
+                      }
+                    }
+                  } catch (appointmentError) {
+                    console.error('Error creating appointment:', appointmentError);
+                    // Continue with the message even if appointment creation fails
+                    // Don't add any calendar confirmation text since the appointment creation failed
+                  }
+                }
+              } else if (aiResponseData.isPropertySearch) {
+                // It has property search criteria
+                isPropertySearch = true;
+                propertySearchCriteria = aiResponseData.searchCriteria;
+                parsedSearchCriteria = aiResponseData.parsedCriteria;
+                console.log('Property search criteria detected in AI response, using cleaned text:', aiResponseData.text);
+                
+                // Create a property search in the database
+                try {
+                  const searchId = await openaiService.handlePropertySearchCriteria(
                     lead.id, 
-                    lead.userId, // This could be null, but our updated appointmentService will handle that
-                    appointmentDetails
+                    parsedSearchCriteria
                   );
                   
-                  console.log('Appointment created successfully:', appointment.id);
-                  
-                  // Add a Google Calendar confirmation if a calendar link was created
-                  if (appointment.googleCalendarEventLink) {
-                    // Check if the lead has an email
-                    const leadWithEmail = await Lead.findByPk(lead.id);
-                    if (leadWithEmail && leadWithEmail.email) {
-                      // If lead has an email, they'll receive a calendar invitation
-                      aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
-                    }
-                  }
-                } catch (appointmentError) {
-                  console.error('Error creating appointment:', appointmentError);
-                  // Continue with the message even if appointment creation fails
-                  // Don't add any calendar confirmation text since the appointment creation failed
+                  // Store search info in metadata
+                  propertySearchMeta = {
+                    isPropertySearch: true,
+                    propertySearchCriteria: propertySearchCriteria,
+                    propertySearchId: searchId
+                  };
+                } catch (searchError) {
+                  console.error('Error creating property search:', searchError);
+                  // Continue with the message even if search creation fails
                 }
               }
             } else {
-              // It's just a string (old format or no appointment detected)
+              // It's just a string (old format or no appointment/search detected)
               aiResponseText = aiResponseData;
             }
 
@@ -518,6 +583,7 @@ const messageController = {
               direction: "outbound",
               twilioSid: aiTwilioMessage.sid,
               isAiGenerated: true,
+              metadata: isPropertySearch ? propertySearchMeta : undefined
             });
 
             console.log(`AI response sent to lead ${lead.id}: ${aiResponseText}`);
@@ -696,19 +762,28 @@ const messageController = {
       // Check if aiResponseData contains appointment details
       let aiResponseText;
       let appointmentDetails = null;
+      let isPropertySearch = false;
       
       if (typeof aiResponseData === 'object' && aiResponseData.text) {
-        // It's the new format with appointment details
+        // It's the new format with additional data
         aiResponseText = aiResponseData.text;
-        appointmentDetails = aiResponseData.appointmentDetails;
         
-        if (appointmentDetails) {
-          console.log('Appointment detected in playground:', appointmentDetails);
-          // For playground, we log the appointment details but don't add text to the message
-          console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
+        if (aiResponseData.appointmentDetails) {
+          // It has appointment details
+          appointmentDetails = aiResponseData.appointmentDetails;
+          
+          if (appointmentDetails) {
+            console.log('Appointment detected in playground:', appointmentDetails);
+            // For playground, we log the appointment details but don't add text to the message
+            console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
+          }
+        } else if (aiResponseData.isPropertySearch) {
+          // It has property search criteria
+          isPropertySearch = true;
+          console.log('Property search criteria detected in AI response');
         }
       } else {
-        // It's just a string (old format or no appointment detected)
+        // It's just a string (old format or no appointment/search detected)
         aiResponseText = aiResponseData;
       }
 
