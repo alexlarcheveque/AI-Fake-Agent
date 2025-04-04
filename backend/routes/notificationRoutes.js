@@ -1,30 +1,36 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
 const notificationController = require('../controllers/notificationController');
+const authMiddleware = require('../middleware/authMiddleware');
 
-// Get all notifications for the authenticated user
-router.get('/', auth, notificationController.getAllForUser);
+// Apply auth middleware to all routes
+router.use(authMiddleware);
 
-// Get count of unread notifications
-router.get('/counts/unread', auth, notificationController.getUnreadCount);
+// Test endpoint
+router.get('/test', notificationController.testConnection);
 
-// Get a specific notification
-router.get('/:id', auth, notificationController.getById);
+// Get all notifications for current user
+router.get('/', notificationController.getAll);
 
-// Create a new notification
-router.post('/', auth, notificationController.create);
+// Get unread count
+router.get('/unread-count', notificationController.getUnreadCount);
+
+// Create new notification
+router.post('/', notificationController.create);
+
+// Get single notification
+router.get('/:id', notificationController.getOne);
+
+// Mark notification as read
+router.put('/:id/read', notificationController.markAsRead);
+
+// Mark notification as unread
+router.put('/:id/unread', notificationController.markAsUnread);
 
 // Mark all notifications as read
-router.patch('/mark-all-read', auth, notificationController.markAllAsRead);
+router.put('/mark-all-read', notificationController.markAllAsRead);
 
-// Mark a notification as read
-router.patch('/:id/read', auth, notificationController.markAsRead);
-
-// Mark a notification as unread
-router.patch('/:id/unread', auth, notificationController.markAsUnread);
-
-// Delete a notification
-router.delete('/:id', auth, notificationController.delete);
+// Delete notification
+router.delete('/:id', notificationController.delete);
 
 module.exports = router; 

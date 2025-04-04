@@ -4,28 +4,33 @@ import { useNotifications, Notification } from "../contexts/NotificationContext"
 import { format } from "date-fns";
 
 interface NavbarProps {
-  user: any;
-  onLogout: () => void;
+  user?: {
+    name: string;
+    email: string;
+    avatar?: string;
+  } | null;
+  onLogout?: () => void;
 }
 
 const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const { 
     notifications, 
-    markAsRead, 
-    markAsUnread, 
-    unreadCount 
+    unreadCount, 
+    markAsRead,
+    markAsUnread
   } = useNotifications();
 
-  // Refs for click outside handling
-  const notificationsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
 
-  // Handle clicking outside to close dropdowns
+  const isActive = (path: string) => {
+    return location.pathname === path;
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       // Close profile menu if clicked outside
@@ -35,7 +40,6 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
       ) {
         setShowProfileMenu(false);
       }
-
       // Close notifications if clicked outside
       if (
         notificationsRef.current &&
@@ -51,9 +55,9 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     };
   }, []);
 
-  // Navigates to the appropriate page based on notification type and marks notification as read
+  // Handle notification click and navigation
   const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
+    // Mark as read when clicked
     if (!notification.isRead) {
       markAsRead(notification.id);
     }
@@ -90,23 +94,9 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
 
   // Format the notification time
   const formatNotificationTime = (date: Date) => {
-    const now = new Date();
-    const notificationDate = new Date(date);
-    const diffInDays = Math.floor(
-      (now.getTime() - notificationDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffInDays === 0) {
-      return format(notificationDate, "h:mm a");
-    } else if (diffInDays === 1) {
-      return "Yesterday";
-    } else if (diffInDays < 7) {
-      return format(notificationDate, "EEEE");
-    } else {
-      return format(notificationDate, "MMM d");
-    }
+    return format(new Date(date), "dd/MM/yyyy hh:mm a");
   };
-
+  
   // Get notification icon based on type
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -153,68 +143,84 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     }
   };
 
-  const handleLogout = () => {
-    setShowProfileMenu(false);
-    onLogout();
-  };
-
   // Mark notification as unread (stopping event propagation)
   const handleMarkAsUnread = (e: React.MouseEvent, notificationId: string) => {
     e.stopPropagation();
     markAsUnread(notificationId);
   };
 
+  const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+    }
+    setShowProfileMenu(false);
+    navigate("/login");
+  };
+
   return (
-    <nav className="bg-white shadow">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="bg-white shadow-md relative z-40">
+      <div className="max-w-7xl mx-auto px-4">
         <div className="flex justify-between h-16">
+          {/* Left side - Logo and Navigation */}
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-xl font-bold text-blue-600">
-                AgentAI
+                RealLeads
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               <Link
                 to="/"
-                className={`${
-                  location.pathname === "/"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isActive("/")
                     ? "border-blue-500 text-gray-900"
                     : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                }`}
               >
                 Dashboard
               </Link>
               <Link
-                to="/leads"
-                className={`${
-                  location.pathname === "/leads"
+                to="/messages"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isActive("/messages")
                     ? "border-blue-500 text-gray-900"
                     : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                }`}
+              >
+                Messages
+              </Link>
+              <Link
+                to="/leads"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isActive("/leads")
+                    ? "border-blue-500 text-gray-900"
+                    : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                }`}
               >
                 Leads
               </Link>
               <Link
-                to="/messages"
-                className={`${
-                  location.pathname === "/messages"
+                to="/playground"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isActive("/playground")
                     ? "border-blue-500 text-gray-900"
                     : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                }`}
               >
-                Messages
+                Playground
               </Link>
             </div>
           </div>
 
           {/* Right side - Notifications and Profile */}
-          <div className="hidden sm:ml-6 sm:flex sm:items-center space-x-4">
+          <div className="flex items-center space-x-4">
             {/* Notifications Bell */}
             <div className="relative" ref={notificationsRef}>
               <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="bg-white p-1 rounded-full text-gray-500 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 relative"
+                onClick={() => {
+                  setShowNotifications(!showNotifications);
+                }}
+                className="p-1 rounded-full text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <span className="sr-only">View notifications</span>
                 <svg
@@ -230,7 +236,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                   />
                 </svg>
-                {/* Show a blue badge with count if there are any unread notifications */}
+                {/* Show a blue badge with count if there are unread notifications */}
                 {unreadCount > 0 && (
                   <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">
                     {unreadCount > 9 ? '9+' : unreadCount}

@@ -1,199 +1,97 @@
-const Notification = require('../models/Notification');
-const { Op } = require('sequelize');
+const BaseController = require('./BaseController');
+const notificationService = require('../services/notificationService');
+const { AppError } = require('../middleware/errorHandler');
 
-const notificationController = {
-  // Get all notifications for a user
-  async getAllForUser(req, res) {
+class NotificationController extends BaseController {
+  constructor() {
+    super(notificationService);
+  }
+
+  // Override getAll to only get notifications for the current user
+  async getAll(req, res, next) {
     try {
       const userId = req.user.id;
-      
-      const notifications = await Notification.findAll({
+      const { page, limit } = req.query;
+
+      const result = await this.service.findAll({
+        page: parseInt(page) || 1,
+        limit: parseInt(limit) || 10,
         where: { userId },
-        order: [['createdAt', 'DESC']],
+        order: [['createdAt', 'DESC']]
       });
-      
-      return res.json({ notifications });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
 
-  // Get a specific notification
-  async getById(req, res) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      
-      const notification = await Notification.findOne({
-        where: { 
-          id,
-          userId 
-        },
-      });
-      
-      if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      
-      return res.json({ notification });
+      return res.success(result);
     } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Create a new notification
-  async create(req, res) {
-    try {
-      const userId = req.user.id;
-      const { type, title, message, metadata } = req.body;
-      
-      if (!type || !title || !message) {
-        return res.status(400).json({ error: 'Type, title, and message are required' });
-      }
-      
-      const notification = await Notification.create({
-        userId,
-        type,
-        title,
-        message,
-        metadata: metadata || null,
-        isRead: false,
-      });
-      
-      return res.status(201).json({ notification });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Mark a notification as read
-  async markAsRead(req, res) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      
-      const notification = await Notification.findOne({
-        where: { 
-          id,
-          userId 
-        },
-      });
-      
-      if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      
-      notification.isRead = true;
-      await notification.save();
-      
-      return res.json({ notification });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Mark a notification as unread
-  async markAsUnread(req, res) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      
-      const notification = await Notification.findOne({
-        where: { 
-          id,
-          userId 
-        },
-      });
-      
-      if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      
-      notification.isRead = false;
-      await notification.save();
-      
-      return res.json({ notification });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Mark all notifications as read
-  async markAllAsRead(req, res) {
-    try {
-      const userId = req.user.id;
-      
-      await Notification.update(
-        { isRead: true },
-        { where: { userId, isRead: false } }
-      );
-      
-      return res.json({ message: 'All notifications marked as read' });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Delete a notification
-  async delete(req, res) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      
-      const notification = await Notification.findOne({
-        where: { 
-          id,
-          userId 
-        },
-      });
-      
-      if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      
-      await notification.destroy();
-      
-      return res.json({ message: 'Notification deleted successfully' });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Get unread count
-  async getUnreadCount(req, res) {
-    try {
-      const userId = req.user.id;
-      
-      const count = await Notification.count({
-        where: { 
-          userId,
-          isRead: false 
-        },
-      });
-      
-      return res.json({ count });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
+      next(error);
     }
   }
-};
 
-// Helper methods for response handling
-notificationController.sendSuccess = function(res, data, message = 'Success', status = 200) {
-  return res.status(status).json({
-    success: true,
-    message,
-    data
-  });
-};
+  // Override create to add userId
+  async create(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const notificationData = { ...req.body, userId };
+      const newItem = await this.service.create(notificationData);
+      return res.created(newItem);
+    } catch (error) {
+      next(error);
+    }
+  }
 
-notificationController.sendError = function(res, error, status = 500) {
-  console.error('Error in notification controller:', error);
-  return res.status(status).json({
-    success: false,
-    message: error.message || 'An unexpected error occurred',
-    error: process.env.NODE_ENV === 'development' ? error : undefined
-  });
-};
+  // Get unread count for current user
+  async getUnreadCount(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const count = await notificationService.getUnreadCount(userId);
+      return res.success({ count });
+    } catch (error) {
+      next(error);
+    }
+  }
 
-module.exports = notificationController; 
+  // Mark all notifications as read for current user
+  async markAllAsRead(req, res, next) {
+    try {
+      const userId = req.user.id;
+      await notificationService.markAllAsRead(userId);
+      return res.success({ message: 'All notifications marked as read' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Mark a notification as read
+  async markAsRead(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+      const notification = await notificationService.markAsRead(id, userId);
+      return res.success(notification);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Mark a notification as unread
+  async markAsUnread(req, res, next) {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+      const notification = await notificationService.markAsUnread(id, userId);
+      return res.success(notification);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Test endpoint for API connectivity
+  async testConnection(req, res, next) {
+    try {
+      return res.success({ status: 'ok' }, 'Notification API is working');
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+module.exports = new NotificationController(); 

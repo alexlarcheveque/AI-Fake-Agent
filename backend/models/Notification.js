@@ -1,5 +1,5 @@
 const { Model, DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+const db = require('../config/database');
 
 class Notification extends Model {}
 
@@ -38,7 +38,7 @@ Notification.init({
     allowNull: true
   }
 }, {
-  sequelize,
+  sequelize: db,
   modelName: 'Notification',
   tableName: 'notifications',
   timestamps: true
