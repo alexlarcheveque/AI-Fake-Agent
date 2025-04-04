@@ -34,10 +34,6 @@ module.exports = {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
       },
-      isNew: {
-        type: Sequelize.BOOLEAN,
-        defaultValue: true,
-      },
       metadata: {
         type: Sequelize.JSONB,
         allowNull: true,

@@ -58,7 +58,6 @@ const notificationController = {
         message,
         metadata: metadata || null,
         isRead: false,
-        isNew: true,
       });
       
       return res.status(201).json({ notification });
@@ -111,52 +110,9 @@ const notificationController = {
       }
       
       notification.isRead = false;
-      notification.isNew = true;
       await notification.save();
       
       return res.json({ notification });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Dismiss new status (remove red dot but keep read status unchanged)
-  async dismissNewStatus(req, res) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      
-      const notification = await Notification.findOne({
-        where: { 
-          id,
-          userId 
-        },
-      });
-      
-      if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
-      }
-      
-      notification.isNew = false;
-      await notification.save();
-      
-      return res.json({ notification });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Mark all notifications as not new
-  async markAllAsNotNew(req, res) {
-    try {
-      const userId = req.user.id;
-      
-      await Notification.update(
-        { isNew: false },
-        { where: { userId, isNew: true } }
-      );
-      
-      return res.json({ message: 'All notifications marked as not new' });
     } catch (error) {
       return res.status(500).json({ error: error.message });
     }
@@ -212,24 +168,6 @@ const notificationController = {
         where: { 
           userId,
           isRead: false 
-        },
-      });
-      
-      return res.json({ count });
-    } catch (error) {
-      return res.status(500).json({ error: error.message });
-    }
-  },
-
-  // Get new count
-  async getNewCount(req, res) {
-    try {
-      const userId = req.user.id;
-      
-      const count = await Notification.count({
-        where: { 
-          userId,
-          isNew: true 
         },
       });
       

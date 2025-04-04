@@ -7,7 +7,6 @@ export interface Notification {
   message: string;
   timestamp: Date;
   isRead: boolean;
-  isNew: boolean;
   metadata?: any;
 }
 
@@ -90,19 +89,6 @@ class NotificationApi {
     };
   }
 
-  async dismissNewStatus(id: string): Promise<Notification> {
-    const response = await api.patch(`/api/notifications/${id}/dismiss-new`);
-    // Convert timestamp string to Date object
-    return {
-      ...response.data.notification,
-      timestamp: new Date(response.data.notification.createdAt || response.data.notification.timestamp)
-    };
-  }
-
-  async markAllAsNotNew(): Promise<void> {
-    await api.patch('/api/notifications/mark-all-not-new');
-  }
-
   async markAllAsRead(): Promise<void> {
     await api.patch('/api/notifications/mark-all-read');
   }
@@ -113,11 +99,6 @@ class NotificationApi {
 
   async getUnreadCount(): Promise<number> {
     const response = await api.get('/api/notifications/counts/unread');
-    return response.data.count;
-  }
-
-  async getNewCount(): Promise<number> {
-    const response = await api.get('/api/notifications/counts/new');
     return response.data.count;
   }
 }

@@ -33,10 +33,6 @@ Notification.init({
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
-  isNew: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
-  },
   metadata: {
     type: DataTypes.JSONB,
     allowNull: true

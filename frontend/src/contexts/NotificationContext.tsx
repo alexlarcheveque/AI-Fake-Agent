@@ -9,13 +9,11 @@ export interface Notification extends ApiNotification {}
 interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
-  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead' | 'isNew'>) => void;
+  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead'>) => void;
   markAllAsRead: () => void;
   markAsRead: (id: string) => void;
   markAsUnread: (id: string) => void;
   removeNotification: (id: string) => void;
-  dismissNewStatus: (id: string) => void;
-  markAllAsNotNew: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -31,7 +29,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setNotifications(notifications);
     } catch (error) {
       console.error('Error fetching notifications:', error);
-      // No fallback to localStorage, just handle the error
+      // Handle the error
       setNotifications([]);
     }
   }, []);
@@ -134,7 +132,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [fetchNotifications]); // Only depend on fetchNotifications, not notifications array
 
-  const addNotification = async (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead' | 'isNew'>) => {
+  const addNotification = async (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead'>) => {
     try {
       const newNotification = await notificationApi.createNotification({
         type: notification.type,
@@ -205,34 +203,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
-  const dismissNewStatus = async (id: string) => {
-    try {
-      const updatedNotification = await notificationApi.dismissNewStatus(id);
-      
-      // Update local state
-      setNotifications(prev => 
-        prev.map(notification => 
-          notification.id === id ? updatedNotification : notification
-        )
-      );
-    } catch (error) {
-      console.error(`Failed to dismiss new status for notification ${id}:`, error);
-    }
-  };
-
-  const markAllAsNotNew = async () => {
-    try {
-      await notificationApi.markAllAsNotNew();
-      
-      // Update local state
-      setNotifications(prev => 
-        prev.map(notification => ({ ...notification, isNew: false }))
-      );
-    } catch (error) {
-      console.error('Failed to mark all notifications as not new:', error);
-    }
-  };
-
   return (
     <NotificationContext.Provider value={{ 
       notifications, 
@@ -241,9 +211,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       markAllAsRead, 
       markAsRead,
       markAsUnread,
-      removeNotification,
-      dismissNewStatus,
-      markAllAsNotNew
+      removeNotification
     }}>
       {children}
     </NotificationContext.Provider>

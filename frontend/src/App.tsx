@@ -18,6 +18,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import { SocketProvider } from "./contexts/SocketContext";
+import NotificationsPage from "./components/NotificationsPage";
 
 function AppRoutes() {
   const { login, register, user, logout } = useAuth();
@@ -26,7 +27,7 @@ function AppRoutes() {
     <NotificationProvider>
       <div className="min-h-screen bg-gray-100">
         <Navbar user={user} onLogout={logout} />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login onLogin={login} />} />
@@ -48,6 +49,7 @@ function AppRoutes() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/leads" element={<LeadManagement />} />
               <Route path="/messages" element={<MessageCenter />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/playground" element={<Playground />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
