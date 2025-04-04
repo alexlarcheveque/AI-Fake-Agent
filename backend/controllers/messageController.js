@@ -1,6 +1,7 @@
 const Message = require("../models/Message");
 const Lead = require("../models/Lead");
 const UserSettings = require("../models/UserSettings");
+const Notification = require("../models/Notification");
 const twilioService = require("../services/twilioService");
 const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
@@ -385,6 +386,33 @@ const messageController = {
         twilioSid: MessageSid || null,
         deliveryStatus: "delivered",
       });
+
+      // Create a notification for the new message if there's a user assigned to the lead
+      if (lead.userId) {
+        try {
+          // Truncate the message if it's too long
+          const truncatedMessage = Body.length > 50 ? Body.substring(0, 47) + '...' : Body;
+          
+          // Create notification
+          await Notification.create({
+            userId: lead.userId,
+            type: 'message',
+            title: `New message from ${lead.name}`,
+            message: truncatedMessage,
+            isRead: false,
+            isNew: true,
+            metadata: { 
+              leadId: lead.id,
+              messageId: message.id,
+              phoneNumber: lead.phoneNumber
+            }
+          });
+          
+          logger.info(`Created notification for new message from lead ${lead.id}`);
+        } catch (notificationError) {
+          logger.error(`Error creating notification for message from lead ${lead.id}:`, notificationError);
+        }
+      }
 
       // Get user settings for follow-up intervals
       let settings = DEFAULT_SETTINGS;

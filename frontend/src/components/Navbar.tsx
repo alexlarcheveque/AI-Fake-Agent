@@ -17,7 +17,15 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications();
+  const { 
+    notifications, 
+    unreadCount, 
+    markAllAsRead, 
+    markAsRead,
+    markAsUnread,
+    dismissNewStatus, 
+    markAllAsNotNew 
+  } = useNotifications();
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -50,35 +58,42 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     };
   }, []);
 
-  // Handle notification click
-  const handleNotificationClick = (notification: Notification) => {
-    markAsRead(notification.id);
+  // State variable to count notifications marked as "new"
+  const [newNotificationsCount, setNewNotificationsCount] = useState<number>(0);
+
+  // Update the newNotificationsCount whenever notifications change
+  useEffect(() => {
+    const newCount = notifications.filter(notification => notification.isNew).length;
+    setNewNotificationsCount(newCount);
+  }, [notifications]);
+
+  // Dismisses the new status and navigates to the appropriate page based on notification type
+  const dismissNewStatusAndNavigate = (notification: Notification) => {
+    // Only dismiss the new status (red dot), don't mark as read
+    dismissNewStatus(notification.id);
     
-    // Navigate based on notification type
+    // Handle navigation based on notification type
     if (notification.type === 'appointment' && notification.data) {
       const leadId = notification.data.leadId;
       navigate(`/messages?leadId=${leadId}`);
-      // Close the notification panel
-      setShowNotifications(false);
     } else if (notification.type === 'message' && notification.data) {
       const leadId = notification.data.leadId;
       navigate(`/messages?leadId=${leadId}`);
-      setShowNotifications(false);
     } else if (notification.type === 'lead' && notification.data) {
       const leadId = notification.data.id;
       navigate(`/messages?leadId=${leadId}`);
-      setShowNotifications(false);
     } else if (notification.type === 'property_search' && notification.data) {
       const leadId = notification.data.leadId;
       navigate(`/messages?leadId=${leadId}`);
-      setShowNotifications(false);
     } else {
       // For other notification types or if data is missing
       navigate('/messages');
-      setShowNotifications(false);
     }
+    
+    // Close notification panel after clicking
+    setShowNotifications(false);
   };
-  
+
   // Format the notification time
   const formatNotificationTime = (date: Date) => {
     return formatDistanceToNow(new Date(date), { addSuffix: true });
@@ -118,6 +133,13 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
           </svg>
         );
     }
+  };
+
+  // Mark notification as unread (stopping event propagation)
+  // The unread status will persist even after page refreshes thanks to localStorage persistence
+  const handleMarkAsUnread = (e: React.MouseEvent, notificationId: string) => {
+    e.stopPropagation();
+    markAsUnread(notificationId);
   };
 
   const handleLogout = () => {
@@ -190,9 +212,6 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
               <button
                 onClick={() => {
                   setShowNotifications(!showNotifications);
-                  if (!showNotifications && unreadCount > 0) {
-                    markAllAsRead();
-                  }
                 }}
                 className="p-1 rounded-full text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -210,11 +229,9 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                   />
                 </svg>
-                {/* Notification Badge */}
-                {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
+                {/* Show a small red dot if there are any new notifications */}
+                {newNotificationsCount > 0 && (
+                  <span className="absolute top-0 right-0 block h-3 w-3 rounded-full bg-red-500"></span>
                 )}
               </button>
 
@@ -222,16 +239,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
               {showNotifications && (
                 <div className="origin-top-right fixed sm:absolute right-0 mt-2 w-96 rounded-md shadow-xl bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-[9999]">
                   <div className="py-1">
-                    <div className="px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                    <div className="px-4 py-2 border-b border-gray-200">
                       <h3 className="text-sm font-medium text-gray-900">
                         Notifications
                       </h3>
-                      <button 
-                        onClick={markAllAsRead} 
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        Mark all as read
-                      </button>
                     </div>
                     
                     {notifications.length === 0 ? (
@@ -257,22 +268,37 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                           {notifications.map((notification) => (
                             <div 
                               key={notification.id} 
-                              onClick={() => handleNotificationClick(notification)} 
-                              className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start ${!notification.read ? 'bg-blue-50' : ''}`}
+                              onClick={() => dismissNewStatusAndNavigate(notification)} 
+                              className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start"
                             >
-                              <div className="flex-shrink-0 mr-3">
+                              <div className="flex-shrink-0 mr-3 relative">
                                 {getNotificationIcon(notification.type)}
+                                {/* Red dot indicator for new notifications */}
+                                {notification.isNew && (
+                                  <span className="absolute top-0 right-0 block h-2.5 w-2.5 rounded-full bg-red-500 border border-white"></span>
+                                )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-medium ${!notification.read ? 'text-blue-800' : 'text-gray-900'}`}>
+                                <p className="text-sm font-medium text-gray-900">
                                   {notification.title}
+                                  {notification.isNew && (
+                                    <span className="ml-2 text-xs font-medium text-red-500">New</span>
+                                  )}
                                 </p>
                                 <p className="text-sm text-gray-600 mt-1">
                                   {notification.message}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {formatNotificationTime(notification.timestamp)}
-                                </p>
+                                <div className="flex justify-between items-center mt-1">
+                                  <p className="text-xs text-gray-500">
+                                    {formatNotificationTime(notification.timestamp)}
+                                  </p>
+                                  <button 
+                                    onClick={(e) => handleMarkAsUnread(e, notification.id)}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                  >
+                                    Mark as unread
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ))}

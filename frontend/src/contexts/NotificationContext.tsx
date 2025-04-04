@@ -1,74 +1,123 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Appointment } from '../api/appointmentApi';
 import appointmentApi from '../api/appointmentApi';
+import notificationApi, { Notification as ApiNotification } from '../api/notificationApi';
 import { format, isToday, isTomorrow, addDays } from 'date-fns';
 
-export interface Notification {
-  id: string;
-  type: 'appointment' | 'message' | 'lead' | 'system' | 'property_search';
-  title: string;
-  message: string;
-  timestamp: Date;
-  read: boolean;
-  data?: any;
-}
+export interface Notification extends ApiNotification {}
 
 interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
-  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
+  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead' | 'isNew'>) => void;
   markAllAsRead: () => void;
   markAsRead: (id: string) => void;
+  markAsUnread: (id: string) => void;
   removeNotification: (id: string) => void;
+  dismissNewStatus: (id: string) => void;
+  markAllAsNotNew: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  // Load upcoming appointments and create notifications for them
+  // Create a memoized function for fetching notifications
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const notifications = await notificationApi.getNotifications();
+      setNotifications(notifications);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      // No fallback to localStorage, just handle the error
+      setNotifications([]);
+    }
+  }, []);
+
+  // Fetch notifications from the API on mount and periodically
   useEffect(() => {
+    // Fetch notifications immediately
+    fetchNotifications();
+    
+    // Refresh notifications every minute
+    const intervalId = setInterval(fetchNotifications, 60 * 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [fetchNotifications]);
+
+  // Load upcoming appointments and create appointment notifications
+  useEffect(() => {
+    // Keep track of the current mount state to prevent state updates after unmount
+    let isMounted = true;
+    
     const loadAppointments = async () => {
+      if (!isMounted) return;
+      
       try {
         const appointments = await appointmentApi.getUpcomingAppointments();
         
+        if (!isMounted) return;
+        
+        // Get current notification data outside the map loop to prevent excessive comparisons
+        const existingAppointmentNotifications = notifications.filter(
+          n => n.type === 'appointment'
+        );
+        
         // Create notifications for upcoming appointments
-        const appointmentNotifications = appointments
+        const appointmentsToNotify = appointments
           .filter(appointment => 
             // Only create notifications for appointments that are scheduled within the next 7 days
             appointment.status === 'scheduled' &&
             new Date(appointment.startTime) <= addDays(new Date(), 7)
           )
-          .map(appointment => {
-            const startDate = new Date(appointment.startTime);
-            let timeDescription = '';
-            
-            if (isToday(startDate)) {
-              timeDescription = `today at ${format(startDate, 'h:mm a')}`;
-            } else if (isTomorrow(startDate)) {
-              timeDescription = `tomorrow at ${format(startDate, 'h:mm a')}`;
-            } else {
-              timeDescription = `on ${format(startDate, 'MMMM d')} at ${format(startDate, 'h:mm a')}`;
-            }
-            
-            return {
-              id: `appointment-${appointment.id}`,
-              type: 'appointment' as const,
+          .filter(appointment => 
+            // Only create notifications for appointments that don't already have a notification
+            !existingAppointmentNotifications.some(
+              n => n.metadata?.appointmentId === appointment.id
+            )
+          );
+        
+        if (appointmentsToNotify.length === 0) {
+          return; // No new notifications to create
+        }
+          
+        // Process appointments in sequence rather than parallel
+        for (const appointment of appointmentsToNotify) {
+          if (!isMounted) return;
+          
+          const startDate = new Date(appointment.startTime);
+          let timeDescription = '';
+          
+          if (isToday(startDate)) {
+            timeDescription = `today at ${format(startDate, 'h:mm a')}`;
+          } else if (isTomorrow(startDate)) {
+            timeDescription = `tomorrow at ${format(startDate, 'h:mm a')}`;
+          } else {
+            timeDescription = `on ${format(startDate, 'MMMM d')} at ${format(startDate, 'h:mm a')}`;
+          }
+          
+          try {
+            await notificationApi.createNotification({
+              type: 'appointment',
               title: 'Upcoming Appointment',
               message: `${appointment.title} ${timeDescription}`,
-              timestamp: new Date(),
-              read: false,
-              data: appointment
-            };
-          });
+              metadata: { appointmentId: appointment.id, leadId: appointment.leadId }
+            });
+          } catch (error) {
+            console.error('Failed to create appointment notification:', error);
+          }
+        }
         
-        setNotifications(prev => {
-          // Filter out existing appointment notifications
-          const filteredNotifications = prev.filter(n => n.type !== 'appointment');
-          return [...filteredNotifications, ...appointmentNotifications];
-        });
+        // Only fetch updated notifications if we actually created some
+        if (appointmentsToNotify.length > 0 && isMounted) {
+          try {
+            await fetchNotifications();
+          } catch (error) {
+            console.error('Failed to refresh notifications after creating appointment notifications:', error);
+          }
+        }
       } catch (error) {
         console.error('Failed to load appointment notifications:', error);
       }
@@ -79,38 +128,109 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Refresh appointments every 5 minutes
     const intervalId = setInterval(loadAppointments, 5 * 60 * 1000);
     
-    return () => clearInterval(intervalId);
-  }, []);
-
-  const addNotification = (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
-    const newNotification: Notification = {
-      ...notification,
-      id: `${notification.type}-${Date.now()}`,
-      timestamp: new Date(),
-      read: false
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
     };
-    
-    setNotifications(prev => [newNotification, ...prev]);
+  }, [fetchNotifications]); // Only depend on fetchNotifications, not notifications array
+
+  const addNotification = async (notification: Omit<Notification, 'id' | 'timestamp' | 'isRead' | 'isNew'>) => {
+    try {
+      const newNotification = await notificationApi.createNotification({
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        metadata: notification.metadata
+      });
+      
+      setNotifications(prev => [newNotification, ...prev]);
+    } catch (error) {
+      console.error('Failed to add notification:', error);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notification => ({ ...notification, read: true }))
-    );
+  const markAllAsRead = async () => {
+    try {
+      await notificationApi.markAllAsRead();
+      
+      // Update local state
+      setNotifications(prev => 
+        prev.map(notification => ({ ...notification, isRead: true }))
+      );
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+    }
   };
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === id ? { ...notification, read: true } : notification
-      )
-    );
+  const markAsRead = async (id: string) => {
+    try {
+      const updatedNotification = await notificationApi.markAsRead(id);
+      
+      // Update local state
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === id ? updatedNotification : notification
+        )
+      );
+    } catch (error) {
+      console.error(`Failed to mark notification ${id} as read:`, error);
+    }
   };
 
-  const removeNotification = (id: string) => {
-    setNotifications(prev => 
-      prev.filter(notification => notification.id !== id)
-    );
+  const markAsUnread = async (id: string) => {
+    try {
+      const updatedNotification = await notificationApi.markAsUnread(id);
+      
+      // Update local state
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === id ? updatedNotification : notification
+        )
+      );
+    } catch (error) {
+      console.error(`Failed to mark notification ${id} as unread:`, error);
+    }
+  };
+
+  const removeNotification = async (id: string) => {
+    try {
+      await notificationApi.deleteNotification(id);
+      
+      // Update local state
+      setNotifications(prev => 
+        prev.filter(notification => notification.id !== id)
+      );
+    } catch (error) {
+      console.error(`Failed to remove notification ${id}:`, error);
+    }
+  };
+
+  const dismissNewStatus = async (id: string) => {
+    try {
+      const updatedNotification = await notificationApi.dismissNewStatus(id);
+      
+      // Update local state
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === id ? updatedNotification : notification
+        )
+      );
+    } catch (error) {
+      console.error(`Failed to dismiss new status for notification ${id}:`, error);
+    }
+  };
+
+  const markAllAsNotNew = async () => {
+    try {
+      await notificationApi.markAllAsNotNew();
+      
+      // Update local state
+      setNotifications(prev => 
+        prev.map(notification => ({ ...notification, isNew: false }))
+      );
+    } catch (error) {
+      console.error('Failed to mark all notifications as not new:', error);
+    }
   };
 
   return (
@@ -120,7 +240,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       addNotification, 
       markAllAsRead, 
       markAsRead,
-      removeNotification
+      markAsUnread,
+      removeNotification,
+      dismissNewStatus,
+      markAllAsNotNew
     }}>
       {children}
     </NotificationContext.Provider>

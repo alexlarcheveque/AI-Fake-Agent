@@ -22,6 +22,7 @@ const userSettingsRoutes = require("./routes/userSettingsRoutes");
 const authRoutes = require("./routes/authRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const oauthRoutes = require("./routes/oauthRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const agentSettings = require("./config/agentSettings");
 const scheduledMessageService = require("./services/scheduledMessageService");
 require("./models/associations");
@@ -87,6 +88,7 @@ app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/properties", propertyRoutes);
 app.use("/api/oauth", oauthRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Add this before your other routes
 app.post("/api/test-form", (req, res) => {

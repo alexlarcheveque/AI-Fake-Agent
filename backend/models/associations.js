@@ -7,6 +7,7 @@ const Appointment = require("./Appointment");
 const Property = require("./Property");
 const LeadPropertySearch = require("./LeadPropertySearch");
 const PropertyMatch = require("./PropertyMatch");
+const Notification = require("./Notification");
 
 function initializeAssociations() {
   // User - Lead association
@@ -44,6 +45,10 @@ function initializeAssociations() {
   // Lead - PropertyMatch association
   Lead.hasMany(PropertyMatch, { foreignKey: "leadId" });
   PropertyMatch.belongsTo(Lead, { foreignKey: "leadId" });
+  
+  // User - Notification association
+  User.hasMany(Notification, { foreignKey: "userId" });
+  Notification.belongsTo(User, { foreignKey: "userId" });
 }
 
 module.exports = initializeAssociations;
