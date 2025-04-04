@@ -186,7 +186,7 @@ const LeadList: React.FC<LeadListProps> = ({
               <tbody className="bg-white divide-y divide-gray-200">
                 {leads.map((lead) => (
                   <tr
-                    key={lead.id}
+                    key={`lead-${lead.id}`}
                     className={`hover:bg-gray-50 ${
                       editingLead?.id !== lead.id ? "cursor-pointer" : ""
                     }`}

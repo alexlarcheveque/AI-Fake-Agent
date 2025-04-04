@@ -53,40 +53,17 @@ class NotificationApi {
     }
   }
   
-  // Fallback function to create a local notification if API fails
-  private createFallbackNotification(notificationData: CreateNotificationRequest): Notification {
-    const fallbackNotification: Notification = {
-      id: `local-${Date.now()}`,
-      type: notificationData.type,
-      title: notificationData.title,
-      message: notificationData.message,
-      timestamp: new Date(),
-      isRead: false,
-      metadata: notificationData.metadata
-    };
-
-    try {
-      const existingNotifications = this.getLocalNotifications();
-      const updatedNotifications = [...existingNotifications, fallbackNotification];
-      localStorage.setItem('notifications', JSON.stringify(updatedNotifications));
-      return fallbackNotification;
-    } catch (error) {
-      console.error('Error creating fallback notification:', error);
-      return fallbackNotification;
-    }
-  }
-
   // Get all notifications
   async getNotifications(): Promise<Notification[]> {
     try {
       const response = await api.get("/api/notifications");
       return response.data.data.items.map((item: any) => ({
         ...item,
-        timestamp: new Date(item.timestamp)
+        timestamp: new Date(item.createdAt)
       }));
     } catch (error) {
       console.error("Error fetching notifications:", error);
-      return this.getLocalNotifications();
+      throw error;
     }
   }
 
@@ -96,7 +73,7 @@ class NotificationApi {
       const response = await api.get(`/api/notifications/${id}`);
       return {
         ...response.data.data,
-        timestamp: new Date(response.data.data.timestamp)
+        timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
       console.error('Error fetching notification:', error);
@@ -110,11 +87,11 @@ class NotificationApi {
       const response = await api.post("/api/notifications", notificationData);
       return {
         ...response.data.data,
-        timestamp: new Date(response.data.data.timestamp)
+        timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
       console.error("Error creating notification:", error);
-      return this.createFallbackNotification(notificationData);
+      throw error;
     }
   }
 
@@ -124,7 +101,7 @@ class NotificationApi {
       const response = await api.put(`/api/notifications/${id}/read`);
       return {
         ...response.data.data,
-        timestamp: new Date(response.data.data.timestamp)
+        timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -138,7 +115,7 @@ class NotificationApi {
       const response = await api.put(`/api/notifications/${id}/unread`);
       return {
         ...response.data.data,
-        timestamp: new Date(response.data.data.timestamp)
+        timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
       console.error('Error marking notification as unread:', error);
@@ -173,24 +150,8 @@ class NotificationApi {
       return response.data.data.count;
     } catch (error) {
       console.error('Error getting unread count:', error);
-      return this.getLocalUnreadCount();
+      throw error;
     }
-  }
-
-  // Local storage fallback methods
-  private getLocalNotifications(): Notification[] {
-    try {
-      const notifications = localStorage.getItem('notifications');
-      return notifications ? JSON.parse(notifications) : [];
-    } catch (error) {
-      console.error('Error getting local notifications:', error);
-      return [];
-    }
-  }
-
-  private getLocalUnreadCount(): number {
-    const notifications = this.getLocalNotifications();
-    return notifications.filter(n => !n.isRead).length;
   }
 }
 

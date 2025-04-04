@@ -104,7 +104,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         const displayText = message.text;
         
         return (
-          <React.Fragment key={message.id}>
+          <React.Fragment key={`message-${message.id}`}>
             <div
               className={`flex ${
                 message.sender === "lead" ? "justify-start" : "justify-end"

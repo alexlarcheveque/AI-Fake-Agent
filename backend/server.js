@@ -25,6 +25,7 @@ const oauthRoutes = require("./routes/oauthRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const agentSettings = require("./config/agentSettings");
 const scheduledMessageService = require("./services/scheduledMessageService");
+const responseHandler = require("./middleware/responseHandler");
 require("./models/associations");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -33,6 +34,9 @@ const propertyRoutes = require("./routes/propertyRoutes");
 const propertyMatcherService = require("./services/propertyMatcherService");
 
 const app = express();
+
+// Add response handler middleware
+app.use(responseHandler);
 
 // Add this at the very top, before any other middleware
 app.use((req, res, next) => {

@@ -45,7 +45,19 @@ export default function NotificationsPage() {
 
   // Format notification time for display
   const formatNotificationTime = (date: Date) => {
-    return format(new Date(date), "dd/MM/yyyy hh:mm a");
+    try {
+      // If the date is already a Date object, use it directly
+      const dateObj = date instanceof Date ? date : new Date(date);
+      
+      if (!dateObj || isNaN(dateObj.getTime())) {
+        return 'Invalid date';
+      }
+      
+      return format(dateObj, "MM/dd/yyyy hh:mm a");
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
   };
   
   // Get notification icon based on type
@@ -147,7 +159,7 @@ export default function NotificationsPage() {
           <ul className="divide-y divide-gray-200">
             {filteredNotifications.map((notification) => (
               <li
-                key={notification.id}
+                key={`notification-${notification.id}`}
                 className={`${
                   !notification.isRead ? "bg-blue-50" : ""
                 } hover:bg-gray-50`}
@@ -169,7 +181,9 @@ export default function NotificationsPage() {
                         </p>
                         <div className="flex">
                           <p className="text-sm text-gray-500 mr-4">
-                            {formatNotificationTime(notification.timestamp)}
+                            {notification.metadata?.appointmentDate 
+                              ? `${notification.metadata.appointmentDate} at ${notification.metadata.appointmentTime}`
+                              : formatNotificationTime(notification.timestamp)}
                           </p>
                           <div className="flex space-x-2">
                             {notification.isRead ? (

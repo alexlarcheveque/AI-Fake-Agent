@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
-import notificationApi from "../api/notificationApi";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -27,21 +26,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Function to migrate notifications from localStorage to the database
-  const migrateNotifications = async () => {
-    try {
-      // Check if localStorage has notifications
-      if (localStorage.getItem('notifications')) {
-        console.log('Migrating notifications from localStorage to database...');
-        const migratedCount = await notificationApi.migrateFromLocalStorage();
-        console.log(`Successfully migrated ${migratedCount} notifications`);
-      }
-    } catch (error) {
-      console.error('Failed to migrate notifications:', error);
-      // Don't throw the error - we don't want to block login if migration fails
-    }
-  };
-
   useEffect(() => {
     // Check for stored token on initial load
     const initAuth = async () => {
@@ -57,9 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           const response = await axios.get(`${API_URL}/api/auth/me`);
           console.log("Auth verification successful:", response.data);
           setUser(response.data);
-          
-          // Migrate notifications after successful auth verification
-          await migrateNotifications();
         } catch (error) {
           console.error("Auth verification failed:", error);
           localStorage.removeItem("token");
@@ -85,9 +66,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUser(user);
     localStorage.setItem("token", token);
     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    
-    // Migrate notifications after successful login
-    await migrateNotifications();
   };
 
   const register = async (name: string, email: string, password: string) => {
@@ -100,8 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const { user, token } = response.data;
     setUser(user);
     localStorage.setItem("token", token);
-    
-    // No need to migrate notifications for new users
+    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   };
 
   const logout = () => {
@@ -111,7 +88,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        login,
+        register,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

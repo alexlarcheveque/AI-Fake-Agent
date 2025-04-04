@@ -94,7 +94,15 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
 
   // Format the notification time
   const formatNotificationTime = (date: Date) => {
-    return format(new Date(date), "dd/MM/yyyy hh:mm a");
+    try {
+      if (!date || isNaN(new Date(date).getTime())) {
+        return 'Invalid date';
+      }
+      return format(new Date(date), "dd/MM/yyyy hh:mm a");
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
   };
   
   // Get notification icon based on type
