@@ -1,28 +1,10 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import { Message } from "../types/message";
-import propertySearchApi, { PropertySearchCriteria } from "../api/propertySearchApi";
-import PropertySearchCriteriaSummary from "./PropertySearchCriteriaSummary";
+import { formatDistanceToNow } from "date-fns";
 
 interface MessageListProps {
   messages: Message[];
 }
-
-// Function to clean up property search criteria from message text
-const cleanupPropertySearch = (text: string): string => {
-  // Remove the "NEW SEARCH CRITERIA:" part and everything that follows it
-  const searchPattern = /NEW SEARCH CRITERIA:.*/gs;
-  
-  // Test with sample message (only log in development)
-  const isDev = import.meta.env?.MODE === 'development';
-  if (isDev) {
-    const testMessage = "I'll make sure to update your email to test@gmail.com. Expect detailed listings for 3-bedroom properties in Pasadena and Culver City soon. NEW SEARCH CRITERIA: BED:3 BATH:2 PRICE:$800,000 SQFT:1500-2500";
-    const cleanedTest = testMessage.replace(searchPattern, '').trim();
-    console.log("Original test:", testMessage);
-    console.log("Cleaned test:", cleanedTest);
-  }
-  
-  return text.replace(searchPattern, '').trim();
-};
 
 const getStatusIndicator = (message: Message) => {
   if (message.direction === "inbound") return null;
@@ -64,10 +46,7 @@ function validStatus(status: string): status is "queued" | "sending" | "sent" | 
 const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const messageEndRef = React.useRef<HTMLDivElement>(null);
   const messagesContainerRef = React.useRef<HTMLDivElement>(null);
-  const [searchCriteria, setSearchCriteria] = React.useState<{[key: string]: PropertySearchCriteria}>({});
   const [previousMessagesLength, setPreviousMessagesLength] = React.useState(0);
-
-  console.log("messages", messages);
 
   // Improved scroll handling to maintain position or scroll to bottom when appropriate
   React.useEffect(() => {
@@ -86,53 +65,15 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
       // New messages were added and user was already at the bottom
       if (messages.length > previousMessagesLength && wasAtBottom) {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        console.log("Scrolling to bottom - user was at bottom and new messages added");
       } else if (messages.length === 1) {
         // This is the first message, always scroll to it
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        console.log("Scrolling to first message");
-      } else {
-        console.log("Not scrolling - maintaining current position");
       }
     }
     
     // Update the previous length for next comparison
     setPreviousMessagesLength(messages.length);
   }, [messages, previousMessagesLength]);
-
-  React.useEffect(() => {
-    // Check for property search criteria in messages
-    const newSearchCriteria: {[key: string]: PropertySearchCriteria} = {};
-    
-    messages.forEach(message => {
-      // First check metadata for property search criteria
-      if (message.metadata?.isPropertySearch && message.metadata.propertySearchCriteria) {
-        const criteria = propertySearchApi.parseSearchCriteriaFromAIMessage(message.metadata.propertySearchCriteria);
-        if (criteria) {
-          console.log("Found property search criteria in message metadata:", message.id, criteria);
-          newSearchCriteria[message.id] = criteria;
-        }
-      } else {
-        // Fallback to checking the message text
-        const criteria = propertySearchApi.parseSearchCriteriaFromAIMessage(message.text);
-        if (criteria) {
-          console.log("Found property search criteria in message text:", message.id, criteria);
-          newSearchCriteria[message.id] = criteria;
-        }
-      }
-    });
-    
-    if (Object.keys(newSearchCriteria).length > 0) {
-      console.log("Setting search criteria state:", newSearchCriteria);
-      setSearchCriteria(newSearchCriteria);
-    }
-  }, [messages]);
-
-  React.useEffect(() => {
-    if (messages.length > 0) {
-      console.log("Message structure:", messages[0]);
-    }
-  }, [messages]);
 
   // Helper function to format dates safely
   const formatMessageTime = (dateString: string | Date) => {
@@ -159,19 +100,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   return (
     <div className="p-4 space-y-6" ref={messagesContainerRef}>
       {messages.map((message) => {
-        // Get potentially cleaned message text
-        let displayText = message.text;
-        
-        // If this message contains property search criteria, clean it up
-        if (searchCriteria[message.id]) {
-          const before = displayText;
-          displayText = cleanupPropertySearch(displayText);
-          
-          // Log the before and after for debugging
-          console.log(`Cleaned message ${message.id}:`);
-          console.log("Before:", before);
-          console.log("After:", displayText);
-        }
+        // Get message text - no cleaning needed since we're not handling search criteria
+        const displayText = message.text;
         
         return (
           <React.Fragment key={message.id}>
@@ -197,10 +127,19 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
               </div>
             </div>
             
-            {/* Show property search summary directly after the message that contains it */}
-            {searchCriteria[message.id] && (
+            {/* Only display appointment details, remove property search section */}
+            {message.metadata?.hasAppointment && message.metadata.appointmentDate && message.metadata.appointmentTime && (
               <div className="ml-4 mt-1">
-                <PropertySearchCriteriaSummary criteria={searchCriteria[message.id]} compact={true} />
+                <div className="bg-green-50 border border-green-100 rounded-md p-2">
+                  <h4 className="text-xs font-semibold text-green-700 mb-1">Appointment</h4>
+                  <div className="flex items-center text-sm text-green-800">
+                    <svg className="w-4 h-4 mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>{message.metadata.appointmentDate} at {message.metadata.appointmentTime}</span>
+                  </div>
+                </div>
               </div>
             )}
           </React.Fragment>

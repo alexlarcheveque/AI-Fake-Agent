@@ -1,30 +1,50 @@
 import axios, { AxiosError } from 'axios';
+import { parseNewPropertySearchFormat } from "./propertySearchParser";
 
 // Use import.meta.env for Vite projects instead of process.env
 const API_URL = (import.meta.env?.VITE_API_URL as string) || '';
 
 export interface PropertySearchCriteria {
-  beds?: number;
-  baths?: number;
-  minBeds?: number;
-  maxBeds?: number;
-  minBaths?: number;
-  maxBaths?: number;
-  bedrooms?: number;
-  bathrooms?: number;
+  // Keep only minBedrooms/maxBedrooms, removing beds/bedrooms/minBeds/maxBeds
   minBedrooms?: number;
   maxBedrooms?: number;
+  
+  // Keep only minBathrooms/maxBathrooms, removing baths/bathrooms/minBaths/maxBaths
   minBathrooms?: number;
   maxBathrooms?: number;
+  
+  // Price range remains the same
   minPrice?: number;
   maxPrice?: number;
-  minSqft?: number;
-  maxSqft?: number;
+  
+  // Keep only minSquareFeet/maxSquareFeet, removing minSqft/maxSqft
   minSquareFeet?: number;
   maxSquareFeet?: number;
+  
+  // Locations array preferred over single location
   locations?: string[];
-  location?: string;
+  location?: string; // Keep for backward compatibility
+  
+  propertyTypes?: string[];
+  isActive?: boolean;
 }
+
+// Backend criteria interface that allows null values for numeric fields
+interface BackendPropertySearchCriteria {
+  minBedrooms?: number | null;
+  maxBedrooms?: number | null;
+  minBathrooms?: number | null;
+  maxBathrooms?: number | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  minSquareFeet?: number | null;
+  maxSquareFeet?: number | null;
+  locations?: string[];
+  propertyTypes?: string[];
+  isActive?: boolean;
+  [key: string]: any;
+}
+
 
 // Local error handler
 const handleApiError = (error: unknown): any => {
@@ -65,7 +85,7 @@ const propertySearchApi = {
       criteria.minBedrooms = parseInt(bedsRangeMatch[1]);
       criteria.maxBedrooms = parseInt(bedsRangeMatch[2]);
     } else if (bedsMatch) {
-      criteria.bedrooms = parseInt(bedsMatch[1]);
+      criteria.minBedrooms = parseInt(bedsMatch[1]);
     }
     
     // Match baths, including X+ format (e.g., "BATH:2.5+" or "BATHS:2-3")
@@ -79,7 +99,7 @@ const propertySearchApi = {
       criteria.minBathrooms = parseFloat(bathsRangeMatch[1]);
       criteria.maxBathrooms = parseFloat(bathsRangeMatch[2]);
     } else if (bathsMatch) {
-      criteria.bathrooms = parseFloat(bathsMatch[1]);
+      criteria.minBathrooms = parseFloat(bathsMatch[1]);
     }
     
     // Match price range, e.g., "PRICE:$800,000" or "PRICE:$500,000-$800,000"
@@ -105,14 +125,14 @@ const propertySearchApi = {
     if (sqftRangeMatch) {
       const minSqft = sqftRangeMatch[1].replace(/,/g, '');
       const maxSqft = sqftRangeMatch[2].replace(/,/g, '');
-      criteria.minSqft = parseInt(minSqft);
-      criteria.maxSqft = parseInt(maxSqft);
+      criteria.minSquareFeet = parseInt(minSqft);
+      criteria.maxSquareFeet = parseInt(maxSqft);
     } else if (sqftPlusMatch) {
       const minSqft = sqftPlusMatch[1].replace(/,/g, '');
-      criteria.minSqft = parseInt(minSqft);
+      criteria.minSquareFeet = parseInt(minSqft);
     } else if (sqftMatch) {
       const sqft = sqftMatch[1].replace(/,/g, '');
-      criteria.minSqft = parseInt(sqft);
+      criteria.minSquareFeet = parseInt(sqft);
     }
     
     // Match locations (look for any text not part of the other criteria)
@@ -168,7 +188,7 @@ const propertySearchApi = {
       criteria.maxBedrooms = parseInt(bedroomsRangeMatch[2]);
       hasMatch = true;
     } else if (bedroomsMatch) {
-      criteria.bedrooms = parseInt(bedroomsMatch[1]);
+      criteria.minBedrooms = parseInt(bedroomsMatch[1]);
       hasMatch = true;
     }
     
@@ -185,7 +205,7 @@ const propertySearchApi = {
       criteria.maxBathrooms = parseFloat(bathroomsRangeMatch[2]);
       hasMatch = true;
     } else if (bathroomsMatch) {
-      criteria.bathrooms = parseFloat(bathroomsMatch[1]);
+      criteria.minBathrooms = parseFloat(bathroomsMatch[1]);
       hasMatch = true;
     }
     
@@ -237,33 +257,40 @@ const propertySearchApi = {
   
   // This function creates a clean, readable version of the search criteria for display
   formatSearchCriteria: (criteria: PropertySearchCriteria): string => {
-    const parts = [];
-    
-    if (criteria.beds !== undefined) {
-      parts.push(`${criteria.beds} bed${criteria.beds !== 1 ? 's' : ''}`);
+    if (!criteria) {
+      return "No search criteria";
     }
     
-    if (criteria.baths !== undefined) {
-      parts.push(`${criteria.baths} bath${criteria.baths !== 1 ? 's' : ''}`);
+    const parts = [];
+    
+    // Use minBedrooms instead of beds/bedrooms
+    if (criteria.minBedrooms !== undefined) {
+      parts.push(`${criteria.minBedrooms}+ bed${criteria.minBedrooms !== 1 ? 's' : ''}`);
+    }
+    
+    // Use minBathrooms instead of baths/bathrooms
+    if (criteria.minBathrooms !== undefined) {
+      parts.push(`${criteria.minBathrooms}+ bath${criteria.minBathrooms !== 1 ? 's' : ''}`);
     }
     
     if (criteria.minPrice !== undefined || criteria.maxPrice !== undefined) {
       if (criteria.minPrice !== undefined && criteria.maxPrice !== undefined) {
-        parts.push(`$${criteria.minPrice.toLocaleString()}-$${criteria.maxPrice.toLocaleString()}`);
+        parts.push(`$${criteria.minPrice?.toLocaleString()}-$${criteria.maxPrice?.toLocaleString()}`);
       } else if (criteria.maxPrice !== undefined) {
-        parts.push(`Up to $${criteria.maxPrice.toLocaleString()}`);
+        parts.push(`Up to $${criteria.maxPrice?.toLocaleString()}`);
       } else if (criteria.minPrice !== undefined) {
-        parts.push(`From $${criteria.minPrice.toLocaleString()}`);
+        parts.push(`From $${criteria.minPrice?.toLocaleString()}`);
       }
     }
     
-    if (criteria.minSqft !== undefined || criteria.maxSqft !== undefined) {
-      if (criteria.minSqft !== undefined && criteria.maxSqft !== undefined) {
-        parts.push(`${criteria.minSqft.toLocaleString()}-${criteria.maxSqft.toLocaleString()} sq ft`);
-      } else if (criteria.maxSqft !== undefined) {
-        parts.push(`Up to ${criteria.maxSqft.toLocaleString()} sq ft`);
-      } else if (criteria.minSqft !== undefined) {
-        parts.push(`Min ${criteria.minSqft.toLocaleString()} sq ft`);
+    // Use minSquareFeet instead of minSqft
+    if (criteria.minSquareFeet !== undefined || criteria.maxSquareFeet !== undefined) {
+      if (criteria.minSquareFeet !== undefined && criteria.maxSquareFeet !== undefined) {
+        parts.push(`${criteria.minSquareFeet?.toLocaleString()}-${criteria.maxSquareFeet?.toLocaleString()} sq ft`);
+      } else if (criteria.maxSquareFeet !== undefined) {
+        parts.push(`Up to ${criteria.maxSquareFeet?.toLocaleString()} sq ft`);
+      } else if (criteria.minSquareFeet !== undefined) {
+        parts.push(`Min ${criteria.minSquareFeet?.toLocaleString()} sq ft`);
       }
     }
     
@@ -271,7 +298,7 @@ const propertySearchApi = {
       parts.push(`in ${criteria.locations.join(', ')}`);
     }
     
-    return parts.join(', ');
+    return parts.length > 0 ? parts.join(', ') : "No specific criteria";
   },
   
   // Update this to call the real API endpoint
@@ -279,16 +306,16 @@ const propertySearchApi = {
     try {
       // First, convert our frontend criteria format to the backend format
       const backendCriteria = {
-        minBedrooms: criteria.beds,
-        maxBedrooms: null,
-        minBathrooms: criteria.baths,
-        maxBathrooms: null,
+        minBedrooms: criteria.minBedrooms,
+        maxBedrooms: criteria.maxBedrooms,
+        minBathrooms: criteria.minBathrooms,
+        maxBathrooms: criteria.maxBathrooms,
         minPrice: criteria.minPrice,
         maxPrice: criteria.maxPrice,
-        minSquareFeet: criteria.minSqft,
-        maxSquareFeet: criteria.maxSqft,
+        minSquareFeet: criteria.minSquareFeet,
+        maxSquareFeet: criteria.maxSquareFeet,
         locations: criteria.locations || [],
-        propertyTypes: ['Single Family Home'], // Default type
+        propertyTypes: criteria.propertyTypes || ['Single Family Home'], // Default type
         isActive: true
       };
 
@@ -420,31 +447,29 @@ const propertySearchApi = {
       
       // Convert backend format back to our internal format
       const clientCriteria: PropertySearchCriteria = {
-        // Convert bed counts, using the field names our frontend components expect
-        bedrooms: activeSearch.bedrooms,
-        beds: activeSearch.bedrooms,
+        // Standardized field names for bedrooms
         minBedrooms: activeSearch.minBedrooms,
         maxBedrooms: activeSearch.maxBedrooms,
         
-        // Convert bath counts
-        bathrooms: activeSearch.bathrooms,
-        baths: activeSearch.bathrooms,
+        // Standardized field names for bathrooms 
         minBathrooms: activeSearch.minBathrooms,
         maxBathrooms: activeSearch.maxBathrooms,
         
-        // Handle price range
+        // Price range
         minPrice: activeSearch.minPrice,
         maxPrice: activeSearch.maxPrice,
         
-        // Handle square footage
-        minSqft: activeSearch.minSquareFeet,
-        maxSqft: activeSearch.maxSquareFeet,
-        minSquareFeet: activeSearch.minSquareFeet,
+        // Square footage using standardized names
+        minSquareFeet: activeSearch.minSquareFeet, 
         maxSquareFeet: activeSearch.maxSquareFeet,
         
         // Handle locations
         locations: activeSearch.locations || [],
-        location: activeSearch.locations && activeSearch.locations.length === 1 ? activeSearch.locations[0] : undefined
+        location: activeSearch.locations && activeSearch.locations.length === 1 ? activeSearch.locations[0] : undefined,
+        
+        // Property types
+        propertyTypes: activeSearch.propertyTypes || [],
+        isActive: activeSearch.isActive
       };
       
       // Remove any undefined fields to keep the object clean
@@ -488,35 +513,31 @@ const propertySearchApi = {
       
       // Convert our internal format to the backend expected format
       const backendCriteria = {
-        // Use min/max bedrooms fields if available, otherwise fall back to beds/bedrooms
-        minBedrooms: criteria.minBedrooms !== undefined ? criteria.minBedrooms : 
-                    criteria.minBeds !== undefined ? criteria.minBeds :
-                    criteria.beds !== undefined ? criteria.beds :
-                    criteria.bedrooms,
-        maxBedrooms: criteria.maxBedrooms !== undefined ? criteria.maxBedrooms : 
-                    criteria.maxBeds !== undefined ? criteria.maxBeds : 
-                    undefined,
+        // Standardized field names for bedrooms
+        minBedrooms: criteria.minBedrooms,
+        maxBedrooms: criteria.maxBedrooms,
         
-        // Use min/max bathrooms fields if available, otherwise fall back to baths/bathrooms
-        minBathrooms: criteria.minBathrooms !== undefined ? criteria.minBathrooms : 
-                     criteria.minBaths !== undefined ? criteria.minBaths :
-                     criteria.baths !== undefined ? criteria.baths :
-                     criteria.bathrooms,
-        maxBathrooms: criteria.maxBathrooms !== undefined ? criteria.maxBathrooms : 
-                     criteria.maxBaths !== undefined ? criteria.maxBaths : 
-                     undefined,
+        // Standardized field names for bathrooms
+        minBathrooms: criteria.minBathrooms,
+        maxBathrooms: criteria.maxBathrooms,
         
         // Price range
         minPrice: criteria.minPrice,
         maxPrice: criteria.maxPrice,
         
-        // Square footage
-        minSquareFeet: criteria.minSquareFeet !== undefined ? criteria.minSquareFeet : criteria.minSqft,
-        maxSquareFeet: criteria.maxSquareFeet !== undefined ? criteria.maxSquareFeet : criteria.maxSqft,
+        // Square footage using standardized names
+        minSquareFeet: criteria.minSquareFeet,
+        maxSquareFeet: criteria.maxSquareFeet,
         
         // Locations - combine both location fields if needed
         locations: criteria.locations || 
-                  (criteria.location ? [criteria.location] : [])
+                  (criteria.location ? [criteria.location] : []),
+        
+        // Property types
+        propertyTypes: criteria.propertyTypes || [],
+        
+        // Include isActive status
+        isActive: criteria.isActive
       };
       
       // Remove any undefined fields to keep the object clean
@@ -549,6 +570,13 @@ const propertySearchApi = {
   },
 
   parseStructuredPropertySearch: (message: string): PropertySearchCriteria | null => {
+    // First try the NEW PROPERTY SEARCH format with MIN BEDROOMS, MAX BEDROOMS, etc.
+    const newFormatCriteria = parseNewPropertySearchFormat(message);
+    if (newFormatCriteria && Object.keys(newFormatCriteria).length > 0) {
+      console.log("Found NEW PROPERTY SEARCH format criteria:", newFormatCriteria);
+      return newFormatCriteria;
+    }
+    
     // Look for structured property search data in different formats
     // The regex here is updated to match any of the formats and be more flexible with whitespace
     const searchMatch = message.match(/NEW (?:PROPERTY|CRITERIA) SEARCH:\s*({.*})/i) || 
@@ -595,6 +623,97 @@ const propertySearchApi = {
     
     // Nothing found
     return null;
+  },
+
+  // Update property search criteria silently (without triggering notifications)
+  updatePropertySearchCriteria: async (leadId: number, criteria: PropertySearchCriteria): Promise<boolean> => {
+    try {
+      // Ensure we have a valid leadId
+      if (!leadId) {
+        console.error("Invalid leadId for updatePropertySearchCriteria:", leadId);
+        return false;
+      }
+      
+      // Validate the search criteria
+      if (!criteria || Object.keys(criteria).length === 0) {
+        console.error("No property search criteria provided to update");
+        return false;
+      }
+      
+      // Get the auth token
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error("No authentication token available");
+        return false;
+      }
+      
+      console.log("Updating property search criteria silently:", criteria);
+      
+      // Create a deep copy to avoid modifying the original object
+      const backendCriteria: BackendPropertySearchCriteria = {
+        // Standardized field names for bedrooms
+        minBedrooms: criteria.minBedrooms,
+        maxBedrooms: criteria.maxBedrooms,
+        
+        // Standardized field names for bathrooms
+        minBathrooms: criteria.minBathrooms,
+        maxBathrooms: criteria.maxBathrooms,
+        
+        // Price range
+        minPrice: criteria.minPrice,
+        maxPrice: criteria.maxPrice,
+        
+        // Square footage using standardized names
+        minSquareFeet: criteria.minSquareFeet,
+        maxSquareFeet: criteria.maxSquareFeet,
+        
+        // Locations - combine both location fields if needed
+        locations: criteria.locations || 
+                  (criteria.location ? [criteria.location] : []),
+        
+        // Property types
+        propertyTypes: criteria.propertyTypes || [],
+        
+        // Include isActive status
+        isActive: criteria.isActive
+      };
+      
+      // For PATCH requests, we want to explicitly pass null for fields that should be cleared
+      // This ensures empty fields are actually cleared in the database
+      const numericFields = [
+        'minBedrooms', 'maxBedrooms', 
+        'minBathrooms', 'maxBathrooms', 
+        'minPrice', 'maxPrice', 
+        'minSquareFeet', 'maxSquareFeet'
+      ];
+      
+      // Explicitly set undefined numeric fields to null
+      numericFields.forEach(field => {
+        if (backendCriteria[field as keyof typeof backendCriteria] === undefined) {
+          backendCriteria[field as keyof typeof backendCriteria] = null;
+        }
+      });
+      
+      console.log("Converted backend criteria for silent update:", backendCriteria);
+      
+      // Make the API request using PATCH method
+      const response = await axios.patch(
+        `${API_URL}/api/properties/searches/lead/${leadId}`, 
+        backendCriteria, 
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      console.log("Property search criteria updated silently:", response.data);
+      return true;
+    } catch (error) {
+      console.error("Error updating property search criteria:", error);
+      return false;
+    }
   },
 };
 

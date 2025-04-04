@@ -3,6 +3,7 @@ import messageApi from "../api/messageApi";
 import leadApi from "../api/leadApi";
 import appointmentApi, { ApiError } from "../api/appointmentApi";
 import propertySearchApi, { PropertySearchCriteria } from "../api/propertySearchApi";
+import { parseNewPropertySearchFormat } from "../api/propertySearchParser";
 import { Message } from "../types/message";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
@@ -12,9 +13,12 @@ import FollowUpIndicator from "./FollowUpIndicator";
 import { useSocket } from "../contexts/SocketContext";
 import useCalendly from "../hooks/useCalendly";
 import PropertySearchInfo from "../components/PropertySearchInfo";
-import PropertySearchCriteriaSummary from "../components/PropertySearchCriteriaSummary";
+import PropertySearchCriteriaForm from "../components/PropertySearchCriteriaForm";
 import { useNotifications } from "../contexts/NotificationContext";
 import { toast } from "react-hot-toast";
+import settingsApi from "../api/settingsApi";
+import "../styles/MessageThread.css";
+import PropertySearchCriteriaSummary from './PropertySearchCriteriaSummary';
 
 interface MessageThreadProps {
   leadId: number;
@@ -58,184 +62,153 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [calendarConfigurationError, setCalendarConfigurationError] = useState(false);
   const [nextScheduledMessage, setNextScheduledMessage] = useState<string | undefined>(propNextScheduledMessage);
   const { socket, connected, reconnect, lastEventTime } = useSocket();
-  const [searchCriteria, setSearchCriteria] = useState<any>(null);
+  const [searchCriteria, setSearchCriteria] = useState<PropertySearchCriteria | null>(null);
   const [showSearchButton, setShowSearchButton] = useState(false);
   const [showFullPropertySearch, setShowFullPropertySearch] = useState(false);
-  const [showCriteriaDetails, setShowCriteriaDetails] = useState(false);
   const { addNotification } = useNotifications();
   const [highlightSearchCriteria, setHighlightSearchCriteria] = useState(false);
+  const [showSearchCriteriaForm, setShowSearchCriteriaForm] = useState(false);
 
   // Update local state when prop changes
   useEffect(() => {
     setNextScheduledMessage(propNextScheduledMessage);
   }, [propNextScheduledMessage]);
 
-  // Initialize search criteria from session storage
+  // Update searchCriteria in database when it changes
   useEffect(() => {
-    // Create a storage key specific to this lead
-    const storageKey = `propertySearchCriteria_${leadId}`;
-    
-    // Try to get search criteria from session storage
-    const savedCriteria = sessionStorage.getItem(storageKey);
-    if (savedCriteria) {
-      try {
-        const parsedCriteria = JSON.parse(savedCriteria);
-        console.log("Restored search criteria from session storage:", parsedCriteria);
-        setSearchCriteria(parsedCriteria);
-        setShowSearchButton(true);
-      } catch (err) {
-        console.error("Error parsing saved search criteria:", err);
-        // Remove invalid data
-        sessionStorage.removeItem(storageKey);
-      }
-    }
-  }, [leadId]); // Only run on mount and when leadId changes
-
-  // Update debugging for searchCriteria
-  useEffect(() => {
-    console.log("Current searchCriteria state:", searchCriteria);
-    
-    // Save search criteria to session storage when it changes
+    // Save search criteria to database when it changes
     if (searchCriteria) {
-      const storageKey = `propertySearchCriteria_${leadId}`;
-      try {
-        sessionStorage.setItem(storageKey, JSON.stringify(searchCriteria));
-        console.log("Saved search criteria to session storage");
-        
-        // Also update the database when search criteria changes
-        propertySearchApi.savePropertySearchCriteria(leadId, searchCriteria)
-          .then((success: boolean) => {
-            if (success) {
-              console.log("Successfully saved updated property search to database");
-            } else {
-              console.error("Failed to save updated property search to database");
-            }
-          });
-      } catch (err) {
-        console.error("Error saving search criteria to session storage:", err);
-      }
-      
-      // REMOVE AUTO-HIGHLIGHT: This was causing continuous modal popups
-      // handleHighlightSearchCriteria();
+      // Update the database when search criteria changes
+      propertySearchApi.savePropertySearchCriteria(leadId, searchCriteria)
+        .then((success: boolean) => {
+          if (!success) {
+            console.error("Failed to save property search to database");
+          }
+        });
     }
   }, [searchCriteria, leadId]);
 
   // Helper function to highlight search criteria
   const handleHighlightSearchCriteria = useCallback(() => {
-    console.log("handleHighlightSearchCriteria clicked - starting function execution");
-    
     // Ensure we have search criteria to highlight
-    if (!searchCriteria) {
-      console.log("No search criteria available to highlight");
-      return;
-    }
+    if (!searchCriteria) return;
     
-    // Just highlight without showing modal by default
-    console.log("Highlighting search criteria section");
+    // Highlight without showing modal
     setHighlightSearchCriteria(true);
     
     // Reset highlight after animation completes
     setTimeout(() => {
       setHighlightSearchCriteria(false);
     }, 2000);
-    
   }, [searchCriteria]);
   
-  // Helper function to parse and extract property search criteria from messages
-  const findPropertySearchCriteriaInMessages = useCallback((messageArray: Message[]) => {
-    if (!messageArray || messageArray.length === 0) return null;
-    
-    // Get the current criteria to build upon
+  // Helper function to find property search criteria in messages
+  const findPropertySearchCriteriaInMessages = (messages: Message[]) => {
     let accumulatedCriteria: PropertySearchCriteria = {};
     
-    // First check if we have existing criteria in state to use as base
-    if (searchCriteria) {
-      accumulatedCriteria = { ...searchCriteria };
-      console.log("Starting with existing search criteria:", accumulatedCriteria);
-    }
-    
-    // Process messages from newest to oldest to get the most recent criteria updates
-    for (const message of [...messageArray].reverse()) {
-      // Only check agent messages with content
-      if (message.sender !== 'agent' || !message.text) continue;
-      
-      console.log(`Checking message ${message.id} for property search criteria`);
-      
-      // Try to parse using all available methods
-      let messageCriteria = propertySearchApi.parseStructuredPropertySearch(message.text);
-      
-      // Also check metadata if it exists
-      if (!messageCriteria && message.metadata?.isPropertySearch && message.metadata.propertySearchCriteria) {
-        messageCriteria = propertySearchApi.parseSearchCriteriaFromAIMessage(message.metadata.propertySearchCriteria);
-      }
-      
-      if (messageCriteria && Object.keys(messageCriteria).length > 0) {
-        console.log(`Found property search criteria in message ${message.id}:`, messageCriteria);
-        
-        // Handle special case for null values (explicitly clearing fields)
-        for (const [key, value] of Object.entries(messageCriteria)) {
-          if (value === null) {
-            // Null means explicitly clear this field
-            delete accumulatedCriteria[key as keyof PropertySearchCriteria];
-            console.log(`Cleared field '${key}' from criteria`);
+    // Process messages in reverse order (most recent first)
+    [...messages].reverse().some(message => {
+      if (message.metadata) {
+        // Check for new format property search
+        if (message.metadata.hasPropertySearch || message.metadata.isPropertySearch) {
+          if (message.metadata.propertySearchFormat === 'new' && message.metadata.propertySearchCriteria) {
+            // Use the new property search format parser
+            const newFormatCriteria = parseNewPropertySearchFormat(message.metadata.propertySearchCriteria);
+            if (newFormatCriteria) {
+              // Merge non-null values with accumulated criteria
+              Object.entries(newFormatCriteria).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                  accumulatedCriteria[key as keyof PropertySearchCriteria] = value;
+                }
+              });
+              
+              // Found valid criteria, stop searching
+              return true;
+            }
+          } else if (message.metadata.propertySearchCriteria) {
+            // Legacy format - use the existing parser
+            const parsedCriteria = propertySearchApi.parseSearchCriteriaFromAIMessage(message.metadata.propertySearchCriteria);
+            
+            if (parsedCriteria) {
+              // Merge with accumulated criteria
+              accumulatedCriteria = { ...accumulatedCriteria, ...parsedCriteria };
+              
+              // Found valid criteria, stop searching
+              return true;
+            }
           }
         }
+      } else {
+        // Fallback to checking message text if no metadata
+        const text = message.text || '';
+        const parsedCriteria = propertySearchApi.parseSearchCriteriaFromAIMessage(text);
         
-        // Merge non-null values with accumulated criteria
-        accumulatedCriteria = {
-          ...accumulatedCriteria,
-          ...Object.entries(messageCriteria)
-            .filter(([_, value]) => value !== null)
-            .reduce((obj, [key, value]) => ({ ...obj, [key]: value }), {})
-        };
-        
-        console.log("Updated accumulated criteria:", accumulatedCriteria);
+        if (parsedCriteria) {
+          // Merge with accumulated criteria
+          accumulatedCriteria = { ...accumulatedCriteria, ...parsedCriteria };
+          
+          // Found valid criteria, stop searching
+          return true;
+        }
       }
-    }
+      
+      // Continue searching
+      return false;
+    });
     
-    // Only return if we have criteria
-    if (Object.keys(accumulatedCriteria).length > 0) {
-      console.log("Final accumulated criteria:", accumulatedCriteria);
-      return accumulatedCriteria;
-    }
-    
-    return null;
-  }, [searchCriteria]);
+    // Return the criteria if any was found, otherwise null
+    return Object.keys(accumulatedCriteria).length > 0 ? accumulatedCriteria : null;
+  };
   
   // Function to handle manual sync of property search criteria
   const handleSyncPropertySearchCriteria = async () => {
     if (!leadId) return;
     
     try {
-      console.log("Manually syncing property search criteria for lead", leadId);
+      // First check if we already have criteria in the database
+      const savedDbCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
       
-      // Extract criteria from messages
+      if (savedDbCriteria && Object.keys(savedDbCriteria).length > 0) {
+        // Update local state with database data
+        setSearchCriteria(savedDbCriteria);
+        setShowSearchButton(true);
+        
+        // Show success message
+        toast.success("Property search criteria synced from database");
+        
+        // Highlight the criteria to show it was updated
+        handleHighlightSearchCriteria();
+        return;
+      }
+      
+      // If nothing in database, extract criteria from messages
       const criteriaFromMessages = findPropertySearchCriteriaInMessages(messages);
       
       if (criteriaFromMessages && Object.keys(criteriaFromMessages).length > 0) {
-        console.log("Found property search criteria to sync:", criteriaFromMessages);
-        
-        // First save to the database
+        // Save to the database
         const success = await propertySearchApi.savePropertySearchCriteria(leadId, criteriaFromMessages);
         
         if (success) {
-          // Only update local state after successful database sync
-          setSearchCriteria(criteriaFromMessages);
+          // Fetch the saved criteria from the database to ensure we have exactly what was saved
+          const refreshedCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
           
-          // Show success message
-          toast.success("Property search criteria synced successfully");
-          
-          // Highlight the criteria to show it was updated (but don't show modal)
-          handleHighlightSearchCriteria();
-          
-          console.log("Successfully synchronized property search criteria");
+          if (refreshedCriteria) {
+            // Update local state with the data from the database
+            setSearchCriteria(refreshedCriteria);
+            setShowSearchButton(true);
+            
+            // Show success message
+            toast.success("Property search criteria synced to database");
+            
+            // Highlight the criteria to show it was updated
+            handleHighlightSearchCriteria();
+          }
         } else {
           toast.error("Failed to sync property search criteria with database");
-          console.error("Failed to synchronize property search criteria");
+          console.error("Failed to synchronize property search criteria with database");
         }
       } else {
         toast("No property search criteria found in messages");
-        console.log("No property search criteria found in messages");
       }
     } catch (error) {
       toast.error("Error syncing property search criteria");
@@ -245,30 +218,43 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   // Function to handle "View Matches" button click
   const handleViewMatches = async () => {
-    console.log("handleViewMatches clicked - starting function execution");
     if (!leadId) {
       console.error("handleViewMatches: No leadId found");
       return;
     }
     
     try {
-      // First, make sure our search criteria is up to date in the database
-      if (searchCriteria) {
-        console.log("Saving property search criteria before viewing matches:", searchCriteria);
-        const success = await propertySearchApi.savePropertySearchCriteria(leadId, searchCriteria);
+      // First, refresh our search criteria from the database to ensure we have the latest
+      const refreshedCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+      
+      if (refreshedCriteria && Object.keys(refreshedCriteria).length > 0) {
+        // Update local state with latest database values
+        setSearchCriteria(refreshedCriteria);
+        setShowSearchButton(true);
+      } else if (searchCriteria) {
+        // If we have criteria in local state but not in DB, save it
+        // Use updatePropertySearchCriteria to avoid triggering notifications
+        const success = await propertySearchApi.updatePropertySearchCriteria(leadId, searchCriteria);
         if (success) {
-          console.log("Successfully saved property search criteria before viewing matches");
+          // Refresh from database to get the exact saved data
+          const savedCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+          if (savedCriteria) {
+            setSearchCriteria(savedCriteria);
+          }
         } else {
           console.error("Failed to save property search criteria before viewing matches");
         }
       } else {
-        console.log("No search criteria to save before viewing matches");
+        toast("No property search criteria available");
+        return;
       }
       
-      console.log("Setting showFullPropertySearch to true");
+      // Ensure we're showing property search info, not the edit form
+      setShowSearchCriteriaForm(false);
       setShowFullPropertySearch(true);
     } catch (error) {
       console.error("Error in handleViewMatches:", error);
+      toast.error("Error retrieving property search criteria");
     }
   };
 
@@ -294,7 +280,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     
     // Check required fields
     if (!message.id || !message.text || !message.sender) {
-      console.error("Message missing required fields:", message);
+      console.error("Message missing required fields");
       return null;
     }
     
@@ -312,7 +298,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       metadata: message.metadata || null
     };
     
-    console.log("Normalized message:", normalizedMessage);
     return normalizedMessage;
   };
 
@@ -380,12 +365,22 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     const fetchData = async () => {
       try {
         setError(null);
-        const [fetchedMessages, lead] = await Promise.all([
+        // Fetch messages, lead data, and user settings in parallel
+        const [fetchedMessages, lead, userSettings] = await Promise.all([
           messageApi.getMessages(leadId.toString()),
           leadApi.getLead(leadId),
+          settingsApi.getSettings() // Get the user settings from Settings page
         ]);
+        
         setMessages(fetchedMessages);
-        setAiAssistantEnabled(lead.aiAssistantEnabled);
+        
+        // Check for user settings first, then fall back to lead settings
+        // This ensures the global settings from the Settings page take precedence
+        setAiAssistantEnabled(
+          userSettings.aiAssistantEnabled !== undefined 
+          ? userSettings.aiAssistantEnabled 
+          : lead.aiAssistantEnabled
+        );
         
         // First try to get saved property searches from the database
         const savedSearchCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
@@ -511,79 +506,50 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   useEffect(() => {
     // Only set up auto-refresh if socket is not connected (as a fallback)
     if (!connected || !socket) {
-      console.log("Socket not connected or unavailable, setting up auto-refresh fallback");
-      
       // Don't set up interval if any modal is open
-      if (showCriteriaDetails || showFullPropertySearch || showAppointments) {
-        console.log("Not setting up auto-refresh while modals are open");
+      if (showFullPropertySearch || showAppointments) {
         return () => {};
       }
       
       const intervalId = setInterval(() => {
-        console.log("Auto-refreshing messages (socket fallback)...");
         refreshMessages();
-      }, 120000); // 2 minutes instead of 60 seconds
+      }, 120000); // 2 minutes
       
       return () => clearInterval(intervalId);
     }
     
-    // No interval needed when socket is connected and working
-    console.log("Socket connected, no auto-refresh interval needed");
     return () => {};
-  }, [connected, socket, leadId, showCriteriaDetails, showFullPropertySearch, showAppointments]);
+  }, [connected, socket, leadId, showFullPropertySearch, showAppointments]);
   
   // Add a refresh when socket connects or reconnects
   useEffect(() => {
     if (connected && socket) {
-      console.log("Socket connected, refreshing messages to ensure latest state");
       refreshMessages();
     }
   }, [connected, socket]);
 
   // Listen for new messages
   useEffect(() => {
-    if (!socket) {
-      console.log("Socket not available, can't listen for messages");
-      return;
-    }
+    if (!socket) return;
 
     const handleNewMessage = async (data: SocketMessageData) => {
-      // Log raw data received from socket for inspection
-      console.log("🔍 RAW SOCKET MESSAGE DATA:", JSON.stringify(data));
-      
       // Make sure we're checking the correct lead ID format
       const currentLeadId =
         typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
 
       // Ensure data and data.message have all required fields
       if (!data || !data.message) {
-        console.error("❌ Received invalid message data:", data);
+        console.error("❌ Received invalid message data");
         return;
       }
 
       // Check for missing critical fields
       if (!data.message.id || !data.message.text || !data.message.sender) {
-        console.error("❌ Message is missing critical fields:", data.message);
+        console.error("❌ Message is missing critical fields");
         return;
       }
 
-      // Log detailed matching criteria for debugging
-      console.log("🔄 LEAD ID COMPARISON:", {
-        messageData: data,
-        currentLeadId: currentLeadId,
-        dataLeadId: data.leadId,
-        dataLeadIdType: typeof data.leadId,
-        messageLeadId: data.message.leadId,
-        messageLeadIdType: typeof data.message.leadId,
-        outerMatches: data.leadId === currentLeadId,
-        innerMatches: data.message.leadId === currentLeadId,
-        socketConnected: connected,
-        messageType: data.message.sender,
-        direction: data.message.direction || 'unknown',
-        isAI: data.message.isAiGenerated
-      });
-
-      // Check if the leadIds match - try both the outer and inner leadId
+      // Debug lead ID matching if needed
       const outerIdMatch = data.leadId === currentLeadId;
       const innerIdMatch = data.message.leadId === currentLeadId;
       
@@ -618,88 +584,108 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           if (savedToDb) {
             console.log("Successfully saved property search to database");
             
-            // Set in local state after successful database save
-            setSearchCriteria(propertySearchCriteria);
-            setShowSearchButton(true);
-            
-            // Add a notification about the search
-            const formattedCriteria = propertySearchApi.formatSearchCriteria(propertySearchCriteria);
-            
-            addNotification({
-              type: 'property_search',
-              title: 'New Property Search',
-              message: `${leadName} is looking for ${formattedCriteria}`,
-              data: { leadId, criteria: propertySearchCriteria }
-            });
+            // Get the criteria from the database to ensure consistency as the source of truth
+            try {
+              const dbCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+              
+              if (dbCriteria) {
+                console.log("Retrieved saved property search criteria from database:", dbCriteria);
+                
+                // Set in local state using the database version
+                setSearchCriteria(dbCriteria);
+                setShowSearchButton(true);
+                
+                // Add a notification about the search
+                const formattedCriteria = propertySearchApi.formatSearchCriteria(dbCriteria);
+                
+                addNotification({
+                  type: 'property_search',
+                  title: 'New Property Search',
+                  message: `${leadName} is looking for ${formattedCriteria}`,
+                  data: { leadId, criteria: dbCriteria }
+                });
+              } else {
+                // If database fetch failed, fall back to the local criteria
+                console.warn("Could not retrieve criteria from database after save");
+                setSearchCriteria(propertySearchCriteria);
+                setShowSearchButton(true);
+                
+                // Add a notification using the local criteria
+                const formattedCriteria = propertySearchApi.formatSearchCriteria(propertySearchCriteria);
+                
+                addNotification({
+                  type: 'property_search',
+                  title: 'New Property Search',
+                  message: `${leadName} is looking for ${formattedCriteria}`,
+                  data: { leadId, criteria: propertySearchCriteria }
+                });
+              }
+            } catch (err) {
+              console.error("Error retrieving saved search criteria from database:", err);
+              // Fall back to using the detected criteria
+              setSearchCriteria(propertySearchCriteria);
+              setShowSearchButton(true);
+            }
           } else {
             // If database save failed, still update local state as fallback
-            console.error("Failed to save property search to database, using local state only");
+            console.error("Failed to save property search to database");
             setSearchCriteria(propertySearchCriteria);
             setShowSearchButton(true);
           }
         }
 
-        // Check if message contains appointment information or Calendly requests
-        // Check all messages, not just inbound, since the AI could be confirming appointments
-        if (normalizedMessage.isAiGenerated) {
-          // Check for appointment information
-          const appointmentDetails = appointmentApi.parseAppointmentFromAIMessage(normalizedMessage.text);
-          if (appointmentDetails) {
-            console.log("📅 Appointment details detected:", appointmentDetails);
+        // Check for appointment information
+        const appointmentDetails = appointmentApi.parseAppointmentFromAIMessage(normalizedMessage.text);
+        if (appointmentDetails) {
+          console.log("📅 Appointment details detected:", appointmentDetails);
+          setLatestMessage(normalizedMessage.text);
+        }
+        
+        // Check for Calendly-related requests using the hook
+        if (isCalendlyRequest(normalizedMessage.text)) {
+          // If Calendly is available, create a link automatically
+          if (isCalendlyAvailable && !calendlyLoading) {
+            const clientName = leadName || "Client";
+            const clientEmail = leadEmail || `${leadId}@example.com`;
+            
+            // Create a Calendly link automatically
+            createCalendlyLink(
+              clientName,
+              clientEmail,
+              handleCalendlySuccess,
+              handleCalendlyError
+            );
+          } else {
+            // Show the appointment form
             setLatestMessage(normalizedMessage.text);
           }
-          
-          // Check for Calendly-related requests using the hook
-          if (isCalendlyRequest(normalizedMessage.text)) {
-            console.log("📅 Calendly request detected in message");
-            
-            // If Calendly is available, create a link automatically
-            if (isCalendlyAvailable && !calendlyLoading) {
-              const clientName = leadName || "Client";
-              const clientEmail = leadEmail || `${leadId}@example.com`;
-              
-              // Create a Calendly link automatically
-              createCalendlyLink(
-                clientName,
-                clientEmail,
-                handleCalendlySuccess,
-                handleCalendlyError
-              );
-            } else {
-              // Show the appointment form
-              setLatestMessage(normalizedMessage.text);
-            }
-          }
-          
-          // If this is an AI generated message, refresh the lead data to get the updated next scheduled message
-          const refreshLeadData = async () => {
-            try {
-              console.log("Refreshing lead data to update next scheduled message");
-              const refreshedLead = await leadApi.getLead(leadId);
-              
-              // If the next scheduled message has changed, update it in the UI
-              if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
-                console.log("Next scheduled message updated:", refreshedLead.nextScheduledMessage);
-                
-                // First update our local state for immediate UI refresh
-                setNextScheduledMessage(refreshedLead.nextScheduledMessage);
-                
-                // Then dispatch an event to update any parent components
-                window.dispatchEvent(new CustomEvent('lead-updated', { 
-                  detail: { 
-                    leadId: leadId,
-                    nextScheduledMessage: refreshedLead.nextScheduledMessage 
-                  } 
-                }));
-              }
-            } catch (err) {
-              console.error("Error refreshing lead data:", err);
-            }
-          };
-          
-          // Refresh lead data after a short delay to allow the backend to update
-          setTimeout(refreshLeadData, 1000);
         }
+        
+        // If this is an AI generated message, refresh the lead data to get the updated next scheduled message
+        const refreshLeadData = async () => {
+          try {
+            const refreshedLead = await leadApi.getLead(leadId);
+            
+            // If the next scheduled message has changed, update it in the UI
+            if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
+              // First update our local state for immediate UI refresh
+              setNextScheduledMessage(refreshedLead.nextScheduledMessage);
+              
+              // Then dispatch an event to update any parent components
+              window.dispatchEvent(new CustomEvent('lead-updated', { 
+                detail: { 
+                  leadId: leadId,
+                  nextScheduledMessage: refreshedLead.nextScheduledMessage 
+                } 
+              }));
+            }
+          } catch (err) {
+            console.error("Error refreshing lead data:", err);
+          }
+        };
+        
+        // Refresh lead data after a short delay to allow the backend to update
+        setTimeout(refreshLeadData, 1000);
 
         // Check if this message is already in our state to avoid duplicates
         setMessages((prevMessages) => {
@@ -707,13 +693,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             (msg) => msg.id === normalizedMessage.id
           );
           if (messageExists) {
-            console.log("⚠️ Message already exists in state, skipping:", normalizedMessage.id);
             return prevMessages;
           }
-          console.log("✅ Adding new message to state:", normalizedMessage);
-          
-          // Let's log the current messages for debugging
-          console.log("Current messages state before update:", prevMessages.map(m => ({ id: m.id, text: m.text.substring(0, 20) + "...", sender: m.sender })));
           
           // Add the new message to the state
           const updatedMessages = [...prevMessages, normalizedMessage];
@@ -723,17 +704,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
           
-          console.log("✅ New message count:", updatedMessages.length);
-          
           // Return the updated state
           return updatedMessages;
         });
 
         // Play a notification sound
         const audio = new Audio("/notification.mp3");
-        audio
-          .play()
-          .catch((err) => console.log("Error playing notification:", err));
+        audio.play().catch((err) => console.error("Error playing notification:", err));
       } else {
         console.log(`⚠️ Message for different lead (received: ${data.leadId}, current: ${currentLeadId}), ignoring`);
       }
@@ -747,7 +724,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
     return () => {
       socket.off("new-message", handleNewMessage);
-      console.log(`🔌 Socket unsubscribed from new-message events for lead ${leadId}`);
     };
   }, [socket, leadId, connected, leadName, leadEmail, isCalendlyAvailable, isCalendlyRequest, calendlyLoading]);
 
@@ -794,6 +770,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       // Update lead with new AI Assistant setting
       const updatedLead = await leadApi.updateLead(leadId, updatedFields);
       setAiAssistantEnabled(updatedLead.aiAssistantEnabled);
+      
+      // Also update user settings to match this setting
+      try {
+        const currentSettings = await settingsApi.getSettings();
+        if (currentSettings.aiAssistantEnabled !== isTogglingOn) {
+          await settingsApi.updateSettings({
+            ...currentSettings,
+            aiAssistantEnabled: isTogglingOn
+          });
+          console.log("Updated user settings to match lead AI assistant setting:", isTogglingOn);
+        }
+      } catch (settingsErr) {
+        console.error("Error updating user settings:", settingsErr);
+        // Continue with lead-specific settings even if user settings update fails
+      }
       
       if (isTogglingOn) {
         // If we're turning ON AI Assistant, schedule a new follow-up message
@@ -1006,97 +997,127 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }, 8000);
   };
 
-  // Function to update the property search criteria based on messages
+  // Function to update the property search criteria based primarily on database
   const refreshPropertySearchCriteria = useCallback(async () => {
     if (!leadId) return;
     
     // Don't refresh if we're showing the criteria modal - this prevents UI jumps
-    if (showCriteriaDetails || showFullPropertySearch) {
-      console.log("Not refreshing property search criteria while modal is open");
-      return;
-    }
+    if (showFullPropertySearch) return;
     
-    // Extract criteria from messages
-    const criteriaFromMessages = findPropertySearchCriteriaInMessages(messages);
-    
-    if (criteriaFromMessages && Object.keys(criteriaFromMessages).length > 0) {
-      console.log("Found property search criteria in messages:", criteriaFromMessages);
-      
-      // Compare with current criteria to avoid unnecessary updates
-      const currentCriteriaStr = JSON.stringify(searchCriteria || {});
-      const newCriteriaStr = JSON.stringify(criteriaFromMessages);
-      
-      if (currentCriteriaStr !== newCriteriaStr) {
-        console.log("Criteria has changed, updating...");
+    // Always get the latest data from the database first
+    try {
+      const savedDbCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+      if (savedDbCriteria && Object.keys(savedDbCriteria).length > 0) {
+        // If data exists in the database, always use it
+        // Only update state if the criteria has actually changed
+        const currentCriteriaStr = JSON.stringify(searchCriteria || {});
+        const dbCriteriaStr = JSON.stringify(savedDbCriteria);
         
-        // Save the criteria to the database
+        if (currentCriteriaStr !== dbCriteriaStr) {
+          setSearchCriteria(savedDbCriteria);
+          setShowSearchButton(true);
+        }
+        
+        return; // Exit early - database is the source of truth
+      }
+      
+      // If database has no saved criteria, look in messages as fallback
+      const criteriaFromMessages = findPropertySearchCriteriaInMessages(messages);
+      
+      if (criteriaFromMessages && Object.keys(criteriaFromMessages).length > 0) {
+        // Save to database to establish as source of truth
         const success = await propertySearchApi.savePropertySearchCriteria(leadId, criteriaFromMessages);
         
         if (success) {
-          console.log("Successfully saved property search criteria");
-          // Refresh the local state
-          setSearchCriteria(criteriaFromMessages);
+          // After saving to database, fetch the saved criteria to ensure consistency
+          const refreshedDbCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+          
+          if (refreshedDbCriteria) {
+            setSearchCriteria(refreshedDbCriteria);
+            setShowSearchButton(true);
+          } else {
+            console.error("Failed to retrieve saved criteria from database");
+            // Fall back to the criteria we found in messages
+            setSearchCriteria(criteriaFromMessages);
+            setShowSearchButton(true);
+          }
         } else {
-          console.error("Failed to save property search criteria");
+          console.error("Failed to save property search criteria to database");
         }
       } else {
-        console.log("Criteria unchanged, skipping update");
+        // Clear the search criteria state if nothing is found anywhere
+        setSearchCriteria(null);
+        setShowSearchButton(false);
       }
-    } else {
-      console.log("No property search criteria found in messages");
+    } catch (err) {
+      console.error("Error during property search criteria refresh:", err);
     }
-  }, [leadId, messages, findPropertySearchCriteriaInMessages, searchCriteria, showCriteriaDetails, showFullPropertySearch]);
+  }, [leadId, messages, findPropertySearchCriteriaInMessages, searchCriteria, showFullPropertySearch]);
 
-  // Add a periodic refresh of property search criteria - REDUCING FREQUENCY FURTHER
+  // Add a periodic refresh of property search criteria
   useEffect(() => {
     // Only set up the refresh if we have a valid leadId
     if (!leadId) return;
     
     // Don't set up refresh if any modal is open
-    if (showCriteriaDetails || showFullPropertySearch || showAppointments) {
-      console.log("Not setting up property search criteria refresh while modals are open");
-      return;
-    }
+    if (showFullPropertySearch || showAppointments) return;
     
-    console.log("Setting up periodic refresh of property search criteria");
-    
-    // Initial fetch after a longer delay to let other operations complete
+    // Initial fetch after a short delay to let other operations complete
     const initialTimeoutId = setTimeout(() => {
       refreshPropertySearchCriteria();
-    }, 15000); // 15 seconds instead of 5
+    }, 10000); // 10 seconds
     
-    // Set up an interval to refresh the criteria VERY INFREQUENTLY (15 minutes)
+    // Set up an interval to refresh the criteria every 5 minutes
     const intervalId = setInterval(() => {
       refreshPropertySearchCriteria();
-    }, 900000); // 15 minutes (was 300000 - 5 minutes)
+    }, 300000); // 5 minutes
     
     // Cleanup function
     return () => {
       clearTimeout(initialTimeoutId);
       clearInterval(intervalId);
     };
-  }, [leadId, refreshPropertySearchCriteria, showCriteriaDetails, showFullPropertySearch, showAppointments]);
+  }, [leadId, refreshPropertySearchCriteria, showFullPropertySearch, showAppointments]);
 
-  // Monitor state changes for debugging
-  useEffect(() => {
-    console.log("showFullPropertySearch state changed:", showFullPropertySearch);
-  }, [showFullPropertySearch]);
-
-  useEffect(() => {
-    console.log("showCriteriaDetails state changed:", showCriteriaDetails);
-  }, [showCriteriaDetails]);
-
-  useEffect(() => {
-    console.log("showAppointments state changed:", showAppointments);
-  }, [showAppointments]);
-
-  useEffect(() => {
-    console.log("aiAssistantEnabled state changed:", aiAssistantEnabled);
-  }, [aiAssistantEnabled]);
-
-  useEffect(() => {
-    console.log("highlightSearchCriteria state changed:", highlightSearchCriteria);
-  }, [highlightSearchCriteria]);
+  // Add function to handle saving property search criteria from the form
+  const handleSaveSearchCriteria = async (criteria: PropertySearchCriteria) => {
+    try {
+      // Save the updated criteria to the database using the silent update method
+      const success = await propertySearchApi.updatePropertySearchCriteria(leadId, criteria);
+      
+      if (success) {
+        // Fetch the saved criteria from the database to ensure we have exactly what was saved
+        try {
+          const savedCriteria = await propertySearchApi.getPropertySearchesForLead(leadId);
+          
+          if (savedCriteria) {
+            // Update local state with the database version
+            setSearchCriteria(savedCriteria);
+          } else {
+            // If we couldn't retrieve from database, fall back to the form criteria
+            setSearchCriteria(criteria);
+          }
+        } catch (err) {
+          console.error("Error retrieving saved criteria from database:", err);
+          // Fall back to using the form criteria
+          setSearchCriteria(criteria);
+        }
+        
+        // Close the form
+        setShowSearchCriteriaForm(false);
+        setShowFullPropertySearch(false);
+        
+        // Show success notification
+        toast.success("Property search criteria updated successfully");
+      } else {
+        console.error("Failed to save property search criteria to database");
+        toast.error("Failed to update property search criteria");
+      }
+    } catch (error) {
+      console.error("Error saving property search criteria:", error);
+      toast.error("Error updating property search criteria");
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -1197,39 +1218,24 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         {/* Property search criteria */}
         {searchCriteria && (
           <div className={`px-4 py-2 flex items-center justify-between border-b border-gray-100 property-search-criteria-section ${highlightSearchCriteria ? 'bg-blue-50' : ''}`}>
-            <div className="flex items-center">
-              <div className="mr-3 text-blue-500">
+            <div className="flex items-center flex-grow overflow-hidden">
+              <div className="mr-3 text-blue-500 flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
               </div>
-              <div className="flex items-center flex-wrap">
+              <div className="flex-grow min-w-0 overflow-hidden">
                 <span className="text-xs text-gray-500 mr-2">Search:</span>
-                <div className="flex items-center text-sm flex-wrap">
-                  {searchCriteria.minBedrooms && <span className="font-medium">{searchCriteria.minBedrooms}+ beds</span>}
-                  {searchCriteria.minBathrooms && (
-                    <>
-                      <span className="mx-1.5 text-gray-400">•</span>
-                      <span className="font-medium">{searchCriteria.minBathrooms}+ baths</span>
-                    </>
-                  )}
-                  {searchCriteria.minPrice && searchCriteria.maxPrice && (
-                    <>
-                      <span className="mx-1.5 text-gray-400">•</span>
-                      <span className="font-medium">${searchCriteria.minPrice.toLocaleString()} - ${searchCriteria.maxPrice.toLocaleString()}</span>
-                    </>
-                  )}
-                  {searchCriteria.location && (
-                    <>
-                      <span className="mx-1.5 text-gray-400">•</span>
-                      <span className="font-medium">{searchCriteria.location}</span>
-                    </>
-                  )}
+                <div className="inline-flex items-center text-sm truncate">
+                  <PropertySearchCriteriaSummary 
+                    criteria={searchCriteria}
+                    compact={true}
+                  />
                 </div>
               </div>
             </div>
             
-            <div className="flex space-x-1">
+            <div className="flex space-x-1 flex-shrink-0 ml-2">
               <button
                 onClick={() => {
                   console.log("View Matches button clicked");
@@ -1248,6 +1254,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 onClick={() => {
                   console.log("Edit Criteria button clicked");
                   setShowFullPropertySearch(true);
+                  setShowSearchCriteriaForm(true);
                 }}
                 className="px-2 py-1 text-xs text-gray-600 rounded flex items-center border border-gray-200"
                 type="button"
@@ -1323,6 +1330,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             if (e.target === e.currentTarget) {
               console.log("Closing property search modal by clicking outside");
               setShowFullPropertySearch(false);
+              setShowSearchCriteriaForm(false);
             }
           }}
         >
@@ -1330,7 +1338,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <div className="flex justify-between items-center p-4 border-b">
               <h2 className="text-lg font-medium">Property Search Criteria</h2>
               <button 
-                onClick={() => setShowFullPropertySearch(false)}
+                onClick={() => {
+                  setShowFullPropertySearch(false);
+                  setShowSearchCriteriaForm(false);
+                }}
                 className="text-gray-500 hover:text-gray-700"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1339,11 +1350,24 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               </button>
             </div>
             <div className="p-4">
-              <PropertySearchInfo 
-                leadId={leadId}
-                criteria={searchCriteria} 
-                leadName={leadName || "Lead"}
-              />
+              {showSearchCriteriaForm ? (
+                <PropertySearchCriteriaForm
+                  initialCriteria={searchCriteria}
+                  leadId={leadId}
+                  onSave={handleSaveSearchCriteria}
+                  onCancel={() => {
+                    console.log("Cancel button clicked on search criteria form");
+                    setShowSearchCriteriaForm(false);
+                    setShowFullPropertySearch(false);
+                  }}
+                />
+              ) : (
+                <PropertySearchInfo 
+                  leadId={leadId}
+                  criteria={searchCriteria} 
+                  leadName={leadName || "Lead"}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1400,7 +1424,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               onClick={() => {
                 console.log("View Criteria button clicked");
                 if (searchCriteria) {
-                  setShowCriteriaDetails(true);
+                  // Make sure to close any existing forms first and reset the state
+                  setShowSearchCriteriaForm(true);
+                  setShowFullPropertySearch(true);
                 } else {
                   console.log("No search criteria available to view");
                   toast.error("No search criteria available");
@@ -1462,77 +1488,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           />
         )}
       </div>
-
-      {/* Property Search Criteria Details Modal */}
-      {showCriteriaDetails && searchCriteria && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={(e) => {
-            // Close the modal when clicking on the background overlay
-            if (e.target === e.currentTarget) {
-              console.log("Closing criteria details modal by clicking outside");
-              setShowCriteriaDetails(false);
-            }
-          }}
-        >
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h2 className="text-lg font-medium">Property Search Criteria Details</h2>
-              <button 
-                onClick={() => setShowCriteriaDetails(false)}
-                className="text-gray-500 hover:text-gray-700"
-                type="button"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-4">
-              <PropertySearchCriteriaSummary criteria={searchCriteria} compact={false} />
-              
-              <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowCriteriaDetails(false)}
-                  className="px-4 py-2 border border-gray-300 rounded text-gray-700 bg-white hover:bg-gray-50"
-                  type="button"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCriteriaDetails(false);
-                    setShowFullPropertySearch(true);
-                  }}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  type="button"
-                >
-                  Edit Criteria
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add style for highlight pulse animation */}
-      <style>
-        {`
-        @keyframes highlight-pulse {
-          0% { background-color: #ffffff; }
-          50% { background-color: #dbeafe; } /* bg-blue-100 */
-          100% { background-color: #ffffff; }
-        }
-        
-        .highlight-pulse {
-          animation: highlight-pulse 2s ease-in-out;
-        }
-        
-        .property-search-criteria-section {
-          transition: background-color 0.5s ease;
-        }
-        `}
-      </style>
     </div>
   );
 };

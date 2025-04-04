@@ -611,6 +611,48 @@ const leadController = {
       logger.error("Error processing inactive leads:", error);
       res.status(500).json({ error: error.message });
     }
+  },
+
+  // Add this new endpoint to fix leads with null userId
+  async fixLeadsWithoutUser(req, res) {
+    try {
+      // Find leads with null userId
+      const leads = await Lead.findAll({
+        where: { userId: null }
+      });
+      
+      if (leads.length === 0) {
+        return res.json({ message: "No leads without userId found" });
+      }
+      
+      // Find the first user to assign these leads to
+      const User = require("../models/User");
+      const firstUser = await User.findOne({
+        order: [['createdAt', 'ASC']]
+      });
+      
+      if (!firstUser) {
+        return res.status(404).json({ error: "No users found in system" });
+      }
+      
+      // Update all leads to assign them to this user
+      const userIdToAssign = firstUser.id;
+      
+      const updatedCount = await Lead.update(
+        { userId: userIdToAssign },
+        { where: { userId: null } }
+      );
+      
+      logger.info(`Fixed ${updatedCount[0]} leads by assigning them to user ${userIdToAssign}`);
+      
+      return res.json({ 
+        message: `Fixed ${updatedCount[0]} leads by assigning them to user ${userIdToAssign}`,
+        updatedCount: updatedCount[0]
+      });
+    } catch (error) {
+      logger.error("Error fixing leads without userId:", error);
+      res.status(500).json({ error: "Failed to fix leads" });
+    }
   }
 };
 

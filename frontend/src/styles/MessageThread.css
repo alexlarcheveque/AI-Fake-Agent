@@ -1,0 +1,20 @@
+/* MessageThread component styles */
+
+.message-thread-container {
+  height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+@keyframes highlight-pulse {
+  0% { background-color: #ffffff; }
+  50% { background-color: #dbeafe; } /* bg-blue-100 */
+  100% { background-color: #ffffff; }
+}
+
+.highlight-pulse {
+  animation: highlight-pulse 2s ease-in-out;
+}
+
+.property-search-criteria-section {
+  transition: background-color 0.5s ease;
+} 

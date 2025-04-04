@@ -1,15 +1,17 @@
 require("dotenv").config();
 
-// Add environment variable check
-console.log("Environment variables check:");
-console.log("OPENAI_API_KEY exists:", !!process.env.OPENAI_API_KEY);
-console.log("TWILIO_ACCOUNT_SID exists:", !!process.env.TWILIO_ACCOUNT_SID);
-console.log("TWILIO_AUTH_TOKEN exists:", !!process.env.TWILIO_AUTH_TOKEN);
-console.log("TWILIO_PHONE_NUMBER exists:", !!process.env.TWILIO_PHONE_NUMBER);
-console.log("BASE_URL:", process.env.BASE_URL);
-console.log("GOOGLE_CLIENT_ID exists:", !!process.env.GOOGLE_CLIENT_ID);
-console.log("GOOGLE_CLIENT_SECRET exists:", !!process.env.GOOGLE_CLIENT_SECRET);
-console.log("GOOGLE_REDIRECT_URI:", process.env.GOOGLE_REDIRECT_URI);
+// Add environment variable check only when debug mode is enabled
+if (process.env.DEBUG_REQUESTS === 'true') {
+  console.log("Environment variables check:");
+  console.log("OPENAI_API_KEY exists:", !!process.env.OPENAI_API_KEY);
+  console.log("TWILIO_ACCOUNT_SID exists:", !!process.env.TWILIO_ACCOUNT_SID);
+  console.log("TWILIO_AUTH_TOKEN exists:", !!process.env.TWILIO_AUTH_TOKEN);
+  console.log("TWILIO_PHONE_NUMBER exists:", !!process.env.TWILIO_PHONE_NUMBER);
+  console.log("BASE_URL:", process.env.BASE_URL);
+  console.log("GOOGLE_CLIENT_ID exists:", !!process.env.GOOGLE_CLIENT_ID);
+  console.log("GOOGLE_CLIENT_SECRET exists:", !!process.env.GOOGLE_CLIENT_SECRET);
+  console.log("GOOGLE_REDIRECT_URI:", process.env.GOOGLE_REDIRECT_URI);
+}
 
 const express = require("express");
 const cors = require("cors");
@@ -33,9 +35,15 @@ const app = express();
 
 // Add this at the very top, before any other middleware
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log("Headers:", req.headers);
-  if (req.body) console.log("Body:", req.body);
+  // Only log detailed request information if debugging is enabled
+  if (process.env.DEBUG_REQUESTS === 'true') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log("Headers:", req.headers);
+    if (req.body) console.log("Body:", req.body);
+  } else {
+    // When debugging is disabled, only log the method and URL (minimal logging)
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -63,7 +71,7 @@ app.use(
 
 // Add this before your routes
 app.use((req, res, next) => {
-  if (req.originalUrl.includes("/api/messages/receive")) {
+  if (req.originalUrl.includes("/api/messages/receive") && process.env.DEBUG_REQUESTS === 'true') {
     console.log("Twilio webhook raw body:", req.body);
     console.log("Content-Type:", req.headers["content-type"]);
     console.log("Method:", req.method);
@@ -94,31 +102,44 @@ app.post("/api/messages/receive", (req, res) => {
 
 // Also handle the path without the /api prefix (Twilio might be using this)
 app.post("/messages/receive", (req, res) => {
-  console.log("Received webhook at /messages/receive");
+  if (process.env.DEBUG_REQUESTS === 'true') {
+    console.log("Received webhook at /messages/receive");
+  }
   messageController.receiveMessage(req, res);
 });
 
 // Add this route at the root level - CONSOLIDATED THE TWO DUPLICATE BLOCKS INTO ONE
 app.post("/messages/receive", (req, res) => {
-  console.log("========== INCOMING WEBHOOK ==========");
-  console.log("Body:", req.body);
-  console.log("From:", req.body.From);
-  console.log("To:", req.body.To);
-  console.log("Body:", req.body.Body);
-  console.log("MessageSid:", req.body.MessageSid);
-  console.log("======================================");
+  if (process.env.DEBUG_REQUESTS === 'true') {
+    console.log("========== INCOMING WEBHOOK ==========");
+    console.log("Body:", req.body);
+    console.log("From:", req.body.From);
+    console.log("To:", req.body.To);
+    console.log("Body:", req.body.Body);
+    console.log("MessageSid:", req.body.MessageSid);
+    console.log("======================================");
+  } else {
+    // Log minimal info even when debugging is disabled
+    console.log(`[${new Date().toISOString()}] SMS received: ${req.body.From} -> ${req.body.To}`);
+  }
 
   messageController.receiveMessage(req, res);
 });
 
 app.post("/sms", (req, res) => {
-  console.log("Received SMS webhook:", req.body);
+  if (process.env.DEBUG_REQUESTS === 'true') {
+    console.log("Received SMS webhook:", req.body);
+  } else {
+    console.log(`[${new Date().toISOString()}] SMS received via /sms endpoint`);
+  }
   messageController.receiveMessage(req, res);
 });
 
 // Add this route to handle the typo
 app.post("/api/mesages/receive", (req, res) => {
-  console.log("Received webhook at misspelled URL");
+  if (process.env.DEBUG_REQUESTS === 'true') {
+    console.log("Received webhook at misspelled URL");
+  }
   messageController.receiveMessage(req, res);
 });
 
@@ -142,10 +163,14 @@ const io = new Server(server, {
 
 // Socket.io connection handler
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+  if (process.env.DEBUG_REQUESTS === 'true') {
+    console.log("Client connected:", socket.id);
+  }
 
   socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
+    if (process.env.DEBUG_REQUESTS === 'true') {
+      console.log("Client disconnected:", socket.id);
+    }
   });
 });
 

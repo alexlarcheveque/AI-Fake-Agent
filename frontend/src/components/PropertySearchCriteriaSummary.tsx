@@ -6,13 +6,15 @@ interface PropertySearchCriteriaSummaryProps {
   onEdit?: (criteria: PropertySearchCriteria) => void;
   leadId?: number;
   compact?: boolean;
+  inlineStyle?: boolean;
 }
 
 const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps> = ({ 
   criteria, 
   onEdit,
   leadId,
-  compact = false
+  compact = false,
+  inlineStyle = false
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -21,11 +23,12 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
 
   // Format price range for display
   const formatPrice = () => {
-    if (criteria.minPrice !== undefined && criteria.maxPrice !== undefined) {
+    if (criteria.minPrice !== undefined && criteria.minPrice !== null && 
+        criteria.maxPrice !== undefined && criteria.maxPrice !== null) {
       return `$${criteria.minPrice.toLocaleString()} - $${criteria.maxPrice.toLocaleString()}`;
-    } else if (criteria.maxPrice !== undefined) {
+    } else if (criteria.maxPrice !== undefined && criteria.maxPrice !== null) {
       return `Up to $${criteria.maxPrice.toLocaleString()}`;
-    } else if (criteria.minPrice !== undefined) {
+    } else if (criteria.minPrice !== undefined && criteria.minPrice !== null) {
       return `From $${criteria.minPrice.toLocaleString()}`;
     }
     return '';
@@ -33,13 +36,12 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
 
   // Format square footage for display
   const formatSqFt = () => {
-    if (criteria.minSqft !== undefined && criteria.maxSqft !== undefined) {
-      return `${criteria.minSqft.toLocaleString()} - ${criteria.maxSqft.toLocaleString()} sq ft`;
-    } else if (criteria.maxSqft !== undefined) {
-      return `Up to ${criteria.maxSqft.toLocaleString()} sq ft`;
-    } else if (criteria.minSqft !== undefined) {
-      return `${criteria.minSqft.toLocaleString()}+ sq ft`;
-    } else if (criteria.minSquareFeet !== undefined) {
+    if (criteria.minSquareFeet !== undefined && criteria.minSquareFeet !== null && 
+        criteria.maxSquareFeet !== undefined && criteria.maxSquareFeet !== null) {
+      return `${criteria.minSquareFeet.toLocaleString()} - ${criteria.maxSquareFeet.toLocaleString()} sq ft`;
+    } else if (criteria.maxSquareFeet !== undefined && criteria.maxSquareFeet !== null) {
+      return `Up to ${criteria.maxSquareFeet.toLocaleString()} sq ft`;
+    } else if (criteria.minSquareFeet !== undefined && criteria.minSquareFeet !== null) {
       return `${criteria.minSquareFeet.toLocaleString()}+ sq ft`;
     }
     return '';
@@ -57,6 +59,8 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
 
   // Get bed count from either beds or bedrooms field, handle min/max ranges
   const getBedCount = () => {
+    const typedCriteria = criteria as any; // Type assertion for backward compatibility
+    
     // Handle minBedrooms for 3+ or 4+ format
     if (criteria.minBedrooms !== undefined && (!criteria.maxBedrooms || criteria.maxBedrooms > criteria.minBedrooms)) {
       return `${criteria.minBedrooms}+`;
@@ -65,19 +69,21 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
     else if (criteria.minBedrooms !== undefined && criteria.maxBedrooms !== undefined) {
       return `${criteria.minBedrooms}-${criteria.maxBedrooms}`;
     }
-    // Handle single beds/bedrooms value
-    else if (criteria.beds !== undefined) {
-      return `${criteria.beds}`;
-    } else if (criteria.bedrooms !== undefined) {
-      return `${criteria.bedrooms}`;
-    } else if (criteria.minBeds !== undefined) {
-      return `${criteria.minBeds}+`;
+    // Handle single beds/bedrooms value with type assertion for legacy properties
+    else if (typedCriteria.beds !== undefined) {
+      return `${typedCriteria.beds}`;
+    } else if (typedCriteria.bedrooms !== undefined) {
+      return `${typedCriteria.bedrooms}`;
+    } else if (typedCriteria.minBeds !== undefined) {
+      return `${typedCriteria.minBeds}+`;
     }
     return '';
   };
 
   // Get bath count from either baths or bathrooms field
   const getBathCount = () => {
+    const typedCriteria = criteria as any; // Type assertion for backward compatibility
+    
     // Handle minBathrooms for 2+ or 2.5+ format
     if (criteria.minBathrooms !== undefined && (!criteria.maxBathrooms || criteria.maxBathrooms > criteria.minBathrooms)) {
       return `${criteria.minBathrooms}+`;
@@ -86,13 +92,13 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
     else if (criteria.minBathrooms !== undefined && criteria.maxBathrooms !== undefined) {
       return `${criteria.minBathrooms}-${criteria.maxBathrooms}`;
     }
-    // Handle single baths/bathrooms value
-    else if (criteria.baths !== undefined) {
-      return `${criteria.baths}`;
-    } else if (criteria.bathrooms !== undefined) {
-      return `${criteria.bathrooms}`;
-    } else if (criteria.minBaths !== undefined) {
-      return `${criteria.minBaths}+`;
+    // Handle single baths/bathrooms value with type assertion for legacy properties
+    else if (typedCriteria.baths !== undefined) {
+      return `${typedCriteria.baths}`;
+    } else if (typedCriteria.bathrooms !== undefined) {
+      return `${typedCriteria.bathrooms}`;
+    } else if (typedCriteria.minBaths !== undefined) {
+      return `${typedCriteria.minBaths}+`;
     }
     return '';
   };
@@ -110,18 +116,71 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
     const price = formatPrice();
     if (price) parts.push(price);
     
-    // Only include square footage and location if there's space
-    if (parts.length < 2) {
-      const sqft = formatSqFt();
-      if (sqft) parts.push(sqft);
+    // Always include square footage when available
+    const sqft = formatSqFt();
+    if (sqft) parts.push(sqft);
+    
+    // Always include property types when available
+    if (criteria.propertyTypes && criteria.propertyTypes.length > 0) {
+      parts.push(criteria.propertyTypes.join(', '));
     }
     
-    if (parts.length < 2) {
-      const location = formatLocations();
-      if (location) parts.push(location);
-    }
+    // Always include location when available
+    const location = formatLocations();
+    if (location) parts.push(location);
     
     return parts.join(' • ');
+  };
+
+  // Get an inline formatted version for the header display
+  const getInlineDisplay = () => {
+    const parts = [];
+    
+    const beds = getBedCount();
+    if (beds) {
+      // Only add "+ beds" if the count doesn't already include a plus sign
+      const displayText = beds.includes('+') ? `${beds} beds` : `${beds}+ beds`;
+      parts.push(<span key="beds" className="font-medium">{displayText}</span>);
+    }
+    
+    const baths = getBathCount();
+    if (baths) {
+      // Only add "+ baths" if the count doesn't already include a plus sign
+      const displayText = baths.includes('+') ? `${baths} baths` : `${baths}+ baths`;
+      parts.push(<span key="baths" className="font-medium">{displayText}</span>);
+    }
+    
+    const price = formatPrice();
+    if (price) parts.push(<span key="price" className="font-medium">{price}</span>);
+    
+    // Always include square footage when available
+    const sqft = formatSqFt();
+    if (sqft) parts.push(<span key="sqft" className="font-medium">{sqft}</span>);
+    
+    // Always include property types when available
+    if (criteria.propertyTypes && criteria.propertyTypes.length > 0) {
+      parts.push(<span key="propertyTypes" className="font-medium">{criteria.propertyTypes.join(', ')}</span>);
+    }
+    
+    // Always include location when available
+    const locations = formatLocations();
+    if (locations) parts.push(<span key="locations" className="font-medium">{locations}</span>);
+    
+    // If no criteria available
+    if (parts.length === 0) {
+      return <span className="text-gray-400">No search criteria specified</span>;
+    }
+    
+    // Create array with separators
+    const result = parts.reduce((acc: React.ReactNode[], part, index) => {
+      if (index > 0) {
+        acc.push(<span key={`sep-${index}`} className="mx-1.5 text-gray-400">•</span>);
+      }
+      acc.push(part);
+      return acc;
+    }, []);
+    
+    return <div className="flex items-center text-sm flex-wrap">{result}</div>;
   };
 
   // Map for the property keys and their display labels with icons
@@ -197,61 +256,27 @@ const PropertySearchCriteriaSummary: React.FC<PropertySearchCriteriaSummaryProps
     }
   };
 
+  // For inline style, render a simplified version
+  if (inlineStyle) {
+    return getInlineDisplay();
+  }
+
   // For compact mode, show a simplified view
   if (compact && !isExpanded) {
     return (
-      <div className="bg-white border-l-4 border-blue-500 py-2 px-3 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center flex-grow">
-            <div className="bg-blue-500 p-1 rounded-full mr-2 flex-shrink-0">
-              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-xs font-semibold text-gray-800 mb-0.5">Property Criteria</h3>
-              <p className="text-xs text-gray-600 truncate">{getCompactSummary() || '—'}</p>
-            </div>
-            <button 
-              onClick={() => setIsExpanded(true)}
-              className="ml-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Details
-            </button>
-          </div>
-          <div className="flex items-center ml-2 space-x-1">
-            {leadId && (
-              <button 
-                onClick={handleManualSync}
-                className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded hover:bg-gray-200 flex items-center border border-gray-200"
-                title="Manually sync criteria with database"
-              >
-                <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Sync
-              </button>
-            )}
-            {onEdit && (
-              <button 
-                onClick={() => onEdit(criteria)}
-                className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 flex items-center"
-              >
-                <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-                Edit
-              </button>
-            )}
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center">
+        {getCompactSummary() ? (
+          <span className="text-sm">{getCompactSummary()}</span>
+        ) : (
+          <span className="text-sm text-gray-400">No search criteria specified</span>
+        )}
       </div>
     );
   }
 
   // Full view (default or expanded from compact)
   return (
-    <div className="bg-white border-l-4 border-blue-500 pl-3 py-3 mb-3 shadow-sm">
+    <div className="bg-white border-l-4 border-blue-500 pl-3 py-3 mb-3 shadow-sm w-full">
       <div className="flex items-center justify-between">
         <div className="flex items-center">
           <div className="bg-blue-500 p-1 rounded-full mr-2">

@@ -116,6 +116,34 @@ router.post("/searches/lead/:leadId", auth, async (req, res) => {
   }
 });
 
+// Update a property search without triggering notifications (silent update)
+router.patch("/searches/lead/:leadId", auth, async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    const searchCriteria = req.body;
+    
+    // Find the active search for this lead
+    const activeSearch = await LeadPropertySearch.findOne({
+      where: { leadId, isActive: true }
+    });
+    
+    if (!activeSearch) {
+      // If no active search exists, create one
+      const search = await propertyService.saveLeadPropertySearch(leadId, searchCriteria);
+      res.status(201).json(search);
+    } else {
+      // Update existing search without running matching algorithm
+      // This is the key difference from the POST endpoint - we're not calling
+      // propertyService.saveLeadPropertySearch which would trigger notifications
+      await activeSearch.update(searchCriteria);
+      res.status(200).json(activeSearch);
+    }
+  } catch (error) {
+    logger.error("Error updating property search:", error);
+    res.status(500).json({ error: "Failed to update property search" });
+  }
+});
+
 // Add a search endpoint
 router.get("/search", auth, async (req, res) => {
   try {

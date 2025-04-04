@@ -2,6 +2,130 @@ import React, { useState, useEffect } from 'react';
 import propertySearchApi, { PropertySearchCriteria } from '../api/propertySearchApi';
 import { useNotifications } from '../contexts/NotificationContext';
 
+// ReadOnlyPropertyForm component inside this file
+const ReadOnlyPropertyForm: React.FC<{ criteria: PropertySearchCriteria }> = ({ criteria }) => {
+  // Format locations for display
+  const locationsText = criteria.locations?.length ? 
+    criteria.locations.join(', ') : 
+    criteria.location || '';
+
+  // Format property types for display
+  const propertyTypesText = criteria.propertyTypes?.length ? 
+    criteria.propertyTypes.join(', ') : '';
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Bedrooms */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Bedrooms</label>
+          <div className="flex space-x-2">
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Minimum</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.minBedrooms !== undefined ? criteria.minBedrooms : '—'}
+              </div>
+            </div>
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Maximum</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.maxBedrooms !== undefined ? criteria.maxBedrooms : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bathrooms */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Bathrooms</label>
+          <div className="flex space-x-2">
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Minimum</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.minBathrooms !== undefined ? criteria.minBathrooms : '—'}
+              </div>
+            </div>
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Maximum</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.maxBathrooms !== undefined ? criteria.maxBathrooms : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Price Range */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Price Range</label>
+          <div className="flex space-x-2">
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Minimum ($)</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.minPrice !== undefined ? '$' + criteria.minPrice.toLocaleString() : '—'}
+              </div>
+            </div>
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Maximum ($)</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.maxPrice !== undefined ? '$' + criteria.maxPrice.toLocaleString() : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Square Feet */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Square Feet</label>
+          <div className="flex space-x-2">
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Minimum</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.minSquareFeet !== undefined ? criteria.minSquareFeet.toLocaleString() + ' sqft' : '—'}
+              </div>
+            </div>
+            <div className="w-1/2">
+              <label className="block text-xs text-gray-500">Maximum</label>
+              <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+                {criteria.maxSquareFeet !== undefined ? criteria.maxSquareFeet.toLocaleString() + ' sqft' : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Locations */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">Locations</label>
+        <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+          {locationsText || '—'}
+        </div>
+      </div>
+
+      {/* Property Types */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">Property Types</label>
+        <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
+          {propertyTypesText || '—'}
+        </div>
+      </div>
+
+      {/* Active Status */}
+      <div className="flex items-center">
+        <div className={`h-4 w-4 border ${criteria.isActive !== false ? 'bg-blue-500 border-blue-600' : 'bg-gray-200 border-gray-300'} rounded`}>
+          {criteria.isActive !== false && (
+            <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </div>
+        <label className="ml-2 block text-sm text-gray-900">
+          Active Search
+        </label>
+      </div>
+    </div>
+  );
+};
+
 interface PropertySearchInfoProps {
   criteria: PropertySearchCriteria;
   leadId: number;
@@ -50,13 +174,7 @@ const PropertySearchInfo: React.FC<PropertySearchInfoProps> = ({ criteria, leadI
       setProperties(results);
       setShowProperties(true);
       
-      // Add a notification about the search
-      addNotification({
-        type: 'property_search',
-        title: 'New Property Search',
-        message: `${leadName} is looking for ${propertySearchApi.formatSearchCriteria(criteria)}`,
-        data: { leadId, criteria }
-      });
+      // Removed notification - we don't want to notify just for viewing properties
     } catch (error) {
       console.error('Error searching properties:', error);
       setError('Failed to load properties. Please try again later.');
@@ -67,15 +185,15 @@ const PropertySearchInfo: React.FC<PropertySearchInfoProps> = ({ criteria, leadI
   
   return (
     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
-      <div className="flex items-center mb-2">
+      <div className="flex items-center mb-4">
         <svg className="h-5 w-5 text-orange-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         </svg>
         <h3 className="text-sm font-semibold text-orange-800">Property Search Criteria</h3>
       </div>
       
-      <div className="text-sm text-gray-700 mb-3">
-        {propertySearchApi.formatSearchCriteria(criteria)}
+      <div className="mb-4 p-4 bg-white rounded-md border border-orange-100">
+        <ReadOnlyPropertyForm criteria={criteria} />
       </div>
       
       {/* Debug info */}
