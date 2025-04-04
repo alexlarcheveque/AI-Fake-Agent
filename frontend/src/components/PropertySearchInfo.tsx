@@ -13,6 +13,11 @@ const ReadOnlyPropertyForm: React.FC<{ criteria: PropertySearchCriteria }> = ({ 
   const propertyTypesText = criteria.propertyTypes?.length ? 
     criteria.propertyTypes.join(', ') : '';
 
+  // Safe number formatter with fallback
+  const formatNumber = (value: number | undefined | null, prefix: string = '', suffix: string = ''): string => {
+    return value !== undefined && value !== null ? `${prefix}${value.toLocaleString()}${suffix}` : '—';
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -23,13 +28,13 @@ const ReadOnlyPropertyForm: React.FC<{ criteria: PropertySearchCriteria }> = ({ 
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Minimum</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.minBedrooms !== undefined ? criteria.minBedrooms : '—'}
+                {formatNumber(criteria.minBedrooms)}
               </div>
             </div>
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Maximum</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.maxBedrooms !== undefined ? criteria.maxBedrooms : '—'}
+                {formatNumber(criteria.maxBedrooms)}
               </div>
             </div>
           </div>
@@ -42,13 +47,13 @@ const ReadOnlyPropertyForm: React.FC<{ criteria: PropertySearchCriteria }> = ({ 
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Minimum</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.minBathrooms !== undefined ? criteria.minBathrooms : '—'}
+                {formatNumber(criteria.minBathrooms)}
               </div>
             </div>
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Maximum</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.maxBathrooms !== undefined ? criteria.maxBathrooms : '—'}
+                {formatNumber(criteria.maxBathrooms)}
               </div>
             </div>
           </div>
@@ -61,13 +66,13 @@ const ReadOnlyPropertyForm: React.FC<{ criteria: PropertySearchCriteria }> = ({ 
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Minimum ($)</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.minPrice !== undefined ? '$' + criteria.minPrice.toLocaleString() : '—'}
+                {formatNumber(criteria.minPrice, '$')}
               </div>
             </div>
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Maximum ($)</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.maxPrice !== undefined ? '$' + criteria.maxPrice.toLocaleString() : '—'}
+                {formatNumber(criteria.maxPrice, '$')}
               </div>
             </div>
           </div>
@@ -80,13 +85,13 @@ const ReadOnlyPropertyForm: React.FC<{ criteria: PropertySearchCriteria }> = ({ 
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Minimum</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.minSquareFeet !== undefined ? criteria.minSquareFeet.toLocaleString() + ' sqft' : '—'}
+                {formatNumber(criteria.minSquareFeet, '', ' sqft')}
               </div>
             </div>
             <div className="w-1/2">
               <label className="block text-xs text-gray-500">Maximum</label>
               <div className="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-sm">
-                {criteria.maxSquareFeet !== undefined ? criteria.maxSquareFeet.toLocaleString() + ' sqft' : '—'}
+                {formatNumber(criteria.maxSquareFeet, '', ' sqft')}
               </div>
             </div>
           </div>
