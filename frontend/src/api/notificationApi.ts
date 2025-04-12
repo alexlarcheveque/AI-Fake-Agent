@@ -45,7 +45,7 @@ class NotificationApi {
   // Test the connection to the API
   async testConnection(): Promise<{ status: string }> {
     try {
-      const response = await api.get("/api/notifications/test");
+      const response = await api.get("/api/notifications/test"); 
       return response.data.data;
     } catch (error) {
       console.error("Notification API connection failed:", error);

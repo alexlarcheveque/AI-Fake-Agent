@@ -40,4 +40,4 @@ const Notification = sequelize.define('Notification', {
   tableName: 'notifications'
 });
 
-module.exports = Notification; 
+module.exports = Notification;  

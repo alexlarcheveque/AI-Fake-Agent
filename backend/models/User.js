@@ -70,6 +70,17 @@ User.prototype.checkPassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
 
+// Set up associations after export (this avoids circular dependencies)
+setTimeout(() => {
+  const Lead = require('./lead');
+  
+  User.hasMany(Lead, {
+    foreignKey: 'userId',
+    as: 'leads',
+    onDelete: 'CASCADE'
+  });
+}, 0);
+
 // This relationship will be properly set up in Settings.js
 // User.hasMany(Settings, { foreignKey: 'userId' });
 
