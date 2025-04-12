@@ -82,9 +82,16 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
   // Group messages by date for date separators
   const getMessageGroups = () => {
-    const groups: { date: Date; messages: Message[] }[] = [];
+    const groups: { date: Date; displayDate: Date; messages: Message[] }[] = [];
     
-    messages.forEach(message => {
+    // Sort messages by creation date first to ensure proper chronological order
+    const sortedMessages = [...messages].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateA - dateB;
+    });
+    
+    sortedMessages.forEach(message => {
       const messageDate = typeof message.createdAt === "string" 
         ? new Date(message.createdAt) 
         : message.createdAt;
@@ -94,6 +101,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         return;
       }
 
+      // Use the start of day for grouping
       const messageDateStart = startOfDay(messageDate);
       
       // Check if we already have a group for this date
@@ -103,12 +111,23 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
       if (existingGroup) {
         existingGroup.messages.push(message);
+        // We keep the first message's time for each day
       } else {
         groups.push({
-          date: messageDateStart,
+          date: messageDateStart, // For grouping
+          displayDate: messageDate, // For display with correct time
           messages: [message]
         });
       }
+    });
+    
+    // Ensure messages within each group are sorted by timestamp
+    groups.forEach(group => {
+      group.messages.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateA - dateB;
+      });
     });
 
     return groups;
@@ -138,7 +157,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           {/* Date + Time separator */}
           <div className="flex justify-center mb-2">
             <div className="bg-gray-100 text-gray-600 text-xs font-medium rounded-full px-3 py-1">
-              {formatDateHeader(group.date)}
+              {formatDateHeader(group.displayDate)}
             </div>
           </div>
           
