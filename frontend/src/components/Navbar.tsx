@@ -284,7 +284,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                         <div className="max-h-96 overflow-y-auto">
                           {notifications.map((notification) => (
                             <div 
-                              key={notification.id} 
+                              key={`${notification.id}-${notification.isRead ? 'read' : 'unread'}`} 
                               onClick={() => handleNotificationClick(notification)} 
                               className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start ${!notification.isRead ? 'bg-blue-50' : ''}`}
                             >

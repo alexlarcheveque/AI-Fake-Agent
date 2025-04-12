@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import SingleLeadForm from "./SingleLeadForm";
 import BulkLeadForm from "./BulkLeadForm";
 import LeadList from "./LeadList";
@@ -21,6 +21,9 @@ const LeadManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
+  
+  const singleLeadModalRef = useRef<HTMLDivElement>(null);
+  const bulkLeadModalRef = useRef<HTMLDivElement>(null);
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -46,6 +49,31 @@ const LeadManagement = () => {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
+  
+  // Handle click outside to close modals
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isCreateSingleLeadModalOpen && 
+          singleLeadModalRef.current && 
+          !singleLeadModalRef.current.contains(event.target as Node)) {
+        setIsCreateSingleLeadModalOpen(false);
+      }
+      
+      if (isCreateBulkLeadModalOpen && 
+          bulkLeadModalRef.current && 
+          !bulkLeadModalRef.current.contains(event.target as Node)) {
+        setIsCreateBulkLeadModalOpen(false);
+      }
+    };
+
+    if (isCreateSingleLeadModalOpen || isCreateBulkLeadModalOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCreateSingleLeadModalOpen, isCreateBulkLeadModalOpen]);
 
   const handleLeadCreated = useCallback(async (newLead: Lead) => {
     setLeads((prevLeads) => [newLead, ...prevLeads]);
@@ -216,7 +244,7 @@ const LeadManagement = () => {
       {/* Add Lead Modal */}
       {isCreateSingleLeadModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 overflow-y-auto py-8">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
+          <div ref={singleLeadModalRef} className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-700">
@@ -252,7 +280,7 @@ const LeadManagement = () => {
       {/* Bulk Lead Modal */}
       {isCreateBulkLeadModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 overflow-y-auto py-8">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
+          <div ref={bulkLeadModalRef} className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-auto">
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-700">

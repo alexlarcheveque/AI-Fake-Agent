@@ -1,6 +1,13 @@
 import React, { useRef, useEffect } from "react";
 import { Message } from "../types/message";
-import { formatDistanceToNow } from "date-fns";
+import { 
+  format, 
+  isToday, 
+  isYesterday, 
+  isSameDay,
+  isSameWeek, 
+  startOfDay
+} from "date-fns";
 
 interface MessageListProps {
   messages: Message[];
@@ -11,14 +18,15 @@ const getStatusIndicator = (message: Message) => {
 
   type StatusKey = "queued" | "sending" | "sent" | "delivered" | "failed" | "undelivered" | "read";
   
+  // Customize colors for the blue bubble background with more modern icons
   const statusMap = {
-    queued: { icon: "⏳", color: "text-gray-400", text: "Queued" },
-    sending: { icon: "⏳", color: "text-blue-400", text: "Sending" },
-    sent: { icon: "✓", color: "text-blue-500", text: "Sent" },
-    delivered: { icon: "✓✓", color: "text-green-500", text: "Delivered" },
-    failed: { icon: "❌", color: "text-red-500", text: "Failed" },
-    undelivered: { icon: "❌", color: "text-red-500", text: "Undelivered" },
-    read: { icon: "👁️", color: "text-green-600", text: "Read" },
+    queued: { icon: "●", color: "text-blue-200", text: "Queued" },
+    sending: { icon: "◌", color: "text-blue-200", text: "Sending" },
+    sent: { icon: "✓", color: "text-blue-100", text: "Sent" },
+    delivered: { icon: "✓✓", color: "text-white", text: "Delivered" },
+    failed: { icon: "✕", color: "text-red-300", text: "Failed" },
+    undelivered: { icon: "✕", color: "text-red-300", text: "Undelivered" },
+    read: { icon: "✓✓", color: "text-white", text: "Read" },
   };
 
   // Type the status explicitly as a key of statusMap
@@ -29,11 +37,8 @@ const getStatusIndicator = (message: Message) => {
   const indicator = statusMap[status];
 
   return (
-    <span
-      className={`text-xs ${indicator.color} ml-2`}
-      title={message.errorMessage || indicator.text}
-    >
-      {indicator.icon}
+    <span className={`${indicator.color} text-xs opacity-70`} title={indicator.text}>
+      {indicator.icon} {indicator.text}
     </span>
   );
 };
@@ -75,77 +80,133 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     setPreviousMessagesLength(messages.length);
   }, [messages, previousMessagesLength]);
 
-  // Helper function to format dates safely
-  const formatMessageTime = (dateString: string | Date) => {
-    try {
-      const date =
-        typeof dateString === "string" ? new Date(dateString) : dateString;
-
-      // Check if date is valid before formatting
-      if (isNaN(date.getTime())) {
-        console.warn("Invalid date:", dateString);
-        return ""; // Return empty string for invalid dates
+  // Group messages by date for date separators
+  const getMessageGroups = () => {
+    const groups: { date: Date; displayDate: Date; messages: Message[] }[] = [];
+    
+    // Sort messages by creation date first to ensure proper chronological order
+    const sortedMessages = [...messages].sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateA - dateB;
+    });
+    
+    sortedMessages.forEach(message => {
+      const messageDate = typeof message.createdAt === "string" 
+        ? new Date(message.createdAt) 
+        : message.createdAt;
+      
+      // Skip invalid dates
+      if (isNaN(messageDate.getTime())) {
+        return;
       }
 
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
+      // Use the start of day for grouping
+      const messageDateStart = startOfDay(messageDate);
+      
+      // Check if we already have a group for this date
+      const existingGroup = groups.find(group => 
+        isSameDay(group.date, messageDateStart)
+      );
+
+      if (existingGroup) {
+        existingGroup.messages.push(message);
+        // We keep the first message's time for each day
+      } else {
+        groups.push({
+          date: messageDateStart, // For grouping
+          displayDate: messageDate, // For display with correct time
+          messages: [message]
+        });
+      }
+    });
+    
+    // Ensure messages within each group are sorted by timestamp
+    groups.forEach(group => {
+      group.messages.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateA - dateB;
       });
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return "";
+    });
+
+    return groups;
+  };
+
+  // Format date for date separator headers with time included
+  const formatDateHeader = (date: Date) => {
+    const timeFormat = format(date, "h:mm a"); // e.g., "2:30 PM"
+    
+    if (isToday(date)) {
+      return `Today ${timeFormat}`;
+    } else if (isYesterday(date)) {
+      return `Yesterday ${timeFormat}`;
+    } else if (isSameWeek(date, new Date(), { weekStartsOn: 1 })) {
+      return `${format(date, "EEEE")} ${timeFormat}`; // e.g., "Monday 2:30 PM"
+    } else {
+      return `${format(date, "MMMM d, yyyy")} ${timeFormat}`; // e.g., "April 3, 2023 2:30 PM"
     }
   };
 
+  const messageGroups = getMessageGroups();
+
   return (
-    <div className="p-4 space-y-6" ref={messagesContainerRef}>
-      {messages.map((message) => {
-        // Get message text - no cleaning needed since we're not handling search criteria
-        const displayText = message.text;
-        
-        return (
-          <React.Fragment key={`message-${message.id}`}>
-            <div
-              className={`flex ${
+    <div className="px-3 py-2 space-y-3" ref={messagesContainerRef}>
+      {messageGroups.map((group, groupIndex) => (
+        <div key={`date-group-${groupIndex}`} className="space-y-2">
+          {/* Date + Time separator */}
+          <div className="flex justify-center mb-2">
+            <div className="bg-gray-100 text-gray-600 text-xs font-medium rounded-full px-3 py-1">
+              {formatDateHeader(group.displayDate)}
+            </div>
+          </div>
+          
+          {/* Messages for this date */}
+          {group.messages.map((message) => {
+            const displayText = message.text;
+            
+            return (
+              <div key={`message-${message.id}`} className={`flex items-end ${
                 message.sender === "lead" ? "justify-start" : "justify-end"
-              }`}
-            >
-              <div
-                className={`max-w-3/4 px-4 py-3 rounded-2xl shadow-sm ${
+              }`}>
+                <div className={`relative max-w-3/4 px-4 py-2 rounded-2xl shadow-sm ${
                   message.sender === "lead"
                     ? "bg-gray-100 text-gray-800 border border-gray-200"
                     : "bg-gradient-to-br from-blue-500 to-blue-600 text-white"
-                }`}
-              >
-                <div className="whitespace-pre-wrap">{displayText}</div>
-                <div className={`text-xs mt-1.5 flex items-center ${
-                  message.sender === "lead" ? "text-gray-500" : "text-blue-100"
                 }`}>
-                  <span className="mr-1">{formatMessageTime(message.createdAt)}</span>
-                  {message.sender === "agent" && getStatusIndicator(message)}
+                  <div className="whitespace-pre-wrap">{displayText}</div>
+                  {/* Add delivery status at the bottom of outbound messages */}
+                  {message.sender === "agent" && (
+                    <div className="text-right mt-1 text-xs">
+                      {getStatusIndicator(message)}
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
-            
-            {/* Only display appointment details, remove property search section */}
-            {message.metadata?.hasAppointment && message.metadata.appointmentDate && message.metadata.appointmentTime && (
-              <div className="ml-4 mt-1">
-                <div className="bg-green-50 border border-green-100 rounded-md p-2">
-                  <h4 className="text-xs font-semibold text-green-700 mb-1">Appointment</h4>
-                  <div className="flex items-center text-sm text-green-800">
-                    <svg className="w-4 h-4 mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>{message.metadata.appointmentDate} at {message.metadata.appointmentTime}</span>
+                
+                {/* Appointment details are displayed in a separate div below the message */}
+                {message.metadata?.hasAppointment && 
+                 message.metadata.appointmentDate && 
+                 message.metadata.appointmentTime && (
+                  <div className={`mt-1 ${message.sender === "lead" ? "ml-4" : "mr-4"}`}>
+                    <div className="bg-green-50 border border-green-100 rounded-md p-2">
+                      <h4 className="text-xs font-semibold text-green-700 mb-1">Appointment</h4>
+                      <div className="flex items-center text-sm text-green-800">
+                        <svg className="w-4 h-4 mr-1 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span>{message.metadata.appointmentDate} at {message.metadata.appointmentTime}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
-            )}
-          </React.Fragment>
-        );
-      })}
-      <div ref={messageEndRef} />
+            );
+          })}
+        </div>
+      ))}
+      {/* Invisible element for scrolling with no space */}
+      <div ref={messageEndRef} style={{height: 0, padding: 0, margin: 0}} />
     </div>
   );
 };
