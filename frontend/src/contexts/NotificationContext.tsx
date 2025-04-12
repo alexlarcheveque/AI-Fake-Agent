@@ -1,136 +1,157 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Appointment } from '../api/appointmentApi';
 import appointmentApi from '../api/appointmentApi';
+import notificationApi, { Notification as ApiNotification } from '../api/notificationApi';
 import { format, isToday, isTomorrow, addDays } from 'date-fns';
 
 export interface Notification {
   id: string;
-  type: 'appointment' | 'message' | 'lead' | 'system';
+  type: string;
   title: string;
   message: string;
   timestamp: Date;
-  read: boolean;
-  data?: any;
+  isRead: boolean;
+  metadata?: any;
 }
 
 interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
-  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
-  markAllAsRead: () => void;
-  markAsRead: (id: string) => void;
-  removeNotification: (id: string) => void;
+  getNotifications: () => Promise<void>;
+  markAsRead: (id: string) => Promise<void>;
+  markAsUnread: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  createNotification: (data: any) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+const NotificationContext = createContext<NotificationContextType>({
+  notifications: [],
+  unreadCount: 0,
+  getNotifications: async () => {},
+  markAsRead: async () => {},
+  markAsUnread: async () => {},
+  markAllAsRead: async () => {},
+  createNotification: async () => {},
+  deleteNotification: async () => {},
+});
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
-  // Load upcoming appointments and create notifications for them
+  // Fetch notifications on component mount
   useEffect(() => {
-    const loadAppointments = async () => {
-      try {
-        const appointments = await appointmentApi.getUpcomingAppointments();
-        
-        // Create notifications for upcoming appointments
-        const appointmentNotifications = appointments
-          .filter(appointment => 
-            // Only create notifications for appointments that are scheduled within the next 7 days
-            appointment.status === 'scheduled' &&
-            new Date(appointment.startTime) <= addDays(new Date(), 7)
-          )
-          .map(appointment => {
-            const startDate = new Date(appointment.startTime);
-            let timeDescription = '';
-            
-            if (isToday(startDate)) {
-              timeDescription = `today at ${format(startDate, 'h:mm a')}`;
-            } else if (isTomorrow(startDate)) {
-              timeDescription = `tomorrow at ${format(startDate, 'h:mm a')}`;
-            } else {
-              timeDescription = `on ${format(startDate, 'MMMM d')} at ${format(startDate, 'h:mm a')}`;
-            }
-            
-            return {
-              id: `appointment-${appointment.id}`,
-              type: 'appointment' as const,
-              title: 'Upcoming Appointment',
-              message: `${appointment.title} ${timeDescription}`,
-              timestamp: new Date(),
-              read: false,
-              data: appointment
-            };
-          });
-        
-        setNotifications(prev => {
-          // Filter out existing appointment notifications
-          const filteredNotifications = prev.filter(n => n.type !== 'appointment');
-          return [...filteredNotifications, ...appointmentNotifications];
-        });
-      } catch (error) {
-        console.error('Failed to load appointment notifications:', error);
-      }
-    };
+    getNotifications();
     
-    loadAppointments();
+    // Set up polling for new notifications every 30 seconds
+    const intervalId = setInterval(() => {
+      getNotifications();
+    }, 30000);
     
-    // Refresh appointments every 5 minutes
-    const intervalId = setInterval(loadAppointments, 5 * 60 * 1000);
-    
+    // Clean up interval on component unmount
     return () => clearInterval(intervalId);
   }, []);
 
-  const addNotification = (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
-    const newNotification: Notification = {
-      ...notification,
-      id: `${notification.type}-${Date.now()}`,
-      timestamp: new Date(),
-      read: false
-    };
-    
-    setNotifications(prev => [newNotification, ...prev]);
-  };
+  // Update unread count whenever notifications change
+  useEffect(() => {
+    const count = notifications.filter(notification => !notification.isRead).length;
+    setUnreadCount(count);
+  }, [notifications]);
 
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notification => ({ ...notification, read: true }))
-    );
-  };
+  // Fetch all notifications
+  const getNotifications = useCallback(async () => {
+    try {
+      const result = await notificationApi.getNotifications();
+      setNotifications(result);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    }
+  }, []);
 
-  const markAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === id ? { ...notification, read: true } : notification
-      )
-    );
-  };
+  // Mark a notification as read
+  const markAsRead = useCallback(async (id: string) => {
+    try {
+      const updatedNotification = await notificationApi.markAsRead(id);
+      
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === id 
+            ? {...notification, isRead: true } 
+            : notification
+        )
+      );
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  }, []);
 
-  const removeNotification = (id: string) => {
-    setNotifications(prev => 
-      prev.filter(notification => notification.id !== id)
-    );
+  // Mark a notification as unread
+  const markAsUnread = useCallback(async (id: string) => {
+    try {
+      const updatedNotification = await notificationApi.markAsUnread(id);
+      
+      setNotifications(prev => 
+        prev.map(notification => 
+          notification.id === id 
+            ? {...notification, isRead: false } 
+            : notification
+        )
+      );
+    } catch (error) {
+      console.error('Error marking notification as unread:', error);
+    }
+  }, []);
+
+  // Mark all notifications as read
+  const markAllAsRead = useCallback(async () => {
+    try {
+      await notificationApi.markAllAsRead();
+      
+      setNotifications(prev => 
+        prev.map(notification => ({ ...notification, isRead: true }))
+      );
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  }, []);
+
+  // Create a new notification
+  const createNotification = useCallback(async (data: any) => {
+    try {
+      const newNotification = await notificationApi.createNotification(data);
+      setNotifications(prev => [...prev, newNotification]);
+    } catch (error) {
+      console.error('Error creating notification:', error);
+    }
+  }, []);
+  
+  // Delete a notification
+  const deleteNotification = useCallback(async (id: string) => {
+    try {
+      await notificationApi.deleteNotification(id);
+      setNotifications(prev => prev.filter(notification => notification.id !== id));
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  }, []);
+
+  const value = {
+    notifications,
+    unreadCount,
+    getNotifications,
+    markAsRead,
+    markAsUnread,
+    markAllAsRead,
+    createNotification,
+    deleteNotification
   };
 
   return (
-    <NotificationContext.Provider value={{ 
-      notifications, 
-      unreadCount,
-      addNotification, 
-      markAllAsRead, 
-      markAsRead,
-      removeNotification
-    }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
 };
 
-export const useNotifications = () => {
-  const context = useContext(NotificationContext);
-  if (context === undefined) {
-    throw new Error('useNotifications must be used within a NotificationProvider');
-  }
-  return context;
-}; 
+export const useNotifications = () => useContext(NotificationContext); 

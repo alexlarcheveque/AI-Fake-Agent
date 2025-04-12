@@ -46,6 +46,9 @@ router.post("/process-inactive", leadController.processInactiveLeads);
 // Update lead status - MUST be before /:id route
 router.post("/status/:id", leadController.updateLeadStatus);
 
+// Fix leads with null userId - MUST be before /:id route
+router.post("/fix-null-user", leadController.fixLeadsWithoutUser);
+
 // Get a single lead by id - Place parametrized routes AFTER specific routes
 router.get("/:id", leadController.getLeadById);
 

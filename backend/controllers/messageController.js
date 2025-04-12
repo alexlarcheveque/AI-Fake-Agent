@@ -1,6 +1,7 @@
 const Message = require("../models/Message");
 const Lead = require("../models/Lead");
 const UserSettings = require("../models/UserSettings");
+const Notification = require("../models/Notification");
 const twilioService = require("../services/twilioService");
 const openaiService = require("../services/openaiService");
 const logger = require("../utils/logger");
@@ -26,172 +27,201 @@ const messageController = {
   // Send a message to a lead via Twilio
   async sendMessage(req, res) {
     try {
-      // Log the entire request body for debugging
-      console.log("Received message request:", req.body);
-
-      const { leadId, text, isAiGenerated = false } = req.body;
-
-      // Validate inputs with detailed error messages
-      if (!leadId) {
-        return res.status(400).json({ error: "leadId is required" });
+      const { leadId, text, isAiGenerated, userSettings } = req.body;
+      const userId = req.user?.id;
+      
+      // Log received user settings if available
+      if (userSettings) {
+        logger.info("Received user settings with message:", userSettings);
       }
-
-      if (!text || typeof text !== "string") {
-        return res.status(400).json({
-          error: "text must be a non-empty string",
-          received: {
-            type: typeof text,
-            value: text,
-          },
-        });
-      }
-
-      // Find the lead with error handling
+      
+      // Find the lead
       const lead = await Lead.findByPk(leadId);
+      
       if (!lead) {
-        return res.status(404).json({
-          error: "Lead not found",
-          leadId: leadId,
-        });
+        return res.status(404).json({ error: "Lead not found" });
       }
-
-      // Get the lead owner
-      const userId = lead.userId;
-
-      // Add a check for missing userId
-      if (!userId) {
-        logger.warn(
-          `Lead ${leadId} has no associated user, using default settings`
-        );
-        // Use default settings if no user is associated
-        const settingsMap = DEFAULT_SETTINGS;
-      } else {
-        const settingsMap = await userSettingsService.getAllSettings(userId);
-      }
-
-      // Send message via Twilio
-      const twilioMessage = await twilioService.sendMessage(
-        lead.phoneNumber,
-        text
-      );
-
-      // Save message to database
+      
+      // Create a new outbound message
       const message = await Message.create({
         leadId,
         text,
         sender: "agent",
         direction: "outbound",
-        twilioSid: twilioMessage.sid,
-        isAiGenerated,
+        isAiGenerated: Boolean(isAiGenerated),
+        deliveryStatus: "queued",
       });
-
-      // Emit socket event for sent message
-      const io = req.app.get("io");
-      if (io) {
-        io.emit("new-message", {
-          leadId: lead.id,
-          message: {
-            id: message.id,
-            text: message.text,
-            sender: message.sender,
-            createdAt: message.createdAt,
-            leadName: lead.name,
-            phoneNumber: lead.phoneNumber,
-            deliveryStatus: message.deliveryStatus,
-          },
-        });
+      
+      // Get settings for AI response - prioritize user settings from request
+      let settingsMap;
+      if (userSettings) {
+        // Use the settings directly as they are from frontend, without converting to uppercase
+        settingsMap = {
+          // Preserve original properties without conversion to uppercase
+          agentName: userSettings.agentName || "Your Name",
+          companyName: userSettings.companyName || "Your Company",
+          agentState: userSettings.agentState || "Your State",
+          agentCity: userSettings.agentCity || "Your City",
+          aiAssistantEnabled: userSettings.aiAssistantEnabled !== undefined 
+            ? userSettings.aiAssistantEnabled 
+            : true,
+          // Follow-up intervals
+          followUpIntervalNew: userSettings.followUpIntervalNew || 2,
+          followUpIntervalInConversation: userSettings.followUpIntervalInConversation || 3,
+          followUpIntervalQualified: userSettings.followUpIntervalQualified || 5,
+          followUpIntervalAppointmentSet: userSettings.followUpIntervalAppointmentSet || 1,
+          followUpIntervalConverted: userSettings.followUpIntervalConverted || 14,
+          followUpIntervalInactive: userSettings.followUpIntervalInactive || 30,
+        };
+        logger.info("Using user settings from frontend for AI response:", settingsMap);
+      } else if (userId) {
+        // Fall back to getting settings from database
+        settingsMap = await userSettingsService.getAllSettings(userId);
+        logger.info("Using user settings from database for AI response:", settingsMap);
+      } else {
+        // Use default settings if nothing else is available
+        settingsMap = DEFAULT_SETTINGS;
+        logger.info("Using default settings for AI response (no userId found)");
       }
 
-      // If AI Assistant is enabled for this lead, generate and send AI response
-      if (lead.aiAssistantEnabled) {
-        // Generate AI response
+      // Send the message via Twilio
+      let twilioResponse;
+      try {
+        twilioResponse = await twilioService.sendMessage(lead.phoneNumber, text);
+        
+        // Update the message with Twilio data
+        await message.update({
+          twilioSid: twilioResponse.sid,
+          deliveryStatus: "sent",
+        });
+      } catch (twilioError) {
+        logger.error("Error sending message via Twilio:", twilioError);
+        
+        // Update message status to failed
+        await message.update({
+          deliveryStatus: "failed",
+        });
+      }
+      
+      // If AI assistant is not enabled for this lead, just return the user message
+      if (!lead.aiAssistantEnabled) {
+        return res.json({ message });
+      }
+      
+      // Generate AI response using the settings from the user's Settings page
+      let previousMessages = [];
+      try {
+        // Get previous messages for context
+        previousMessages = await Message.findAll({
+          where: { leadId },
+          order: [["createdAt", "DESC"]],
+          limit: 5,
+        });
+        
+        // Reverse to get chronological order
+        previousMessages = previousMessages.reverse();
+      } catch (messageError) {
+        logger.error("Error fetching previous messages:", messageError);
+      }
+      
+      try {
+        // Generate AI response with user's settings
         const aiResponseData = await openaiService.generateResponse(
           text,
-          settingsMap
+          settingsMap,
+          previousMessages
         );
-
-        // Check if aiResponseData contains appointment details
+        
+        // Process the AI response
         let aiResponseText;
         let appointmentDetails = null;
+        let isPropertySearch = false;
+        let propertySearchCriteria = null;
+        let propertySearchMeta = null;
         
         if (typeof aiResponseData === 'object' && aiResponseData.text) {
-          // It's the new format with appointment details
           aiResponseText = aiResponseData.text;
-          appointmentDetails = aiResponseData.appointmentDetails;
           
-          if (appointmentDetails) {
-            console.log('Appointment detected:', appointmentDetails);
-            
-            // Create appointment in database
-            try {
-              console.log('Creating appointment from AI detected details', {
-                leadId: lead.id, 
-                userId: lead.userId,
-                appointmentDetails
-              });
-
-              const appointment = await appointmentService.createAppointmentFromAI(
-                lead.id, 
-                lead.userId, // This could be null, but our updated appointmentService will handle that
-                appointmentDetails
-              );
-              
-              console.log('Appointment created successfully:', appointment.id);
-              
-              // Add a Google Calendar confirmation if a calendar link was created
-              if (appointment.googleCalendarEventLink) {
-                // Check if the lead has an email
-                const leadWithEmail = await Lead.findByPk(lead.id);
-                if (leadWithEmail && leadWithEmail.email) {
-                  // If lead has an email, they'll receive a calendar invitation
-                  aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
-                }
-              }
-            } catch (appointmentError) {
-              console.error('Error creating appointment:', appointmentError);
-              // Continue with the message even if appointment creation fails
-              // Don't add any calendar confirmation text since the appointment creation failed
-            }
+          // Check for appointment details
+          if (aiResponseData.appointmentDetails && 
+              aiResponseData.appointmentDetails.date && 
+              aiResponseData.appointmentDetails.time) {
+            appointmentDetails = aiResponseData.appointmentDetails;
+          }
+          
+          // Check for property search criteria
+          if (aiResponseData.isPropertySearch && aiResponseData.searchCriteria) {
+            isPropertySearch = true;
+            propertySearchCriteria = aiResponseData.searchCriteria;
+            propertySearchMeta = {
+              format: aiResponseData.propertySearchFormat || 'legacy'
+            };
           }
         } else {
-          // It's just a string (old format or no appointment detected)
-          aiResponseText = aiResponseData;
+          aiResponseText = aiResponseData || "I couldn't generate a response at this time.";
         }
-
-        // Send AI response via Twilio
-        const aiTwilioMessage = await twilioService.sendMessage(
-          lead.phoneNumber,
-          aiResponseText
-        );
-
-        // Save AI response to database
+        
+        // Build metadata for the AI message
+        let metadata = {};
+        
+        // Add property search metadata if it exists
+        if (isPropertySearch && propertySearchMeta) {
+          metadata.isPropertySearch = true;
+          metadata.propertySearchCriteria = propertySearchCriteria;
+          metadata.propertySearchFormat = propertySearchMeta.format || 'legacy';
+        }
+        
+        // Add appointment details if they exist
+        if (appointmentDetails) {
+          metadata.hasAppointment = true;
+          metadata.appointmentDate = appointmentDetails.date;
+          metadata.appointmentTime = appointmentDetails.time;
+        }
+        
+        // Create the AI response message
         const aiMessage = await Message.create({
-          leadId: lead.id,
+          leadId,
           text: aiResponseText,
           sender: "agent",
-          direction: "outbound",
-          twilioSid: aiTwilioMessage.sid,
+          direction: "outbound", 
           isAiGenerated: true,
+          deliveryStatus: "queued",
+          metadata
         });
-
-        // Schedule follow-up after sending message - ensure we use the current time as lastMessageDate
-        const currentTime = new Date();
-        await lead.update({ lastMessageDate: currentTime });
         
-        // Schedule the next message based on lead status using the service
-        const result = await scheduledMessageService.scheduleFollowUp(leadId, currentTime);
-        console.log(`Scheduled next follow-up for lead ${leadId} based on status: ${lead.status}, next message in ${result.interval} days`);
-
-        res.json({ message, aiMessage });
-      } else {
-        res.json({ message });
+        // Try to send the AI message via Twilio
+        try {
+          const aiTwilioResponse = await twilioService.sendMessage(
+            lead.phoneNumber, 
+            aiResponseText
+          );
+          
+          // Update with Twilio data
+          await aiMessage.update({
+            twilioSid: aiTwilioResponse.sid,
+            deliveryStatus: "sent",
+          });
+        } catch (aiTwilioError) {
+          logger.error("Error sending AI message via Twilio:", aiTwilioError);
+          
+          // Update status to failed
+          await aiMessage.update({
+            deliveryStatus: "failed",
+          });
+        }
+        
+        // Return both messages
+        return res.json({
+          message,
+          aiMessage,
+        });
+      } catch (aiError) {
+        logger.error("Error generating or sending AI response:", aiError);
+        return res.json({ message });
       }
     } catch (error) {
-      console.error("Error in sendMessage:", error);
-      res.status(500).json({
-        error: "Failed to send message",
-        details: error.message,
-      });
+      logger.error("Error in sendMessage:", error);
+      return res.status(500).json({ error: "Failed to send message" });
     }
   },
 
@@ -269,6 +299,32 @@ const messageController = {
           `No lead found with phone number ${From} (normalized: ${From})`
         );
 
+        // Get the user ID - either from the authenticated user or find first user
+        let userToAssign = null;
+        
+        // Try to get from request if available
+        if (req.user && req.user.id) {
+          userToAssign = req.user.id;
+          logger.info(`Using authenticated user ID ${userToAssign} for new lead`);
+        } else {
+          // If not, try to get the first user from the database
+          try {
+            const User = require("../models/User");
+            const firstUser = await User.findOne({
+              order: [['createdAt', 'ASC']]
+            });
+            
+            if (firstUser) {
+              userToAssign = firstUser.id;
+              logger.info(`Using first user ID ${userToAssign} for new lead`);
+            } else {
+              logger.warn('No users found in database, creating lead without userId');
+            }
+          } catch (userError) {
+            logger.error('Error finding user for new lead:', userError);
+          }
+        }
+
         // Optionally create a new lead for unknown numbers
         lead = await Lead.create({
           name: `Unknown (${From})`,
@@ -276,11 +332,12 @@ const messageController = {
           email: "",
           source: "SMS",
           status: "New",
+          userId: userToAssign, // Assign the found user ID or null if none
           notes: `Automatically created from incoming SMS on ${new Date().toISOString()}`,
         });
 
         logger.info(
-          `Created new lead with ID ${lead.id} for unknown phone number ${From}`
+          `Created new lead with ID ${lead.id} for unknown phone number ${From}, assigned to user ${userToAssign || 'none'}`
         );
       }
 
@@ -329,6 +386,33 @@ const messageController = {
         twilioSid: MessageSid || null,
         deliveryStatus: "delivered",
       });
+
+      // Create a notification for the new message if there's a user assigned to the lead
+      if (lead.userId) {
+        try {
+          // Truncate the message if it's too long
+          const truncatedMessage = Body.length > 50 ? Body.substring(0, 47) + '...' : Body;
+          
+          // Create notification
+          await Notification.create({
+            userId: lead.userId,
+            type: 'message',
+            title: `New message from ${lead.name}`,
+            message: truncatedMessage,
+            isRead: false,
+            isNew: true,
+            metadata: { 
+              leadId: lead.id,
+              messageId: message.id,
+              phoneNumber: lead.phoneNumber
+            }
+          });
+          
+          logger.info(`Created notification for new message from lead ${lead.id}`);
+        } catch (notificationError) {
+          logger.error(`Error creating notification for message from lead ${lead.id}:`, notificationError);
+        }
+      }
 
       // Get user settings for follow-up intervals
       let settings = DEFAULT_SETTINGS;
@@ -456,51 +540,45 @@ const messageController = {
               promptContext // Pass the prompt context here
             );
 
-            // Check if aiResponseData contains appointment details
+            // Check if aiResponseData contains appointment details or property search
             let aiResponseText;
             let appointmentDetails = null;
+            let isPropertySearch = false;
+            let propertySearchCriteria = null;
+            let propertySearchMeta = null;
             
             if (typeof aiResponseData === 'object' && aiResponseData.text) {
-              // It's the new format with appointment details
+              // It's the new format with additional data
               aiResponseText = aiResponseData.text;
-              appointmentDetails = aiResponseData.appointmentDetails;
               
-              if (appointmentDetails) {
-                console.log('Appointment detected:', appointmentDetails);
+              // Check for appointment details (not exclusive)
+              if (aiResponseData.appointmentDetails) {
+                // It has appointment details
+                appointmentDetails = aiResponseData.appointmentDetails;
                 
-                // Create appointment in database
-                try {
-                  console.log('Creating appointment from AI detected details', {
-                    leadId: lead.id, 
-                    userId: lead.userId,
-                    appointmentDetails
-                  });
-
-                  const appointment = await appointmentService.createAppointmentFromAI(
-                    lead.id, 
-                    lead.userId, // This could be null, but our updated appointmentService will handle that
-                    appointmentDetails
-                  );
-                  
-                  console.log('Appointment created successfully:', appointment.id);
-                  
-                  // Add a Google Calendar confirmation if a calendar link was created
-                  if (appointment.googleCalendarEventLink) {
-                    // Check if the lead has an email
-                    const leadWithEmail = await Lead.findByPk(lead.id);
-                    if (leadWithEmail && leadWithEmail.email) {
-                      // If lead has an email, they'll receive a calendar invitation
-                      aiResponseText += `\n\nI've sent a calendar invitation to your email (${leadWithEmail.email}). You can accept it to add this appointment to your calendar.`;
-                    }
-                  }
-                } catch (appointmentError) {
-                  console.error('Error creating appointment:', appointmentError);
-                  // Continue with the message even if appointment creation fails
-                  // Don't add any calendar confirmation text since the appointment creation failed
+                if (appointmentDetails) {
+                  console.log('Appointment detected in playground:', appointmentDetails);
+                  // For playground, we log the appointment details but don't add text to the message
+                  console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
                 }
               }
+              
+              // Check for property search (can exist alongside appointment)
+              if (aiResponseData.isPropertySearch || aiResponseData.hasPropertySearch) {
+                // It has property search criteria
+                isPropertySearch = true;
+                propertySearchCriteria = aiResponseData.searchCriteria;
+                console.log('Property search criteria detected in AI response');
+                
+                // Prepare property search metadata
+                propertySearchMeta = {
+                  isPropertySearch: true,
+                  propertySearchCriteria: propertySearchCriteria,
+                  propertySearchFormat: aiResponseData.propertySearchFormat || 'legacy'
+                };
+              }
             } else {
-              // It's just a string (old format or no appointment detected)
+              // It's just a string (old format or no appointment/search detected)
               aiResponseText = aiResponseData;
             }
 
@@ -518,6 +596,7 @@ const messageController = {
               direction: "outbound",
               twilioSid: aiTwilioMessage.sid,
               isAiGenerated: true,
+              metadata: this.buildMessageMetadata(isPropertySearch, propertySearchMeta, appointmentDetails)
             });
 
             console.log(`AI response sent to lead ${lead.id}: ${aiResponseText}`);
@@ -659,21 +738,24 @@ const messageController = {
           aiResponseText = aiResponseData;
         }
 
-        // Create response message
-        const aiMessage = {
-          id: `local-playground-${Date.now()}`,
+        // Create a message object that mimics what we'd store in the database
+        const messageObj = {
+          id: Date.now(), // using timestamp as a temporary ID
           text: aiResponseText,
           sender: "agent",
-          twilioSid: `local-response-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          useAiResponse: true,
-          isAiGenerated: true,
-          appointmentDetails: appointmentDetails
+          direction: "outbound",
+          createdAt: new Date(),
+          metadata: this.buildMessageMetadata(false, null, appointmentDetails)
         };
+        
+        // Add the AI message to the history
+        const allMessages = [messageObj];
 
-        return res.json({ message: aiMessage });
+        // Return the conversation history along with any appointment information
+        return res.json({ 
+          conversation: allMessages,
+          success: true 
+        });
       }
 
       // Get user settings
@@ -696,37 +778,63 @@ const messageController = {
       // Check if aiResponseData contains appointment details
       let aiResponseText;
       let appointmentDetails = null;
+      let isPropertySearch = false;
+      let propertySearchCriteria = null;
+      let propertySearchMeta = null;
       
       if (typeof aiResponseData === 'object' && aiResponseData.text) {
-        // It's the new format with appointment details
+        // It's the new format with additional data
         aiResponseText = aiResponseData.text;
-        appointmentDetails = aiResponseData.appointmentDetails;
         
-        if (appointmentDetails) {
-          console.log('Appointment detected in playground:', appointmentDetails);
-          // For playground, we log the appointment details but don't add text to the message
-          console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
+        // Check for appointment details (not exclusive)
+        if (aiResponseData.appointmentDetails) {
+          // It has appointment details
+          appointmentDetails = aiResponseData.appointmentDetails;
+          
+          if (appointmentDetails) {
+            console.log('Appointment detected in playground:', appointmentDetails);
+            // For playground, we log the appointment details but don't add text to the message
+            console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
+          }
+        }
+        
+        // Check for property search (can exist alongside appointment)
+        if (aiResponseData.isPropertySearch || aiResponseData.hasPropertySearch) {
+          // It has property search criteria
+          isPropertySearch = true;
+          propertySearchCriteria = aiResponseData.searchCriteria;
+          console.log('Property search criteria detected in AI response');
+          
+          // Prepare property search metadata
+          propertySearchMeta = {
+            isPropertySearch: true,
+            propertySearchCriteria: propertySearchCriteria,
+            propertySearchFormat: aiResponseData.propertySearchFormat || 'legacy'
+          };
         }
       } else {
-        // It's just a string (old format or no appointment detected)
+        // It's just a string (old format or no appointment/search detected)
         aiResponseText = aiResponseData;
       }
 
-      // Create response message
-      const aiMessage = {
-        id: Date.now(),
+      // Create a message object that mimics what we'd store in the database
+      const messageObj = {
+        id: Date.now(), // using timestamp as a temporary ID
         text: aiResponseText,
         sender: "agent",
-        twilioSid: `local-response-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        useAiResponse: true,
-        isAiGenerated: true,
-        appointmentDetails: appointmentDetails
+        direction: "outbound",
+        createdAt: new Date(),
+        metadata: this.buildMessageMetadata(isPropertySearch, propertySearchMeta, appointmentDetails)
       };
+      
+      // Add the AI message to the history
+      const allMessages = [messageObj];
 
-      res.json({ message: aiMessage });
+      // Return the conversation history along with any appointment information
+      return res.json({ 
+        conversation: allMessages,
+        success: true 
+      });
     } catch (error) {
       logger.error("Error processing local message:", error);
       res.status(500).json({ error: "Failed to process message" });
@@ -964,6 +1072,33 @@ const messageController = {
       logger.error("Error fetching all messages:", error);
       res.status(500).json({ error: "Failed to fetch messages" });
     }
+  },
+
+  // Utility function to build message metadata
+  buildMessageMetadata(isPropertySearch, propertySearchMeta, appointmentDetails) {
+    let metadata = {};
+    
+    // Add property search metadata if it exists
+    if (isPropertySearch && propertySearchMeta) {
+      if (typeof propertySearchMeta === 'object') {
+        // Copy propertySearchMeta properties to metadata
+        Object.assign(metadata, propertySearchMeta);
+      } else {
+        // Basic property search metadata
+        metadata.isPropertySearch = true;
+        metadata.propertySearchCriteria = propertySearchMeta;
+      }
+    }
+    
+    // Add appointment details if they exist
+    if (appointmentDetails) {
+      metadata.hasAppointment = true;
+      metadata.appointmentDate = appointmentDetails.date;
+      metadata.appointmentTime = appointmentDetails.time;
+    }
+    
+    // Return null if metadata is empty
+    return Object.keys(metadata).length > 0 ? metadata : null;
   }
 };
 

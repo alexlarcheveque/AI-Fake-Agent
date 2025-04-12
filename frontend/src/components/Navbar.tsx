@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useNotifications, Notification } from "../contexts/NotificationContext";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 
 interface NavbarProps {
   user?: {
@@ -17,7 +17,12 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications();
+  const { 
+    notifications, 
+    unreadCount, 
+    markAsRead,
+    markAsUnread
+  } = useNotifications();
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -50,34 +55,54 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     };
   }, []);
 
-  // Handle notification click
+  // Handle notification click and navigation
   const handleNotificationClick = (notification: Notification) => {
-    markAsRead(notification.id);
+    // Mark as read when clicked
+    if (!notification.isRead) {
+      markAsRead(notification.id);
+    }
     
-    // Navigate based on notification type
-    if (notification.type === 'appointment' && notification.data) {
-      const leadId = notification.data.leadId;
-      navigate(`/messages?leadId=${leadId}`);
-      // Close the notification panel
-      setShowNotifications(false);
-    } else if (notification.type === 'message' && notification.data) {
-      const leadId = notification.data.leadId;
-      navigate(`/messages?leadId=${leadId}`);
-      setShowNotifications(false);
-    } else if (notification.type === 'lead' && notification.data) {
-      const leadId = notification.data.id;
-      navigate(`/messages?leadId=${leadId}`);
-      setShowNotifications(false);
+    // Handle navigation based on notification type
+    if (notification.type === 'appointment' && notification.metadata) {
+      const leadId = notification.metadata.leadId;
+      if (leadId) {
+        navigate(`/leads?leadId=${leadId}`);
+      }
+    } else if (notification.type === 'message' && notification.metadata) {
+      const leadId = notification.metadata.leadId;
+      if (leadId) {
+        navigate(`/messages?leadId=${leadId}`);
+      }
+    } else if (notification.type === 'lead' && notification.metadata) {
+      const leadId = notification.metadata.id;
+      if (leadId) {
+        navigate(`/leads?leadId=${leadId}`);
+      }
+    } else if (notification.type === 'property_search' && notification.metadata) {
+      const leadId = notification.metadata.leadId;
+      if (leadId) {
+        navigate(`/leads?leadId=${leadId}`);
+      }
     } else {
       // For other notification types or if data is missing
-      navigate('/messages');
-      setShowNotifications(false);
+      navigate('/notifications');
     }
+    
+    // Close notification panel after clicking
+    setShowNotifications(false);
   };
-  
+
   // Format the notification time
   const formatNotificationTime = (date: Date) => {
-    return formatDistanceToNow(new Date(date), { addSuffix: true });
+    try {
+      if (!date || isNaN(new Date(date).getTime())) {
+        return 'Invalid date';
+      }
+      return format(new Date(date), "dd/MM/yyyy hh:mm a");
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
   };
   
   // Get notification icon based on type
@@ -85,29 +110,51 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
     switch (type) {
       case 'appointment':
         return (
-          <svg className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
+          <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+            <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
         );
       case 'message':
         return (
-          <svg className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
+          <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+            <svg className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </div>
         );
       case 'lead':
         return (
-          <svg className="h-6 w-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
+          <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+            <svg className="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+        );
+      case 'property_search':
+        return (
+          <div className="h-8 w-8 rounded-full bg-yellow-100 flex items-center justify-center">
+            <svg className="h-5 w-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </div>
         );
       default:
         return (
-          <svg className="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+          <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center">
+            <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
         );
     }
+  };
+
+  // Mark notification as unread (stopping event propagation)
+  const handleMarkAsUnread = (e: React.MouseEvent, notificationId: string) => {
+    e.stopPropagation();
+    markAsUnread(notificationId);
   };
 
   const handleLogout = () => {
@@ -180,9 +227,6 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
               <button
                 onClick={() => {
                   setShowNotifications(!showNotifications);
-                  if (!showNotifications && unreadCount > 0) {
-                    markAllAsRead();
-                  }
                 }}
                 className="p-1 rounded-full text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -200,9 +244,9 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                   />
                 </svg>
-                {/* Notification Badge */}
+                {/* Show a blue badge with count if there are unread notifications */}
                 {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                  <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -212,16 +256,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
               {showNotifications && (
                 <div className="origin-top-right fixed sm:absolute right-0 mt-2 w-96 rounded-md shadow-xl bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-[9999]">
                   <div className="py-1">
-                    <div className="px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                    <div className="px-4 py-2 border-b border-gray-200">
                       <h3 className="text-sm font-medium text-gray-900">
                         Notifications
                       </h3>
-                      <button 
-                        onClick={markAllAsRead} 
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        Mark all as read
-                      </button>
                     </div>
                     
                     {notifications.length === 0 ? (
@@ -248,21 +286,46 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                             <div 
                               key={notification.id} 
                               onClick={() => handleNotificationClick(notification)} 
-                              className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start ${!notification.read ? 'bg-blue-50' : ''}`}
+                              className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start ${!notification.isRead ? 'bg-blue-50' : ''}`}
                             >
                               <div className="flex-shrink-0 mr-3">
                                 {getNotificationIcon(notification.type)}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-medium ${!notification.read ? 'text-blue-800' : 'text-gray-900'}`}>
+                                <p className="text-sm font-medium text-gray-900">
                                   {notification.title}
+                                  {!notification.isRead && (
+                                    <span className="ml-2 text-xs inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                                      Unread
+                                    </span>
+                                  )}
                                 </p>
                                 <p className="text-sm text-gray-600 mt-1">
                                   {notification.message}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {formatNotificationTime(notification.timestamp)}
-                                </p>
+                                <div className="flex justify-between items-center mt-1">
+                                  <p className="text-xs text-gray-500">
+                                    {formatNotificationTime(notification.timestamp)}
+                                  </p>
+                                  {notification.isRead ? (
+                                    <button 
+                                      onClick={(e) => handleMarkAsUnread(e, notification.id)}
+                                      className="text-xs text-blue-600 hover:text-blue-800"
+                                    >
+                                      Mark as unread
+                                    </button>
+                                  ) : (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markAsRead(notification.id);
+                                      }}
+                                      className="text-xs text-blue-600 hover:text-blue-800"
+                                    >
+                                      Mark as read
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -272,6 +335,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                           <Link 
                             to="/notifications" 
                             className="text-xs text-center block text-blue-600 hover:text-blue-800"
+                            onClick={() => setShowNotifications(false)}
                           >
                             View all notifications
                           </Link>

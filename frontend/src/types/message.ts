@@ -11,4 +11,15 @@ export interface Message {
   deliveryStatus?: string;
   errorCode?: string | null;
   errorMessage?: string | null;
+  metadata?: {
+    isPropertySearch?: boolean;
+    hasPropertySearch?: boolean;
+    propertySearchCriteria?: string;
+    propertySearchId?: number;
+    propertySearchFormat?: string;
+    hasAppointment?: boolean;
+    appointmentDate?: string;
+    appointmentTime?: string;
+    appointmentId?: number;
+  } | null;
 }

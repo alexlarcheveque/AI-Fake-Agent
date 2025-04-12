@@ -62,13 +62,15 @@ const MessageInput: React.FC<MessageInputProps> = ({
 
       // Clear input
       setMessage("");
-    } catch (error) {
+    } catch (error: any) { // Type error as any for now to access properties
       console.error("Error sending message:", error);
 
       // Show detailed error from server if available
-      if (error.response && error.response.data && error.response.data.error) {
+      if (error && error.response && error.response.data && error.response.data.error) {
         console.error("Server error:", error.response.data.error);
         alert(`Failed to send message: ${error.response.data.error}`);
+      } else if (error && error.message) {
+        alert(`Failed to send message: ${error.message}`);
       } else {
         alert("Failed to send message. Please try again.");
       }

@@ -64,7 +64,7 @@ const Lead = sequelize.define(
     },
     userId: {
       type: DataTypes.UUID,
-      allowNull: true,
+      allowNull: false,
       references: {
         model: "Users",
         key: "id",
@@ -105,9 +105,16 @@ module.exports = Lead;
 // This needs to be after the export
 setTimeout(() => {
   const Message = require("./Message");
+  const User = require("./User");
 
   Lead.hasMany(Message, {
     foreignKey: "leadId",
+    onDelete: "CASCADE",
+  });
+
+  Lead.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
     onDelete: "CASCADE",
   });
 }, 0);

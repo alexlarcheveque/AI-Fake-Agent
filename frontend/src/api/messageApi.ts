@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Message } from "../types/message";
+import settingsApi from "./settingsApi";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -35,10 +36,20 @@ const messageApi = {
         throw new Error("Message text is required");
       }
 
+      // Get user settings to include with the message
+      let userSettings = null;
+      try {
+        userSettings = await settingsApi.getSettings();
+        console.log("Including user settings with message:", userSettings);
+      } catch (settingsError) {
+        console.warn("Failed to get user settings, continuing without them:", settingsError);
+      }
+
       const response = await axios.post(`${BASE_URL}/api/messages/send`, {
         leadId,
         text,
         isAiGenerated,
+        userSettings // Include user settings with the message
       });
 
       return response.data.message;
@@ -123,7 +134,7 @@ const messageApi = {
       console.log("🧪 Emitted message should match this format:", {
         leadId: numericLeadId,
         message: {
-          id: expect.any(Number),
+          id: "any-number",
           leadId: numericLeadId,
           text: text || "This is a test message from the server",
           sender: "lead",
@@ -164,7 +175,7 @@ const messageApi = {
       console.log("🤖 Emitted message should match this format:", {
         leadId: numericLeadId,
         message: {
-          id: expect.any(Number),
+          id: "any-number",
           leadId: numericLeadId,
           text: text || "This is a simulated AI response message.",
           sender: "agent",

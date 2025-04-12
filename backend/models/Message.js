@@ -63,6 +63,10 @@ const Message = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    metadata: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
   },
   {
     timestamps: true,

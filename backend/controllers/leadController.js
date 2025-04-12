@@ -70,7 +70,24 @@ const leadController = {
   // Create a new lead
   async createLead(req, res) {
     try {
-      const lead = await Lead.create(req.body);
+      // Get the user ID from the authenticated user
+      const userId = req.user?.id;
+      
+      // If no user ID is available, return an error
+      if (!userId) {
+        return res.status(401).json({
+          error: "Authentication required",
+          details: [{ message: "You must be logged in to create a lead" }],
+        });
+      }
+      
+      // Add the userId to the lead data
+      const leadData = {
+        ...req.body,
+        userId
+      };
+      
+      const lead = await Lead.create(leadData);
 
       // Schedule the first message
       if (lead.enableFollowUps) {
@@ -176,6 +193,17 @@ const leadController = {
   // Bulk import leads from CSV
   async bulkImportLeads(req, res) {
     try {
+      // Get the user ID from the authenticated user
+      const userId = req.user?.id;
+      
+      // If no user ID is available, return an error
+      if (!userId) {
+        return res.status(401).json({
+          error: "Authentication required",
+          details: [{ message: "You must be logged in to import leads" }],
+        });
+      }
+      
       if (!req.file && !req.files) {
         return res.status(400).json({ error: "No CSV file uploaded" });
       }
@@ -284,7 +312,8 @@ const leadController = {
               status: statusValue || 'new',
               aiAssistantEnabled: aiFeatureSettings.aiAssistantEnabled,
               enableFollowUps: aiFeatureSettings.enableFollowUps,
-              firstMessageTiming: aiFeatureSettings.firstMessageTiming
+              firstMessageTiming: aiFeatureSettings.firstMessageTiming,
+              userId
             };
             
             if (rowErrors.length > 0) {
@@ -610,6 +639,48 @@ const leadController = {
     } catch (error) {
       logger.error("Error processing inactive leads:", error);
       res.status(500).json({ error: error.message });
+    }
+  },
+
+  // Add this new endpoint to fix leads with null userId
+  async fixLeadsWithoutUser(req, res) {
+    try {
+      // Find leads with null userId
+      const leads = await Lead.findAll({
+        where: { userId: null }
+      });
+      
+      if (leads.length === 0) {
+        return res.json({ message: "No leads without userId found" });
+      }
+      
+      // Find the first user to assign these leads to
+      const User = require("../models/User");
+      const firstUser = await User.findOne({
+        order: [['createdAt', 'ASC']]
+      });
+      
+      if (!firstUser) {
+        return res.status(404).json({ error: "No users found in system" });
+      }
+      
+      // Update all leads to assign them to this user
+      const userIdToAssign = firstUser.id;
+      
+      const updatedCount = await Lead.update(
+        { userId: userIdToAssign },
+        { where: { userId: null } }
+      );
+      
+      logger.info(`Fixed ${updatedCount[0]} leads by assigning them to user ${userIdToAssign}`);
+      
+      return res.json({ 
+        message: `Fixed ${updatedCount[0]} leads by assigning them to user ${userIdToAssign}`,
+        updatedCount: updatedCount[0]
+      });
+    } catch (error) {
+      logger.error("Error fixing leads without userId:", error);
+      res.status(500).json({ error: "Failed to fix leads" });
     }
   }
 };
