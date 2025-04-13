@@ -1,5 +1,5 @@
-const UserSettings = require("../models/UserSettings");
-const logger = require("../utils/logger");
+import UserSettings from "../models/UserSettings.js";
+import logger from "../utils/logger.js";
 
 const settingsController = {
   // Get settings for current user
@@ -199,4 +199,4 @@ const settingsController = {
   },
 };
 
-module.exports = settingsController;
+export default settingsController;

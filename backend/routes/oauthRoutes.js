@@ -1,14 +1,14 @@
-const express = require('express');
+import express from 'express';
+import googleOAuthService from '../services/googleOAuthService.js';
+
 const router = express.Router();
-const googleOAuthService = require('../services/googleOAuthService');
-const authMiddleware = require('../middleware/authMiddleware');
 
 /**
  * @route   GET /api/oauth/google/auth
  * @desc    Get Google OAuth URL for authorization
  * @access  Private
  */
-router.get('/google/auth', authMiddleware, (req, res) => {
+router.get('/google/auth', (req, res) => {
   try {
     const userId = req.user.id;
     const authUrl = googleOAuthService.generateAuthUrl(userId);
@@ -156,7 +156,7 @@ router.get('/google/callback', async (req, res) => {
  * @desc    Disconnect Google Calendar integration
  * @access  Private
  */
-router.delete('/google/disconnect', authMiddleware, async (req, res) => {
+router.delete('/google/disconnect', async (req, res) => {
   try {
     const userId = req.user.id;
     
@@ -182,7 +182,7 @@ router.delete('/google/disconnect', authMiddleware, async (req, res) => {
  * @desc    Get connection status for Google Calendar
  * @access  Private
  */
-router.get('/google/status', authMiddleware, async (req, res) => {
+router.get('/google/status', async (req, res) => {
   try {
     const userId = req.user.id;
     
@@ -211,4 +211,4 @@ router.get('/google/status', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router; 
+export default router; 

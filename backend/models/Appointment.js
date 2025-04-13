@@ -1,5 +1,7 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
+import Lead from "./Lead.js";
+import User from "./User.js";
 
 const Appointment = sequelize.define(
   "Appointment",
@@ -71,12 +73,10 @@ const Appointment = sequelize.define(
   }
 );
 
-module.exports = Appointment;
+export default Appointment;
 
 // Set up associations after export
 setTimeout(() => {
-  const Lead = require("./Lead");
-  const User = require("./User");
 
   Appointment.belongsTo(Lead, {
     foreignKey: "leadId",

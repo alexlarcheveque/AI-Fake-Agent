@@ -1,6 +1,6 @@
-const twilio = require("twilio");
-const Message = require("../models/Message");
-const logger = require("../utils/logger");
+import twilio from "twilio";
+import Message from "../models/Message.js";
+import logger from "../utils/logger.js";
 
 // Initialize Twilio client with environment variables
 const accountSid = process.env.TWILIO_ACCOUNT_SID || "your_account_sid_here";
@@ -78,4 +78,4 @@ const twilioService = {
   },
 };
 
-module.exports = twilioService;
+export default twilioService;

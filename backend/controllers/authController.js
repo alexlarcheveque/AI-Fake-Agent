@@ -1,10 +1,10 @@
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
-const logger = require("../utils/logger");
-const crypto = require("crypto");
-const nodemailer = require("nodemailer");
-const settingsController = require("./userSettingsController");
-const { Op } = require("sequelize");
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
+import logger from "../utils/logger.js";
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+import settingsController from "./userSettingsController.js";
+import { Op } from "sequelize";
 
 // Generate JWT token
 const generateToken = (user) => {
@@ -264,4 +264,4 @@ const authController = {
   },
 };
 
-module.exports = authController;
+export default authController;

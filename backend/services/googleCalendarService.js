@@ -1,6 +1,6 @@
-const { google } = require('googleapis');
-const googleOAuthService = require('./googleOAuthService');
-const logger = require('../utils/logger');
+import { google } from 'googleapis';
+import googleOAuthService from './googleOAuthService.js';
+import logger from '../utils/logger.js';
 
 class GoogleCalendarService {
   constructor() {
@@ -205,4 +205,4 @@ class GoogleCalendarService {
   }
 }
 
-module.exports = new GoogleCalendarService(); 
+export default new GoogleCalendarService(); 

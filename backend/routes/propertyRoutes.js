@@ -1,12 +1,13 @@
-const express = require("express");
+import express from "express";
+import propertyService from "../services/propertyService.js";
+import { auth } from "../middleware/auth.js";
+import PropertyMatch from "../models/PropertyMatch.js";
+import Property from "../models/Property.js";
+import LeadPropertySearch from "../models/LeadPropertySearch.js";
+import logger from "../utils/logger.js";
+import { Op } from "sequelize";
+
 const router = express.Router();
-const propertyService = require("../services/propertyService");
-const auth = require("../middleware/auth");
-const PropertyMatch = require("../models/PropertyMatch");
-const Property = require("../models/Property");
-const LeadPropertySearch = require("../models/LeadPropertySearch");
-const logger = require("../utils/logger");
-const { Op } = require("sequelize");
 
 // Get property searches for a lead
 router.get("/searches/lead/:leadId", auth, async (req, res) => {
@@ -243,4 +244,4 @@ router.get("/search", auth, async (req, res) => {
   }
 });
 
-module.exports = router; 
+export default router; 

@@ -1,6 +1,6 @@
-const { google } = require('googleapis');
-const { Op } = require('sequelize');
-const User = require('../models/User');
+import { google } from 'googleapis';
+import { Op } from 'sequelize';
+import User from '../models/User.js';
 
 // Create an OAuth2 client
 const oauth2Client = new google.auth.OAuth2(
@@ -163,4 +163,4 @@ const googleOAuthService = {
   },
 };
 
-module.exports = googleOAuthService;
+export default googleOAuthService;

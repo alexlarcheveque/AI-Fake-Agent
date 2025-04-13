@@ -1,15 +1,15 @@
 // Create this new file to handle all associations
-const Lead = require("./Lead");
-const User = require("./User");
-const Message = require("./Message");
-const UserSettings = require("./UserSettings");
-const Appointment = require("./Appointment");
-const Property = require("./Property");
-const LeadPropertySearch = require("./LeadPropertySearch");
-const PropertyMatch = require("./PropertyMatch");
-const Notification = require("./Notification");
+import Lead from "./Lead.js";
+import User from "./User.js";
+import Message from "./Message.js";
+import UserSettings from "./UserSettings.js";
+import Appointment from "./Appointment.js";
+import Property from "./Property.js";
+import LeadPropertySearch from "./LeadPropertySearch.js";
+import PropertyMatch from "./PropertyMatch.js";
+import Notification from "./Notification.js";
 
-function initializeAssociations() {
+const initializeAssociations = () => {
   // User - Lead association
   User.hasMany(Lead, { foreignKey: "userId" });
   Lead.belongsTo(User, { foreignKey: "userId" });
@@ -51,4 +51,4 @@ function initializeAssociations() {
   Notification.belongsTo(User, { foreignKey: "userId" });
 }
 
-module.exports = initializeAssociations;
+export default initializeAssociations;

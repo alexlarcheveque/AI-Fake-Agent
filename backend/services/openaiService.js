@@ -1,7 +1,7 @@
-const OpenAI = require("openai");
-const logger = require("../utils/logger");
-const agentSettings = require("../config/agentSettings");
-const { format, addDays, getDay } = require("date-fns");
+import OpenAI from "openai";
+import logger from "../utils/logger.js";
+import agentSettings from "../config/agentSettings.js";
+import { format, addDays, getDay } from "date-fns";
 
 const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
 
@@ -884,4 +884,4 @@ const openaiService = {
   },
 };
 
-module.exports = openaiService;
+export default openaiService;

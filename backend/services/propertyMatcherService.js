@@ -1,12 +1,12 @@
-const propertyService = require('./propertyService');
-const twilioService = require('./twilioService');
-const Lead = require('../models/Lead');
-const Message = require('../models/Message');
-const LeadPropertySearch = require('../models/LeadPropertySearch');
-const PropertyMatch = require('../models/PropertyMatch');
-const Property = require('../models/Property');
-const cron = require('node-cron');
-const logger = require('../utils/logger');
+import propertyService from './propertyService.js';
+import twilioService from './twilioService.js';
+import Lead from '../models/Lead.js';
+import Message from '../models/Message.js';
+import LeadPropertySearch from '../models/LeadPropertySearch.js';
+import PropertyMatch from '../models/PropertyMatch.js';
+import Property from '../models/Property.js';
+import cron from 'node-cron';
+import logger from '../utils/logger.js';
 
 const propertyMatcherService = {
   // Initialize the service and set up scheduled jobs
@@ -249,4 +249,4 @@ const propertyMatcherService = {
   }
 };
 
-module.exports = propertyMatcherService; 
+export default propertyMatcherService; 

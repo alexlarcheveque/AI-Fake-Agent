@@ -1,6 +1,6 @@
-const BaseController = require('./BaseController');
-const notificationService = require('../services/notificationService');
-const { AppError } = require('../middleware/errorHandler');
+import BaseController from './BaseController.js';
+import notificationService from '../services/notificationService.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 class NotificationController extends BaseController {
   constructor() {
@@ -94,4 +94,4 @@ class NotificationController extends BaseController {
   }
 }
 
-module.exports = new NotificationController(); 
+export default new NotificationController(); 

@@ -1,5 +1,5 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const PropertyMatch = sequelize.define(
   "PropertyMatch",
@@ -59,4 +59,4 @@ const PropertyMatch = sequelize.define(
   }
 );
 
-module.exports = PropertyMatch; 
+export default PropertyMatch; 

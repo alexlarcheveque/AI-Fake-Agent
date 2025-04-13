@@ -1,5 +1,5 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const Message = sequelize.define(
   "Message",
@@ -90,14 +90,13 @@ const Message = sequelize.define(
   }
 );
 
-// Export the model immediately
-module.exports = Message;
-
-// Set up associations after export
-setTimeout(() => {
-  const Lead = require("./Lead");
+// Set up associations asynchronously to avoid circular dependencies
+setTimeout(async () => {
+  const { default: Lead } = await import("./Lead.js");
 
   Message.belongsTo(Lead, {
     foreignKey: "leadId",
   });
 }, 0);
+
+export default Message;

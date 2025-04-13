@@ -1,18 +1,19 @@
-const Message = require("../models/Message");
-const Lead = require("../models/Lead");
-const UserSettings = require("../models/UserSettings");
-const Notification = require("../models/Notification");
-const twilioService = require("../services/twilioService");
-const openaiService = require("../services/openaiService");
-const logger = require("../utils/logger");
-const scheduledMessageService = require("../services/scheduledMessageService");
-const userSettingsService = require("../services/userSettingsService");
-const leadStatusService = require("../services/leadStatusService");
-const { Op } = require("sequelize");
-const sequelize = require("sequelize");
-const { MessagingResponse } = require("twilio").twiml;
-const DEFAULT_SETTINGS = require("../config/defaultSettings");
-const appointmentService = require("../services/appointmentService");
+import Message from "../models/Message.js";
+import Lead from "../models/Lead.js";
+import Notification from "../models/Notification.js";
+import twilioService from "../services/twilioService.js";
+import openaiService from "../services/openaiService.js";
+import logger from "../utils/logger.js";
+import scheduledMessageService from "../services/scheduledMessageService.js";
+import userSettingsService from "../services/userSettingsService.js";
+import leadStatusService from "../services/leadStatusService.js";
+import { Op } from "sequelize";
+import sequelize from "sequelize";
+import DEFAULT_SETTINGS from "../config/defaultSettings.js";
+import User from "../models/User.js";
+
+import pkg from 'twilio/lib/twiml/MessagingResponse.js';
+const { MessagingResponse } = pkg;
 
 const messageController = {
   // send test twilio message
@@ -321,7 +322,7 @@ const messageController = {
         } else {
           // If not, try to get the first user from the database
           try {
-            const User = require("../models/User");
+            
             const firstUser = await User.findOne({
               order: [['createdAt', 'ASC']]
             });
@@ -1114,4 +1115,4 @@ const messageController = {
   }
 };
 
-module.exports = messageController;
+export default messageController;

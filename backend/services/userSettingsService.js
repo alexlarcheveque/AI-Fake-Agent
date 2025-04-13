@@ -1,6 +1,6 @@
-const UserSettings = require("../models/UserSettings");
-const logger = require("../utils/logger");
-const DEFAULT_SETTINGS = require("../config/defaultSettings");
+import UserSettings from "../models/UserSettings.js";
+import logger from "../utils/logger.js";
+import DEFAULT_SETTINGS from "../config/defaultSettings.js";
 
 // Default prompts
 const DEFAULT_BUYER_LEAD_PROMPT = `You are a professional, experienced, and helpful real estate agent assistant in the state of \${configSettings.agentState} acting as a real estate agent named "\${configSettings.agentName}" and working for "\${configSettings.companyName}". You are interacting with potential home buyers who have filled out an ad or form on our website. Since they don't have any context about our company or you, your goal is to build rapport and get to know them.
@@ -225,4 +225,4 @@ const userSettingsService = {
   },
 };
 
-module.exports = userSettingsService;
+export default userSettingsService;

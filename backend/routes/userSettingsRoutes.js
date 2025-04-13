@@ -1,7 +1,8 @@
-const express = require("express");
+import express from "express";
+import userSettingsController from "../controllers/userSettingsController.js";
+import { auth } from "../middleware/auth.js";
+
 const router = express.Router();
-const userSettingsController = require("../controllers/userSettingsController");
-const auth = require("../middleware/auth");
 
 // Apply auth middleware to all routes
 router.use(auth);
@@ -12,4 +13,4 @@ router.get("/", userSettingsController.getSettings);
 // PUT /api/user-settings
 router.put("/", userSettingsController.updateSettings);
 
-module.exports = router;
+export default router;

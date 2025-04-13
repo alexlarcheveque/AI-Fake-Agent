@@ -1,6 +1,6 @@
-const BaseService = require('./BaseService');
-const Notification = require('../models/Notification');
-const logger = require('../utils/logger');
+import BaseService from './BaseService.js';
+import Notification from '../models/Notification.js';
+import logger from '../utils/logger.js';
 
 class NotificationService extends BaseService {
   constructor() {
@@ -66,4 +66,4 @@ class NotificationService extends BaseService {
   }
 }
 
-module.exports = new NotificationService(); 
+export default new NotificationService(); 

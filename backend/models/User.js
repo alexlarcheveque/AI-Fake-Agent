@@ -1,6 +1,7 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
-const bcrypt = require("bcryptjs");
+import Lead from "./Lead.js";
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
+import bcrypt from "bcryptjs";
 
 const User = sequelize.define(
   "User",
@@ -72,7 +73,7 @@ User.prototype.checkPassword = async function (password) {
 
 // Set up associations after export (this avoids circular dependencies)
 setTimeout(() => {
-  const Lead = require('./lead');
+  
   
   User.hasMany(Lead, {
     foreignKey: 'userId',
@@ -84,4 +85,4 @@ setTimeout(() => {
 // This relationship will be properly set up in Settings.js
 // User.hasMany(Settings, { foreignKey: 'userId' });
 
-module.exports = User;
+export default User;

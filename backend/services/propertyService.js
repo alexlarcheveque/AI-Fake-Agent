@@ -1,8 +1,8 @@
-const Property = require("../models/Property");
-const LeadPropertySearch = require("../models/LeadPropertySearch");
-const PropertyMatch = require("../models/PropertyMatch");
-const { Op } = require("sequelize");
-const logger = require("../utils/logger");
+import Property from "../models/Property.js";
+import LeadPropertySearch from "../models/LeadPropertySearch.js";
+import PropertyMatch from "../models/PropertyMatch.js";
+import { Op } from "sequelize";
+import logger from "../utils/logger.js";
 
 const propertyService = {
   // Add or update a property in the database
@@ -313,4 +313,4 @@ const propertyService = {
   }
 };
 
-module.exports = propertyService; 
+export default propertyService; 

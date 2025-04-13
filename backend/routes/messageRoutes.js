@@ -1,8 +1,9 @@
-const express = require("express");
+import express from "express";
+import messageController from "../controllers/messageController.js";
+import Lead from "../models/Lead.js";
+import Message from "../models/Message.js";
+
 const router = express.Router();
-const messageController = require("../controllers/messageController");
-const Lead = require("../models/Lead");
-const Message = require("../models/Message");
 
 // Get all messages with optional status filter
 router.get("/", messageController.getAllMessages);
@@ -256,4 +257,4 @@ router.post("/simulate-ai-response", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

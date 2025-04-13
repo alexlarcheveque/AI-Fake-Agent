@@ -1,4 +1,4 @@
-const { AppError } = require("../middleware/errorHandler");
+import { AppError } from "../middleware/errorHandler.js";
 
 /**
  * Base controller with common CRUD operations
@@ -95,4 +95,4 @@ class BaseController {
   };
 }
 
-module.exports = BaseController;
+export default BaseController;

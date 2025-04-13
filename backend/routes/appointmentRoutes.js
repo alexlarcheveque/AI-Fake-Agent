@@ -1,10 +1,11 @@
-const express = require('express');
+import express from 'express';
+import appointmentController from '../controllers/appointmentController.js';
+import { auth } from '../middleware/auth.js';
+
 const router = express.Router();
-const appointmentController = require('../controllers/appointmentController');
-const authMiddleware = require('../middleware/auth');
 
 // Apply authentication middleware to all routes
-router.use(authMiddleware);
+router.use(auth);
 
 // Get upcoming appointments
 router.get('/upcoming', appointmentController.getUpcomingAppointments);
@@ -21,4 +22,4 @@ router.put('/:id', appointmentController.updateAppointment);
 // Delete appointment
 router.delete('/:id', appointmentController.deleteAppointment);
 
-module.exports = router; 
+export default router; 
