@@ -52,6 +52,10 @@ const settingsController = {
         agentState: settings.agentState || "",
         agentCity: settings.agentCity || "",
         aiAssistantEnabled: settings.aiAssistantEnabled || false,
+        // Prompt settings
+        buyerLeadPrompt: settings.buyerLeadPrompt || "",
+        sellerLeadPrompt: settings.sellerLeadPrompt || "",
+        followUpPrompt: settings.followUpPrompt || "",
         // Follow-up intervals
         followUpIntervalNew: settings.followUpIntervalNew || 2,
         followUpIntervalInConversation: settings.followUpIntervalInConversation || 3,
@@ -76,60 +80,66 @@ const settingsController = {
 
       const userId = req.user.id;
 
+      const {
+        agentName,
+        companyName,
+        agentState,
+        agentCity,
+        aiAssistantEnabled,
+        buyerLeadPrompt,
+        sellerLeadPrompt,
+        followUpPrompt,
+        followUpIntervalNew,
+        followUpIntervalInConversation,
+        followUpIntervalQualified,
+        followUpIntervalAppointmentSet,
+        followUpIntervalConverted,
+        followUpIntervalInactive,
+      } = req.body;
+
       // Find or create settings for this user
       let [settings, created] = await UserSettings.findOrCreate({
         where: { userId },
         defaults: {
           userId,
-          agentName: req.body.agentName || "Your Name",
-          companyName: req.body.companyName || "Your Company",
-          agentState: req.body.agentState || "",
-          agentCity: req.body.agentCity || "",
+          agentName: agentName || "Your Name",
+          companyName: companyName || "Your Company",
+          agentState: agentState || "",
+          agentCity: agentCity || "",
           aiAssistantEnabled:
-            req.body.aiAssistantEnabled !== undefined
-              ? req.body.aiAssistantEnabled
+            aiAssistantEnabled !== undefined
+              ? aiAssistantEnabled
               : true,
           // Default follow-up intervals
-          followUpIntervalNew: req.body.followUpIntervalNew || 2,
-          followUpIntervalInConversation: req.body.followUpIntervalInConversation || 3,
-          followUpIntervalQualified: req.body.followUpIntervalQualified || 5,
-          followUpIntervalAppointmentSet: req.body.followUpIntervalAppointmentSet || 1,
-          followUpIntervalConverted: req.body.followUpIntervalConverted || 14,
-          followUpIntervalInactive: req.body.followUpIntervalInactive || 30,
+          followUpIntervalNew: followUpIntervalNew || 2,
+          followUpIntervalInConversation: followUpIntervalInConversation || 3,
+          followUpIntervalQualified: followUpIntervalQualified || 5,
+          followUpIntervalAppointmentSet: followUpIntervalAppointmentSet || 1,
+          followUpIntervalConverted: followUpIntervalConverted || 14,
+          followUpIntervalInactive: followUpIntervalInactive || 30,
         },
       });
 
       if (!created) {
+        // Build update object with only the fields that were sent
+        let updateObject = {};
+        if (agentName !== undefined) updateObject.agentName = agentName;
+        if (companyName !== undefined) updateObject.companyName = companyName;
+        if (agentState !== undefined) updateObject.agentState = agentState;
+        if (agentCity !== undefined) updateObject.agentCity = agentCity;
+        if (aiAssistantEnabled !== undefined) updateObject.aiAssistantEnabled = aiAssistantEnabled;
+        if (buyerLeadPrompt !== undefined) updateObject.buyerLeadPrompt = buyerLeadPrompt;
+        if (sellerLeadPrompt !== undefined) updateObject.sellerLeadPrompt = sellerLeadPrompt;
+        if (followUpPrompt !== undefined) updateObject.followUpPrompt = followUpPrompt;
+        if (followUpIntervalNew !== undefined) updateObject.followUpIntervalNew = followUpIntervalNew;
+        if (followUpIntervalInConversation !== undefined) updateObject.followUpIntervalInConversation = followUpIntervalInConversation;
+        if (followUpIntervalQualified !== undefined) updateObject.followUpIntervalQualified = followUpIntervalQualified;
+        if (followUpIntervalAppointmentSet !== undefined) updateObject.followUpIntervalAppointmentSet = followUpIntervalAppointmentSet;
+        if (followUpIntervalConverted !== undefined) updateObject.followUpIntervalConverted = followUpIntervalConverted;
+        if (followUpIntervalInactive !== undefined) updateObject.followUpIntervalInactive = followUpIntervalInactive;
+
         // Update existing settings
-        await settings.update({
-          agentName: req.body.agentName || settings.agentName,
-          companyName: req.body.companyName || settings.companyName,
-          agentState: req.body.agentState || settings.agentState,
-          agentCity: req.body.agentCity || settings.agentCity,
-          aiAssistantEnabled:
-            req.body.aiAssistantEnabled !== undefined
-              ? req.body.aiAssistantEnabled
-              : settings.aiAssistantEnabled,
-          // Update follow-up intervals if provided
-          followUpIntervalNew: req.body.followUpIntervalNew !== undefined 
-            ? req.body.followUpIntervalNew 
-            : settings.followUpIntervalNew,
-          followUpIntervalInConversation: req.body.followUpIntervalInConversation !== undefined 
-            ? req.body.followUpIntervalInConversation 
-            : settings.followUpIntervalInConversation,
-          followUpIntervalQualified: req.body.followUpIntervalQualified !== undefined 
-            ? req.body.followUpIntervalQualified 
-            : settings.followUpIntervalQualified,
-          followUpIntervalAppointmentSet: req.body.followUpIntervalAppointmentSet !== undefined 
-            ? req.body.followUpIntervalAppointmentSet 
-            : settings.followUpIntervalAppointmentSet,
-          followUpIntervalConverted: req.body.followUpIntervalConverted !== undefined 
-            ? req.body.followUpIntervalConverted 
-            : settings.followUpIntervalConverted,
-          followUpIntervalInactive: req.body.followUpIntervalInactive !== undefined 
-            ? req.body.followUpIntervalInactive 
-            : settings.followUpIntervalInactive,
-        });
+        await settings.update(updateObject);
       }
 
       return res.json({
@@ -138,6 +148,10 @@ const settingsController = {
         agentState: settings.agentState || "",
         agentCity: settings.agentCity || "",
         aiAssistantEnabled: settings.aiAssistantEnabled || false,
+        // Prompt settings
+        buyerLeadPrompt: settings.buyerLeadPrompt || "",
+        sellerLeadPrompt: settings.sellerLeadPrompt || "",
+        followUpPrompt: settings.followUpPrompt || "",
         // Follow-up intervals
         followUpIntervalNew: settings.followUpIntervalNew || 2,
         followUpIntervalInConversation: settings.followUpIntervalInConversation || 3,

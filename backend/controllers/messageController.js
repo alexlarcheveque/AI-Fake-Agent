@@ -125,11 +125,23 @@ const messageController = {
       }
       
       try {
-        // Generate AI response with user's settings
+        // Determine if this is a follow-up message based on message count
+        const isFollowUp = lead.messageCount > 2; // Consider it a follow-up if there are more than 2 previous messages
+        
+        // Get lead details for context
+        const leadDetails = {
+          leadName: lead.name,
+          leadStatus: lead.status,
+          leadType: lead.leadType || 'buyer', // Default to buyer if not specified
+          isFollowUp
+        };
+        
+        // Generate AI response with user's settings and lead context
         const aiResponseData = await openaiService.generateResponse(
           text,
           settingsMap,
-          previousMessages
+          previousMessages,
+          leadDetails
         );
         
         // Process the AI response

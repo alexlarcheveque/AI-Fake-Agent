@@ -8,13 +8,23 @@ const settingsApi = {
   async getSettings(): Promise<UserSettings> {
     console.log("fetching settings");
 
-    const response = await axios.get(`${BASE_URL}/api/user-settings`);
+    const token = localStorage.getItem("token");
+    const response = await axios.get(`${BASE_URL}/api/user-settings`, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+    });
     return response.data;
   },
 
   // Update user settings
   async updateSettings(settings: UserSettings): Promise<UserSettings> {
-    const response = await axios.put(`${BASE_URL}/api/user-settings`, settings);
+    const token = localStorage.getItem("token");
+    const response = await axios.put(`${BASE_URL}/api/user-settings`, settings, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+    });
     return response.data;
   },
 };

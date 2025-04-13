@@ -41,6 +41,14 @@ const Lead = sequelize.define(
         isIn: [["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"]]
       }
     },
+    leadType: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: "buyer",
+      validate: {
+        isIn: [["buyer", "seller"]]
+      }
+    },
     aiAssistantEnabled: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

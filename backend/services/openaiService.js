@@ -19,6 +19,8 @@ const openaiService = {
       const { 
         leadName = "the client", 
         leadStatus = "New",
+        leadType = "buyer",
+        isFollowUp = false,
         qualifyingLeadDetected = false
       } = promptContext;
       
@@ -45,6 +47,10 @@ const openaiService = {
         FOLLOW_UP_INTERVAL_APPOINTMENT_SET: configSettings.followUpIntervalAppointmentSet || configSettings.FOLLOW_UP_INTERVAL_APPOINTMENT_SET || 1,
         FOLLOW_UP_INTERVAL_CONVERTED: configSettings.followUpIntervalConverted || configSettings.FOLLOW_UP_INTERVAL_CONVERTED || 14,
         FOLLOW_UP_INTERVAL_INACTIVE: configSettings.followUpIntervalInactive || configSettings.FOLLOW_UP_INTERVAL_INACTIVE || 30,
+        // Get prompt settings from configSettings
+        BUYER_LEAD_PROMPT: configSettings.buyerLeadPrompt || "",
+        SELLER_LEAD_PROMPT: configSettings.sellerLeadPrompt || "",
+        FOLLOW_UP_PROMPT: configSettings.followUpPrompt || "",
       };
 
       // Log the actual resolved settings we're using
@@ -78,6 +84,8 @@ const openaiService = {
         COMPANY_NAME: configSettings.companyName,
         AGENT_STATE: configSettings.agentState,
         CURRENT_DATE: formattedCurrentDate,
+        LEAD_TYPE: leadType,
+        IS_FOLLOW_UP: isFollowUp
       });
 
       // Convert previous messages to OpenAI format
@@ -106,36 +114,34 @@ const openaiService = {
 
       console.log("messageHistory", messageHistory);
 
-      // If qualifying lead detected, add instructions to ask qualification questions
-      let qualificationInstructions = "";
-      if (qualifyingLeadDetected) {
-        qualificationInstructions = `
-        IMPORTANT: This lead has shown interest in buying/selling real estate. Ask 1-2 friendly 
-        questions to gather more information about their needs in ONE of these areas:
-        - Timeline (When they want to buy/sell)
-        - Budget (What price range they're considering)
-        - Location (What areas they're interested in)
-        
-        Keep it conversational, not like a formal survey. Don't ask about all three at once.
-        `;
-      }
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.agentState} acting as a real estate agent named "${configSettings.agentName}" and are working for a company named "${configSettings.companyName}". 
-            You are interacting with potential home buyers or sellers. 
+      // Select the appropriate prompt based on lead type and follow-up context
+      let systemPrompt = "";
+      
+      // Check if we have custom prompts defined
+      if (isFollowUp && resolvedSettings.FOLLOW_UP_PROMPT) {
+        // Use the follow-up prompt
+        systemPrompt = resolvedSettings.FOLLOW_UP_PROMPT;
+      } else if (leadType === "seller" && resolvedSettings.SELLER_LEAD_PROMPT) {
+        // Use the seller lead prompt
+        systemPrompt = resolvedSettings.SELLER_LEAD_PROMPT;
+      } else if (leadType === "buyer" && resolvedSettings.BUYER_LEAD_PROMPT) {
+        // Use the buyer lead prompt
+        systemPrompt = resolvedSettings.BUYER_LEAD_PROMPT;
+      } else {
+        // Fall back to the default system prompt
+        systemPrompt = `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.agentState} acting as a real estate agent named "${configSettings.agentName}" and are working for a company named "${configSettings.companyName}". 
+            You are interacting with potential home ${leadType}s. 
             You have experience in serving the lead's location as your team has helped buy and sell properties in that area. 
             You are texting these leads, so keep formatting simple and concise.
 
             Today's date is ${formattedCurrentDate} (${currentDayName}).
 
             All leads have filled out some sort of ad or form on our website. They don't have any context about our company or agent, so we need to build rapport and get to know them.
-            Make sure to confirm with them that their timeline, search criteria, budget, and preapproval status is correct. If they have not filled out a form, find out their timeline, search criteria, budget, and preapproval status.
+            ${leadType === "buyer" ? 
+              "Make sure to confirm with them that their timeline, search criteria, budget, and preapproval status is correct. If they have not filled out a form, find out their timeline, search criteria, budget, and preapproval status." : 
+              "Make sure to confirm with them their timeline for selling and any details about their property they can share."}
 
-              ## Instructions for Buyers:
+              ${leadType === "buyer" ? `## Instructions for Buyers:
 
               - **Objective**: Help potential home buyers set an appointment to view a property.
               - **Services**:
@@ -145,14 +151,14 @@ const openaiService = {
                 - Ask proactive questions and address any questions/objections they have regarding the local real estate market.
                 - If there is an update regarding their search criteria, always include the NEW SEARCH CRITERIA format at the end of your message. (More instructions under "Property Search Format Requirements")
                 - If an appointment is scheduled, conclude with the exact text "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" at the end of your message, where MM/DD/YYYY is the actual date with real numbers (not placeholders). For example, if the appointment is for June 1, 2025, you would write "NEW APPOINTMENT SET: 06/01/2025 at 2:00 PM". Be sure to include leading zeros for single-digit months and days.
-              - **Tone and Style**: Maintain professionalism, be informative, and steer them towards the next steps in their real estate journey. Ensure responses are concise and informative, suitable for text conversation.
-
-              ## Instructions for Sellers:
+              - **Tone and Style**: Maintain professionalism, be informative, and steer them towards the next steps in their real estate journey. Ensure responses are concise and informative, suitable for text conversation.` 
+              : 
+              `## Instructions for Sellers:
 
               - **Objective**: Assist potential home sellers in setting an appointment to sell their property.
               - **Services**: 
                 - Answer any questions they may have about the real estate market in their area.
-              - **Tone and Style**: Maintain professionalism, be informative, and guide them towards the next steps in their real estate journey.
+              - **Tone and Style**: Maintain professionalism, be informative, and guide them towards the next steps in their real estate journey.`}
 
               # Output Format
 
@@ -168,7 +174,7 @@ const openaiService = {
               5. IF a client asks for a specific date (e.g., "Saturday"), convert it to the correct MM/DD/YYYY format based on today's date (${formattedCurrentDate})
               6. Use REALISTIC scheduling: No appointments in the past or same day, earliest is tomorrow (${tomorrowFormatted})
               
-              # Property Search Format Requirements:
+              ${leadType === "buyer" ? `# Property Search Format Requirements:
               
               When identifying property requirements, ALWAYS follow these rules:
               1. Use the exact format "NEW SEARCH CRITERIA: MIN BEDROOMS: <value>, MAX BEDROOMS: <value>, MAX BATHROOMS: <value>, MIN PRICE: <value>, MAX PRICE: <value>, MIN SQUARE FEET: <value>, MAX SQUARE FEET: <value>, LOCATIONS: <value>, PROPERTY TYPES: <value> at the end of your message
@@ -194,46 +200,47 @@ const openaiService = {
 
               # Both Appointment and Property Search Requirements:	
 
-              1. When including BOTH property search and appointment in the same message, put them on the SAME LINE separated by a PIPE CHARACTER (|) not a space or newline
+              1. When including BOTH property search and appointment in the same message, put them on the SAME LINE separated by a PIPE CHARACTER (|) not a space or newline` : ""}`;
+      }
 
-              # Examples
-              
-              Example 1: Property Search
-              - **Input**: "I'm looking for a 3-bedroom house in Austin under $500,000."
-              - **Output**: "I'll help you find homes matching your criteria in Austin. Based on your requirements, I'll search for 3-bedroom properties under $500,000. I'll send you matching listings as soon as possible. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 500000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, PROPERTY TYPES: House"
+      // Process template variables in the prompt
+      systemPrompt = systemPrompt
+        .replace(/\${configSettings.agentName}/g, configSettings.agentName)
+        .replace(/\${configSettings.companyName}/g, configSettings.companyName)
+        .replace(/\${configSettings.agentState}/g, configSettings.agentState)
+        .replace(/\${configSettings.agentCity}/g, configSettings.agentCity)
+        .replace(/\${formattedCurrentDate}/g, formattedCurrentDate)
+        .replace(/\${currentDayName}/g, currentDayName)
+        .replace(/\${tomorrowFormatted}/g, tomorrowFormatted)
+        .replace(/\${saturdayFormatted}/g, saturdayFormatted)
+        .replace(/\${sundayFormatted}/g, sundayFormatted)
+        .replace(/\${tuesdayFormatted}/g, tuesdayFormatted);
 
-              Example 2: Appointment Setting
-              - **Input**: "Can we meet to discuss listing my property this weekend?"
-              - **Output**: "I'd be happy to meet with you to discuss listing your property. I have availability this Sunday at 2:00 PM. Does that work for you? NEW APPOINTMENT SET: ${sundayFormatted} at 2:00 PM"
-              
-              Example 3: Combined Search Refinement and Appointment
-              - **Input**: "I want to see 4-bedroom houses with at least 2.5 bathrooms. Can we tour some properties next Tuesday?"
-              - **Output**: "I'll update your search to focus on 4+ bedroom homes with at least 2.5 bathrooms. I'd be happy to show you matching properties next Tuesday. Does 1:00 PM work for your schedule? NEW SEARCH CRITERIA: MIN BEDROOMS: 4, MAX BEDROOMS: , MIN BATHROOMS: 2.5, MAX BATHROOMS: , MIN PRICE: , MAX PRICE: , MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: , PROPERTY TYPES: House, NOTE: | NEW APPOINTMENT SET: ${tuesdayFormatted} at 1:00 PM"
-              
-              Example 4: Property Search Update
-              - **Input**: "Actually, I'd like to increase my budget to $800,000 and look in both Austin and Round Rock."
-              - **Output**: "I've updated your search criteria with the higher budget of $800,000 and expanded the location to include both Austin and Round Rock. I'll send you updated listings shortly. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 800000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, Round Rock, PROPERTY TYPES: House"
-              
-              Example 5: Asking about current search criteria
-              - **Input**: "What are my current search criteria again?"
-              - **Output**: "Here are your current search criteria: You're looking for properties with at least 3 bedrooms in Austin and Round Rock. Your budget is up to $800,000, and you haven't specified any particular bathroom requirements or square footage preferences.
+      // If qualifying lead detected, add instructions to ask qualification questions
+      let qualificationInstructions = "";
+      if (qualifyingLeadDetected) {
+        qualificationInstructions = `
+        IMPORTANT: This lead has shown interest in ${leadType === "buyer" ? "buying" : "selling"} real estate. Ask 1-2 friendly 
+        questions to gather more information about their needs in ONE of these areas:
+        - Timeline (When they want to ${leadType === "buyer" ? "buy" : "sell"})
+        ${leadType === "buyer" ? "- Budget (What price range they're considering)" : "- Property details (What type of property they're selling)"}
+        - Location (${leadType === "buyer" ? "What areas they're interested in" : "Where their property is located"})
+        
+        Keep it conversational, not like a formal survey. Don't ask about all three at once.
+        `;
+      }
 
-              I'll continue to send you listings that match these parameters. Let me know if you'd like to adjust any of these criteria. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 800000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, Round Rock, PROPERTY TYPES: House"
+      // Append any qualification instructions to the system prompt
+      if (qualificationInstructions) {
+        systemPrompt += "\n\n" + qualificationInstructions;
+      }
 
-              Example 6: Simple property update
-              - **Input**: "Can you change my max bedrooms to 5?"
-              - **Output**: "I've updated your search criteria to include properties with up to 5 bedrooms maximum. Your other preferences remain the same: minimum 3 bedrooms, budget up to $800,000, and locations in Austin and Round Rock.
-
-              I'll send you matching listings that meet these updated requirements soon. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: 5, MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 800000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, Round Rock, PROPERTY TYPES: House"
-
-              # Note:
-              - Always use exact formatting for both appointment and property search information
-              - For appointments, always use the specific MM/DD/YYYY format with actual dates
-              - For property searches, include only the criteria mentioned by the client
-              - Never use placeholder text like <COUNT> or <dollar_amount> - use real numbers
-
-
-              ${qualificationInstructions}`,
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
           },
           ...messageHistory,
           ...(userMessage
@@ -448,23 +455,32 @@ const openaiService = {
       let prompt = "";
 
       if (lead.messageCount === 0) {
-        prompt = `Generate an initial follow-up message to a potential real estate lead named ${lead.name}. 
+        prompt = `Generate an initial follow-up message to a potential real estate ${lead.leadType || 'buyer'} lead named ${lead.name}. 
         The message should be friendly, professional, and encourage a response. 
         Keep it brief (under 160 characters if possible) and conversational.`;
       } else {
         // For subsequent follow-ups
         prompt = `Generate follow-up message #${
           lead.messageCount + 1
-        } for a real estate lead named ${lead.name} 
+        } for a real estate ${lead.leadType || 'buyer'} lead named ${lead.name} 
         who hasn't responded to previous messages. Keep it casual but professional, 
         and don't be pushy. The message should be brief (under 160 characters if possible).`;
       }
+
+      // Set up lead context for the follow-up
+      const leadDetails = {
+        leadName: lead.name,
+        leadStatus: lead.status,
+        leadType: lead.leadType || 'buyer',
+        isFollowUp: true  // This is a follow-up message
+      };
 
       // Generate the response using the existing generateResponse function
       const followUpMessage = await this.generateResponse(
         prompt,
         settingsMap,
-        [] // No previous messages needed for follow-up
+        [], // No previous messages needed for follow-up
+        leadDetails
       );
 
       return followUpMessage;

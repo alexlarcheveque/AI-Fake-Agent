@@ -36,6 +36,19 @@ const UserSettings = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    // Store the different prompt types
+    buyerLeadPrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    sellerLeadPrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    followUpPrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
     // Follow-up interval settings (in days)
     followUpIntervalNew: {
       type: DataTypes.INTEGER,

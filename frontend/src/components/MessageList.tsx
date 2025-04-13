@@ -84,14 +84,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const getMessageGroups = () => {
     const groups: { date: Date; displayDate: Date; messages: Message[] }[] = [];
     
-    // Sort messages by creation date first to ensure proper chronological order
-    const sortedMessages = [...messages].sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return dateA - dateB;
-    });
-    
-    sortedMessages.forEach(message => {
+    messages.forEach(message => {
       const messageDate = typeof message.createdAt === "string" 
         ? new Date(message.createdAt) 
         : message.createdAt;
@@ -111,7 +104,10 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
       if (existingGroup) {
         existingGroup.messages.push(message);
-        // We keep the first message's time for each day
+        // Update the display date to the latest message in the group
+        if (messageDate > existingGroup.displayDate) {
+          existingGroup.displayDate = messageDate;
+        }
       } else {
         groups.push({
           date: messageDateStart, // For grouping
@@ -119,15 +115,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           messages: [message]
         });
       }
-    });
-    
-    // Ensure messages within each group are sorted by timestamp
-    groups.forEach(group => {
-      group.messages.sort((a, b) => {
-        const dateA = new Date(a.createdAt).getTime();
-        const dateB = new Date(b.createdAt).getTime();
-        return dateA - dateB;
-      });
     });
 
     return groups;
