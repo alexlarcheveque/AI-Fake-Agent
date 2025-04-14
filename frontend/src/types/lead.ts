@@ -1,6 +1,6 @@
 import { Message } from "./message";
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "lost";
+export type LeadStatus = "New" | "In Conversation" | "Qualified" | "Appointment Set" | "Converted" | "Inactive";
 
 export type LeadType = "buyer" | "seller";
 
@@ -13,7 +13,7 @@ export interface Lead {
   leadType: LeadType;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
-  firstMessageTiming: "immediate" | "1day" | "3days" | "1week";
+  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   nextScheduledMessage?: string; // ISO date string
   lastMessageDate?: string;
   messageCount: number;
@@ -37,7 +37,7 @@ export interface LeadFormData {
   leadType: LeadType;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
-  firstMessageTiming: "immediate" | "1day" | "3days" | "1week";
+  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
 }
 
 export interface BulkImportResponse {

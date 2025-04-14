@@ -1,6 +1,5 @@
 import express from "express";
 import propertyService from "../services/propertyService.js";
-import { auth } from "../middleware/auth.js";
 import PropertyMatch from "../models/PropertyMatch.js";
 import Property from "../models/Property.js";
 import LeadPropertySearch from "../models/LeadPropertySearch.js";
@@ -10,7 +9,7 @@ import { Op } from "sequelize";
 const router = express.Router();
 
 // Get property searches for a lead
-router.get("/searches/lead/:leadId", auth, async (req, res) => {
+router.get("/searches/lead/:leadId", async (req, res) => {
   try {
     const { leadId } = req.params;
     
@@ -27,7 +26,7 @@ router.get("/searches/lead/:leadId", auth, async (req, res) => {
 });
 
 // Get property matches for a lead
-router.get("/matches/lead/:leadId", auth, async (req, res) => {
+router.get("/matches/lead/:leadId", async (req, res) => {
   try {
     const { leadId } = req.params;
     const { limit = 10, offset = 0 } = req.query;
@@ -48,7 +47,7 @@ router.get("/matches/lead/:leadId", auth, async (req, res) => {
 });
 
 // Get a specific property
-router.get("/properties/:propertyId", auth, async (req, res) => {
+router.get("/properties/:propertyId", async (req, res) => {
   try {
     const { propertyId } = req.params;
     
@@ -65,7 +64,7 @@ router.get("/properties/:propertyId", auth, async (req, res) => {
 });
 
 // Add a new property
-router.post("/properties", auth, async (req, res) => {
+router.post("/properties", async (req, res) => {
   try {
     const propertyData = req.body;
     
@@ -86,7 +85,7 @@ router.post("/properties", auth, async (req, res) => {
 });
 
 // Update lead interest in a property
-router.put("/matches/:matchId/interest", auth, async (req, res) => {
+router.put("/matches/:matchId/interest", async (req, res) => {
   try {
     const { matchId } = req.params;
     const { interest } = req.body;
@@ -104,7 +103,7 @@ router.put("/matches/:matchId/interest", auth, async (req, res) => {
 });
 
 // Create a new property search for a lead
-router.post("/searches/lead/:leadId", auth, async (req, res) => {
+router.post("/searches/lead/:leadId", async (req, res) => {
   try {
     const { leadId } = req.params;
     const searchCriteria = req.body;
@@ -118,7 +117,7 @@ router.post("/searches/lead/:leadId", auth, async (req, res) => {
 });
 
 // Update a property search without triggering notifications (silent update)
-router.patch("/searches/lead/:leadId", auth, async (req, res) => {
+router.patch("/searches/lead/:leadId", async (req, res) => {
   try {
     const { leadId } = req.params;
     const searchCriteria = req.body;
@@ -146,7 +145,7 @@ router.patch("/searches/lead/:leadId", auth, async (req, res) => {
 });
 
 // Add a search endpoint
-router.get("/search", auth, async (req, res) => {
+router.get("/search", async (req, res) => {
   try {
     const searchCriteria = req.query;
     console.log("Received property search criteria:", searchCriteria);

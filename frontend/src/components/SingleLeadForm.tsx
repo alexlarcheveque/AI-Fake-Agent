@@ -24,7 +24,7 @@ const VALIDATION_RULES = {
       "Phone number can only contain numbers, spaces, +, -, and parentheses",
   },
   STATUS: {
-    VALID_VALUES: ["new", "contacted", "qualified", "lost"] as LeadStatus[],
+    VALID_VALUES: ["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"] as LeadStatus[],
   },
   LEAD_TYPE: {
     VALID_VALUES: ["buyer", "seller"] as LeadType[],
@@ -42,7 +42,7 @@ const FIRST_MESSAGE_TIMING_OPTIONS = [
 interface FormErrors {
   name?: ValidationError;
   email?: ValidationError;
-  phone?: ValidationError;
+  phoneNumber?: ValidationError;
   status?: ValidationError;
   leadType?: ValidationError;
   submit?: string;
@@ -57,19 +57,20 @@ interface LeadFormProps {
   onLeadCreated: (lead: Lead) => void;
 }
 
-interface FormData extends LeadFormData {
+interface FormData extends Omit<LeadFormData, 'phoneNumber'> {
+  phoneNumber: string;
   messageTime: string;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
-  firstMessageTiming: string;
+  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   messageCount: number;
 }
 
 const initialFormData: FormData = {
   name: "",
   email: "",
-  phone: "",
-  status: "new",
+  phoneNumber: "",
+  status: "New",
   aiAssistantEnabled: true,
   messageTime: "now",
   leadType: "buyer",
@@ -103,16 +104,16 @@ const validateEmail = (email: string): ValidationError | undefined => {
 };
 
 const validatePhone = (phone: string): ValidationError | undefined => {
-  if (!phone) return { field: "phone", message: "Phone number is required" };
+  if (!phone) return { field: "phoneNumber", message: "Phone number is required" };
   const cleanPhone = phone.replace(/\D/g, "");
   if (
     cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
     cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
   ) {
-    return { field: "phone", message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits` };
+    return { field: "phoneNumber", message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits` };
   }
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
-    return { field: "phone", message: VALIDATION_RULES.PHONE.PATTERN_MESSAGE };
+    return { field: "phoneNumber", message: VALIDATION_RULES.PHONE.PATTERN_MESSAGE };
   }
 };
 
@@ -135,7 +136,7 @@ const validateField = (name: keyof FormData, value: string): ValidationError | u
       return validateName(value);
     case "email":
       return validateEmail(value);
-    case "phone":
+    case "phoneNumber":
       return validatePhone(value);
     case "status":
       return validateStatus(value);
@@ -305,26 +306,26 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
 
       <div>
         <label
-          htmlFor="phone"
+          htmlFor="phoneNumber"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
           Phone Number
         </label>
         <input
           type="tel"
-          id="phone"
-          name="phone"
+          id="phoneNumber"
+          name="phoneNumber"
           required
-          value={formData.phone}
+          value={formData.phoneNumber}
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.phone ? "border-red-500 ring-red-100" : "border-gray-300"
+            errors.phoneNumber ? "border-red-500 ring-red-100" : "border-gray-300"
           }`}
           disabled={isLoading}
         />
-        {errors.phone && touchedFields.has("phone") && (
-          <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>
+        {errors.phoneNumber && touchedFields.has("phoneNumber") && (
+          <p className="mt-1 text-sm text-red-600">{errors.phoneNumber.message}</p>
         )}
       </div>
 

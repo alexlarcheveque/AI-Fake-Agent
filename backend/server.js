@@ -18,6 +18,7 @@ import initializeAssociations from "./models/associations.js";
 import messageController from "./controllers/messageController.js";
 import propertyRoutes from "./routes/propertyRoutes.js";
 import propertyMatcherService from "./services/propertyMatcherService.js";
+import { globalAuth } from "./middleware/globalAuth.js";
 
 dotenv.config();
 
@@ -84,6 +85,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Apply global authentication to all routes
+app.use(globalAuth);
 
 // Routes
 app.use("/api/auth", authRoutes);
