@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
+import Lead from "./Lead.js";
 
 const Message = sequelize.define(
   "Message",
@@ -92,8 +93,6 @@ const Message = sequelize.define(
 
 // Set up associations asynchronously to avoid circular dependencies
 setTimeout(async () => {
-  const { default: Lead } = await import("./Lead.js");
-
   Message.belongsTo(Lead, {
     foreignKey: "leadId",
   });

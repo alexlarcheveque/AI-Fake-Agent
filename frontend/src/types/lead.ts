@@ -19,6 +19,7 @@ export interface Lead {
   messageCount: number;
   archived: boolean;
   notes?: string;
+  context?: string; // Property metadata for AI responses
   createdAt?: string;
   updatedAt?: string;
   messages?: Message[];
@@ -38,6 +39,7 @@ export interface LeadFormData {
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
   firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
+  context?: string; // Property metadata for AI responses
 }
 
 export interface BulkImportResponse {

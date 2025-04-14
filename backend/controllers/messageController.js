@@ -543,7 +543,9 @@ const messageController = {
             const promptContext = {
               leadName: lead.name,
               leadStatus: lead.status,
-              qualifyingLeadDetected: qualifyingLeadDetected // Add this flag
+              leadType: lead.leadType,
+              context: lead.context, // Add lead context for personalized responses
+              qualifyingLeadDetected: qualifyingLeadDetected
             };
             
             const aiResponseData = await openaiService.generateResponse(
@@ -720,16 +722,25 @@ const messageController = {
   async sendLocalMessage(req, res) {
     console.log("sendLocalMessage", req.body);
     try {
-      const { text, previousMessages, userId } = req.body;
+      const { text, previousMessages, userId, leadType = "buyer", context = "" } = req.body;
 
       // Check if userId is provided
       if (!userId) {
         console.log("No userId provided, using default settings");
         // Use default settings
+        const promptContext = {
+          leadName: "Test Lead", 
+          leadStatus: "New",
+          leadType,
+          context,
+          isFollowUp: false
+        };
+        
         const aiResponseData = await openaiService.generateResponse(
           text,
           DEFAULT_SETTINGS,
-          previousMessages
+          previousMessages,
+          promptContext
         );
 
         // Check if aiResponseData contains appointment details

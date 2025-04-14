@@ -25,6 +25,7 @@ interface MessageThreadProps {
   leadName: string;
   leadEmail?: string;
   leadPhone?: string;
+  leadType?: string;
   leadSource?: string;
   nextScheduledMessage?: string;
   messageCount?: number;
@@ -47,6 +48,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   leadName,
   leadEmail,
   leadPhone,
+  leadType, 
   leadSource,
   nextScheduledMessage: propNextScheduledMessage,
   messageCount,
@@ -65,9 +67,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [searchCriteria, setSearchCriteria] = useState<PropertySearchCriteria | null>(null);
   const [showSearchButton, setShowSearchButton] = useState(false);
   const [showFullPropertySearch, setShowFullPropertySearch] = useState(false);
-  const { addNotification } = useNotifications();
   const [highlightSearchCriteria, setHighlightSearchCriteria] = useState(false);
   const [showSearchCriteriaForm, setShowSearchCriteriaForm] = useState(false);
+  
+  const { createNotification } = useNotifications();
 
   // Update local state when prop changes
   useEffect(() => {
@@ -598,7 +601,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 // Add a notification about the search
                 const formattedCriteria = propertySearchApi.formatSearchCriteria(dbCriteria);
                 
-                addNotification({
+                createNotification({
                   type: 'property_search',
                   title: 'New Property Search',
                   message: `${leadName} is looking for ${formattedCriteria}`,
@@ -613,7 +616,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 // Add a notification using the local criteria
                 const formattedCriteria = propertySearchApi.formatSearchCriteria(propertySearchCriteria);
                 
-                addNotification({
+                createNotification({
                   type: 'property_search',
                   title: 'New Property Search',
                   message: `${leadName} is looking for ${formattedCriteria}`,

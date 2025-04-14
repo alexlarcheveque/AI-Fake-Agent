@@ -40,12 +40,7 @@ const FIRST_MESSAGE_TIMING_OPTIONS = [
 ];
 
 interface FormErrors {
-  name?: ValidationError;
-  email?: ValidationError;
-  phoneNumber?: ValidationError;
-  status?: ValidationError;
-  leadType?: ValidationError;
-  submit?: string;
+  [key: string]: ValidationError | string | undefined;
 }
 
 interface ValidationError {
@@ -64,6 +59,7 @@ interface FormData extends Omit<LeadFormData, 'phoneNumber'> {
   enableFollowUps: boolean;
   firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   messageCount: number;
+  context: string;
 }
 
 const initialFormData: FormData = {
@@ -76,7 +72,8 @@ const initialFormData: FormData = {
   leadType: "buyer",
   enableFollowUps: false,
   firstMessageTiming: "immediate",
-  messageCount: 0
+  messageCount: 0,
+  context: ""
 };
 
 // Validation functions
@@ -170,7 +167,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
 
@@ -190,7 +187,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   };
 
   const handleBlur = (
-    e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
 
@@ -250,7 +247,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     <form onSubmit={handleSubmit} className="space-y-6">
       {errors.submit && (
         <div className="p-4 bg-red-50 border-l-4 border-red-400 text-red-700">
-          {errors.submit}
+          {typeof errors.submit === 'string' ? errors.submit : errors.submit?.message}
         </div>
       )}
 
@@ -275,7 +272,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           disabled={isLoading}
         />
         {errors.name && touchedFields.has("name") && (
-          <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.name === 'string' ? errors.name : errors.name.message}
+          </p>
         )}
       </div>
 
@@ -300,7 +299,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           disabled={isLoading}
         />
         {errors.email && touchedFields.has("email") && (
-          <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.email === 'string' ? errors.email : errors.email.message}
+          </p>
         )}
       </div>
 
@@ -325,7 +326,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           disabled={isLoading}
         />
         {errors.phoneNumber && touchedFields.has("phoneNumber") && (
-          <p className="mt-1 text-sm text-red-600">{errors.phoneNumber.message}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.phoneNumber === 'string' ? errors.phoneNumber : errors.phoneNumber.message}
+          </p>
         )}
       </div>
 
@@ -354,7 +357,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           ))}
         </select>
         {errors.status && touchedFields.has("status") && (
-          <p className="mt-1 text-sm text-red-600">{errors.status.message}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.status === 'string' ? errors.status : errors.status.message}
+          </p>
         )}
       </div>
 
@@ -383,8 +388,32 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           ))}
         </select>
         {errors.leadType && touchedFields.has("leadType") && (
-          <p className="mt-1 text-sm text-red-600">{errors.leadType.message}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.leadType === 'string' ? errors.leadType : errors.leadType.message}
+          </p>
         )}
+      </div>
+
+      <div>
+        <label
+          htmlFor="context"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Lead Context
+        </label>
+        <textarea
+          id="context"
+          name="context"
+          rows={5}
+          value={formData.context || ""}
+          onChange={handleChange}
+          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300"
+          placeholder="Enter property details, lead information, or any additional context that would help AI responses (size, built year, valuation, reason for selling, etc.)"
+          disabled={isLoading}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          This information will be used to improve AI responses to the lead.
+        </p>
       </div>
 
       {/* AI Assistant Toggle */}

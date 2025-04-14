@@ -88,6 +88,11 @@ const Lead = sequelize.define(
         isIn: [["immediate", "next_day", "one_week", "two_weeks"]],
       },
     },
+    context: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "Property metadata and lead context information for AI responses"
+    },
     archived: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
