@@ -1135,7 +1135,14 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               </div>
             </div>
             <div>
-              <h2 className="text-lg font-medium text-gray-900">{leadName}</h2>
+              <h2 className="text-lg font-medium text-gray-900">
+                {leadName}
+                {leadType && (
+                  <span className="ml-2 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                    {leadType === 'seller' ? 'Seller' : 'Buyer'}
+                  </span>
+                )}
+              </h2>
               <div className="flex items-center text-sm">
                 {leadPhone && (
                   <span className="text-gray-500 mr-3 flex items-center">
