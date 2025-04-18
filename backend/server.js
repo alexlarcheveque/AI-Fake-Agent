@@ -17,6 +17,7 @@ import responseHandler from "./middleware/responseHandler.js";
 import initializeAssociations from "./models/associations.js";
 import messageController from "./controllers/messageController.js";
 import { globalAuth } from "./middleware/globalAuth.js";
+import initializeDatabase from "./config/initializeDatabase.js";
 
 dotenv.config();
 
@@ -191,28 +192,14 @@ const initializeApp = async () => {
     // Load associations
     initializeAssociations();
     
-    // Check if migrations should be skipped
-    if (process.env.SKIP_MIGRATIONS !== 'true') {
-      // Use a safer sync option that doesn't alter existing tables
-      // This will only create tables that don't exist yet
-      await sequelize.sync({ alter: false });
-      console.log("Database sync completed (tables created if they didn't exist)");
-    } else {
-      console.log("Skipping database sync as SKIP_MIGRATIONS is set to true");
-    }
+    // Initialize database with proper table order
+    await initializeDatabase();
+    console.log("Database initialization completed");
 
-    // No need to initialize global settings anymore
-    // We'll create user settings when needed
-
-    // If you need to log something at startup
-    console.log(
-      "App initialization complete - user settings will be created as needed"
-    );
-
-    // Keep the agentSettings initialization which is now updated to use the new model
+    // Initialize agent settings
     await agentSettings.initialize();
 
-    // Start the server (use server instead of app)
+    // Start the server
     server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });

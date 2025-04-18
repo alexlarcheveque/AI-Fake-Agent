@@ -10,9 +10,15 @@ const UserSettings = sequelize.define(
       autoIncrement: true,
     },
     userId: {
-      type: DataTypes.STRING,
+      type: DataTypes.UUID,
       allowNull: true, // Allow null for default settings
       unique: true, // Each user can have only one settings record
+      references: {
+        model: "Users",
+        key: "id",
+      },
+      onUpdate: "CASCADE",
+      onDelete: "CASCADE",
     },
     agentName: {
       type: DataTypes.STRING,

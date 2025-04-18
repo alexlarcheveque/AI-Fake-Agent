@@ -46,7 +46,7 @@ class NotificationApi {
   async testConnection(): Promise<{ status: string }> {
     try {
       const response = await api.get("/api/notifications/test"); 
-      return response.data.data;
+      return response.data;
     } catch (error) {
       console.error("Notification API connection failed:", error);
       throw error;
@@ -57,11 +57,11 @@ class NotificationApi {
   async getNotifications(): Promise<Notification[]> {
     try {
       const response = await api.get("/api/notifications");
-      return response.data.data.items.map((item: any) => ({
+      return response.data.items.map((item: any) => ({
         ...item,
         timestamp: new Date(item.createdAt)
       }));
-    } catch (error) {
+  } catch (error) {
       console.error("Error fetching notifications:", error);
       throw error;
     }
@@ -72,7 +72,7 @@ class NotificationApi {
     try {
       const response = await api.get(`/api/notifications/${id}`);
       return {
-        ...response.data.data,
+        ...response.data,
         timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
@@ -86,7 +86,7 @@ class NotificationApi {
     try {
       const response = await api.post("/api/notifications", notificationData);
       return {
-        ...response.data.data,
+        ...response.data,
         timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
@@ -100,7 +100,7 @@ class NotificationApi {
     try {
       const response = await api.put(`/api/notifications/${id}/read`);
       return {
-        ...response.data.data,
+        ...response.data,
         timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
@@ -114,7 +114,7 @@ class NotificationApi {
     try {
       const response = await api.put(`/api/notifications/${id}/unread`);
       return {
-        ...response.data.data,
+        ...response.data,
         timestamp: new Date(response.data.data.createdAt)
       };
     } catch (error) {
@@ -147,7 +147,7 @@ class NotificationApi {
   async getUnreadCount(): Promise<number> {
     try {
       const response = await api.get("/api/notifications/unread-count");
-      return response.data.data.count;
+      return response.data.count;
     } catch (error) {
       console.error('Error getting unread count:', error);
       throw error;

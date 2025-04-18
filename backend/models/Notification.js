@@ -17,6 +17,16 @@ Notification.init({
       key: 'id'
     }
   },
+  leadId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'Leads',
+      key: 'id'
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'CASCADE'
+  },
   type: {
     type: DataTypes.ENUM('appointment', 'message', 'lead', 'system', 'property_search'),
     allowNull: false
@@ -40,7 +50,7 @@ Notification.init({
 }, {
   sequelize: db,
   modelName: 'Notification',
-  tableName: 'notifications',
+  tableName: 'Notifications',
   timestamps: true
 });
 

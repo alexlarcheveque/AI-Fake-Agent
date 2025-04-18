@@ -1,8 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Appointment } from '../api/appointmentApi';
-import appointmentApi from '../api/appointmentApi';
-import notificationApi, { Notification as ApiNotification } from '../api/notificationApi';
-import { format, isToday, isTomorrow, addDays } from 'date-fns';
+import notificationApi from '../api/notificationApi';
 
 export interface Notification {
   id: string;

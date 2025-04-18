@@ -1,8 +1,12 @@
-const path = require("path");
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-module.exports = {
-  config: path.resolve("config", "config.js"),
-  "models-path": path.resolve("models"),
-  "seeders-path": path.resolve("seeders"),
-  "migrations-path": path.resolve("migrations"),
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default {
+  'config': path.resolve('config', 'config.js'),
+  'models-path': path.resolve('models'),
+  'seeders-path': path.resolve('seeders'),
+  'migrations-path': path.resolve('migrations')
 };
