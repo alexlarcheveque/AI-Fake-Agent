@@ -17,8 +17,6 @@ const openaiService = {
     try {
       // Destructure promptContext to get lead information
       const { 
-        leadName = "the client", 
-        leadStatus = "New",
         leadType = "buyer",
         isFollowUp = false,
         context = "", // Add context for property details
@@ -41,17 +39,12 @@ const openaiService = {
           : (typeof configSettings.AI_ASSISTANT_ENABLED !== 'undefined' 
              ? configSettings.AI_ASSISTANT_ENABLED 
              : true),
-        // Follow-up intervals with consistent naming
         FOLLOW_UP_INTERVAL_NEW: configSettings.followUpIntervalNew || configSettings.FOLLOW_UP_INTERVAL_NEW || 2,
         FOLLOW_UP_INTERVAL_IN_CONVERSATION: configSettings.followUpIntervalInConversation || configSettings.FOLLOW_UP_INTERVAL_IN_CONVERSATION || 3,
         FOLLOW_UP_INTERVAL_QUALIFIED: configSettings.followUpIntervalQualified || configSettings.FOLLOW_UP_INTERVAL_QUALIFIED || 5,
         FOLLOW_UP_INTERVAL_APPOINTMENT_SET: configSettings.followUpIntervalAppointmentSet || configSettings.FOLLOW_UP_INTERVAL_APPOINTMENT_SET || 1,
         FOLLOW_UP_INTERVAL_CONVERTED: configSettings.followUpIntervalConverted || configSettings.FOLLOW_UP_INTERVAL_CONVERTED || 14,
         FOLLOW_UP_INTERVAL_INACTIVE: configSettings.followUpIntervalInactive || configSettings.FOLLOW_UP_INTERVAL_INACTIVE || 30,
-        // We're no longer using these as they're defined in the file
-        // BUYER_LEAD_PROMPT: configSettings.buyerLeadPrompt || "",
-        // SELLER_LEAD_PROMPT: configSettings.sellerLeadPrompt || "",
-        // FOLLOW_UP_PROMPT: configSettings.followUpPrompt || "",
       };
 
       // Log the actual resolved settings we're using
@@ -206,61 +199,16 @@ NEW APPOINTMENT SET: 06/15/2025 at 2:30 PM
 Today's date is ${formattedCurrentDate} (${currentDayName}), and the earliest appointment can be scheduled for tomorrow (${tomorrowFormatted}).
 Keep your responses concise, text-friendly, and focused on building rapport while guiding them to the next steps in listing their property.`;
 
-      const FOLLOW_UP_PROMPT = `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.agentState} acting as a real estate agent named "${configSettings.agentName}" and working for "${configSettings.companyName}". You are following up with leads who have not responded in a few days.
-
-${context ? `
-# Lead Context Information
-This lead has the following context information that you should use to personalize follow-ups:
-${context}
-` : ''}
-
-Objective:
-	•	Re-engage the lead by referencing previous conversation details.
-	•	Provide additional value (such as updated market insights, new listings, or a reminder of the pending appointment).
-	•	Encourage the lead to respond or reschedule an appointment if needed.
-
-Instructions:
-	1.	Reference Previous Conversation:
-Mention details from the last conversation (e.g., their search criteria or an upcoming appointment) to show continuity and personalized attention.
-	2.	Include a Clear Call-to-Action (CTA):
-Ask if they'd like to confirm the pending appointment or if they need any updated information on available listings or market changes.
-Example: "I just wanted to follow up regarding your home search and our appointment. Are you still interested, or would you like to reschedule?"
-	3.	Maintain Output Formatting:
-	•	If rescheduling or confirming an appointment, ensure you append exactly:
-
-NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM
-
-using the same formatting rules (MM/DD/YYYY with leading zeros; HH:MM AM/PM).
-
-	•	If updating search criteria, include:
-
-NEW SEARCH CRITERIA: MIN BEDROOMS: <value>, MAX BEDROOMS: <value>, MIN BATHROOMS: <value>, MAX BATHROOMS: <value>, MIN PRICE: <value>, MAX PRICE: <value>, MIN SQUARE FEET: <value>, MAX SQUARE FEET: <value>, LOCATIONS: <value>, PROPERTY TYPES: <value>
-
-as needed.
-
-	4.	General Reminders:
-	•	Keep the tone friendly and helpful.
-	•	Use explicit examples if necessary to guide the lead.
-	•	If the output does not match the specified format, request a reformat using a feedback loop.
-
-Today's date is ${formattedCurrentDate} (${currentDayName}). Use this follow-up prompt after 2–3 days of no response to re-engage the lead.`;
-
       // Select the appropriate prompt based on lead type and follow-up context
       let systemPrompt = "";
       
-      if (isFollowUp) {
-        // Use the follow-up prompt
-        systemPrompt = FOLLOW_UP_PROMPT;
-      } else if (leadType === "seller") {
+       if (leadType === "seller") {
         // Use the seller lead prompt
         systemPrompt = SELLER_LEAD_PROMPT;
-      } else if (leadType === "buyer") {
-        // Use the buyer lead prompt 
-        systemPrompt = BUYER_LEAD_PROMPT;
       } else {
-        // Fallback to buyer prompt for any other case
-        systemPrompt = BUYER_LEAD_PROMPT;
-      }
+        // Use the buyer lead prompt 
+        systemPrompt = BUYER_LEAD_PROMPT; // default to buyer lead prompt
+      } 
 
       // Process template variables in the prompt
       systemPrompt = systemPrompt
@@ -556,8 +504,6 @@ Today's date is ${formattedCurrentDate} (${currentDayName}). Use this follow-up 
   // Handle property search criteria from AI-detected text
   async handlePropertySearchCriteria(searchCriteria, leadId, isNewFormat = false) {
     try {
-      const propertyService = require('./propertyService');
-      
       // Log the detected search criteria
       logger.info(`Handling property search criteria for lead ${leadId}:`, searchCriteria);
       
@@ -598,8 +544,22 @@ Today's date is ${formattedCurrentDate} (${currentDayName}). Use this follow-up 
         originalSearchText: dbSearchCriteria.originalSearchText || searchCriteria
       };
       
-      // Save the search and run matching
-      const search = await propertyService.saveLeadPropertySearch(leadId, dbSearchCriteria);
+      // Save the search
+      const [search, created] = await LeadPropertySearch.findOrCreate({
+        where: { leadId, isActive: true },
+        defaults: {
+          ...dbSearchCriteria,
+          isActive: true
+        }
+      });
+      
+      if (!created) {
+        // Update existing search
+        logger.info(`Updating existing property search for lead ${leadId}`);
+        await search.update(dbSearchCriteria);
+      } else {
+        logger.info(`Created new property search for lead ${leadId}`);
+      }
       
       logger.info(`Created property search for lead ${leadId} with ID ${search.id}`);
       return search.id;

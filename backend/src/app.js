@@ -1,18 +1,25 @@
-const express = require("express");
+import express from 'express';
+import leadRoutes from '../routes/leadRoutes.js';
+import messageRoutes from '../routes/messageRoutes.js';
+import settingsRoutes from '../routes/settingsRoutes.js';
+import notificationRoutes from '../routes/notificationRoutes.js';
+import { auth } from '../middleware/auth.js';
+import cors from 'cors';
+
 const app = express();
-const leadRoutes = require("../routes/leadRoutes");
-const messageRoutes = require("../routes/messageRoutes");
-const settingsRoutes = require("../routes/settingsRoutes");
-const notificationRoutes = require("../routes/notificationRoutes");
+
+// Enable CORS
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
 
 app.use(express.json());
 
-app.use("/api/leads", leadRoutes); // Mount routes under /api prefix
+// Apply auth middleware to all API routes
+app.use('/api/leads', auth, leadRoutes);
+app.use('/api/messages', auth, messageRoutes);
+app.use('/api/settings', auth, settingsRoutes);
+app.use('/api/notifications', auth, notificationRoutes);
 
-app.use("/api/messages", messageRoutes); // Mount routes under /api prefix
-
-app.use("/api/settings", settingsRoutes); // Mount routes under /api prefix
-
-app.use("/api/notifications", notificationRoutes); // Mount notification routes under /api prefix
-
-module.exports = app;
+export default app;

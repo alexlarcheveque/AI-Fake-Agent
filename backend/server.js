@@ -16,8 +16,6 @@ import scheduledMessageService from "./services/scheduledMessageService.js";
 import responseHandler from "./middleware/responseHandler.js";
 import initializeAssociations from "./models/associations.js";
 import messageController from "./controllers/messageController.js";
-import propertyRoutes from "./routes/propertyRoutes.js";
-import propertyMatcherService from "./services/propertyMatcherService.js";
 import { globalAuth } from "./middleware/globalAuth.js";
 
 dotenv.config();
@@ -95,7 +93,6 @@ app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
-app.use("/api/properties", propertyRoutes);
 app.use("/api/oauth", oauthRoutes);
 app.use("/api/notifications", notificationRoutes);
 
@@ -214,9 +211,6 @@ const initializeApp = async () => {
 
     // Keep the agentSettings initialization which is now updated to use the new model
     await agentSettings.initialize();
-
-    // Initialize the property matcher service
-    propertyMatcherService.init();
 
     // Start the server (use server instead of app)
     server.listen(PORT, () => {

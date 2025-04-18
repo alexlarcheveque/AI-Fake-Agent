@@ -32,7 +32,8 @@ class BaseController {
         searchFields: parsedSearchFields,
       });
 
-      return res.success(result);
+      // Wrap the response in a data object to match frontend expectations
+      return res.success({ data: result });
     } catch (error) {
       next(error);
     }
@@ -50,7 +51,8 @@ class BaseController {
         throw new AppError("Resource not found", 404);
       }
 
-      return res.success(item);
+      // Wrap the response in a data object
+      return res.success({ data: item });
     } catch (error) {
       next(error);
     }
@@ -62,7 +64,8 @@ class BaseController {
   create = async (req, res, next) => {
     try {
       const newItem = await this.service.create(req.body);
-      return res.created(newItem);
+      // Wrap the response in a data object
+      return res.created({ data: newItem });
     } catch (error) {
       next(error);
     }
@@ -75,7 +78,8 @@ class BaseController {
     try {
       const { id } = req.params;
       const updatedItem = await this.service.update(id, req.body);
-      return res.success(updatedItem);
+      // Wrap the response in a data object
+      return res.success({ data: updatedItem });
     } catch (error) {
       next(error);
     }
@@ -88,7 +92,7 @@ class BaseController {
     try {
       const { id } = req.params;
       await this.service.delete(id);
-      return res.success({ deleted: true });
+      return res.success({ data: { deleted: true } });
     } catch (error) {
       next(error);
     }
