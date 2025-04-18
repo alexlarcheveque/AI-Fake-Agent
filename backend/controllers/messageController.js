@@ -1,18 +1,19 @@
-const Message = require("../models/Message");
-const Lead = require("../models/Lead");
-const UserSettings = require("../models/UserSettings");
-const Notification = require("../models/Notification");
-const twilioService = require("../services/twilioService");
-const openaiService = require("../services/openaiService");
-const logger = require("../utils/logger");
-const scheduledMessageService = require("../services/scheduledMessageService");
-const userSettingsService = require("../services/userSettingsService");
-const leadStatusService = require("../services/leadStatusService");
-const { Op } = require("sequelize");
-const sequelize = require("sequelize");
-const { MessagingResponse } = require("twilio").twiml;
-const DEFAULT_SETTINGS = require("../config/defaultSettings");
-const appointmentService = require("../services/appointmentService");
+import Message from "../models/Message.js";
+import Lead from "../models/Lead.js";
+import Notification from "../models/Notification.js";
+import twilioService from "../services/twilioService.js";
+import openaiService from "../services/openaiService.js";
+import logger from "../utils/logger.js";
+import scheduledMessageService from "../services/scheduledMessageService.js";
+import userSettingsService from "../services/userSettingsService.js";
+import leadStatusService from "../services/leadStatusService.js";
+import { Op } from "sequelize";
+import sequelize from "sequelize";
+import DEFAULT_SETTINGS from "../config/defaultSettings.js";
+import User from "../models/User.js";
+
+import pkg from 'twilio/lib/twiml/MessagingResponse.js';
+const { MessagingResponse } = pkg;
 
 const messageController = {
   // send test twilio message
@@ -125,11 +126,23 @@ const messageController = {
       }
       
       try {
-        // Generate AI response with user's settings
+        // Determine if this is a follow-up message based on message count
+        const isFollowUp = lead.messageCount > 2; // Consider it a follow-up if there are more than 2 previous messages
+        
+        // Get lead details for context
+        const leadDetails = {
+          leadName: lead.name,
+          leadStatus: lead.status,
+          leadType: lead.leadType || 'buyer', // Default to buyer if not specified
+          isFollowUp
+        };
+        
+        // Generate AI response with user's settings and lead context
         const aiResponseData = await openaiService.generateResponse(
           text,
           settingsMap,
-          previousMessages
+          previousMessages,
+          leadDetails
         );
         
         // Process the AI response
@@ -309,7 +322,7 @@ const messageController = {
         } else {
           // If not, try to get the first user from the database
           try {
-            const User = require("../models/User");
+            
             const firstUser = await User.findOne({
               order: [['createdAt', 'ASC']]
             });
@@ -530,7 +543,9 @@ const messageController = {
             const promptContext = {
               leadName: lead.name,
               leadStatus: lead.status,
-              qualifyingLeadDetected: qualifyingLeadDetected // Add this flag
+              leadType: lead.leadType,
+              context: lead.context, // Add lead context for personalized responses
+              qualifyingLeadDetected: qualifyingLeadDetected
             };
             
             const aiResponseData = await openaiService.generateResponse(
@@ -707,16 +722,25 @@ const messageController = {
   async sendLocalMessage(req, res) {
     console.log("sendLocalMessage", req.body);
     try {
-      const { text, previousMessages, userId } = req.body;
+      const { text, previousMessages, userId, leadType = "buyer", context = "" } = req.body;
 
       // Check if userId is provided
       if (!userId) {
         console.log("No userId provided, using default settings");
         // Use default settings
+        const promptContext = {
+          leadName: "Test Lead", 
+          leadStatus: "New",
+          leadType,
+          context,
+          isFollowUp: false
+        };
+        
         const aiResponseData = await openaiService.generateResponse(
           text,
           DEFAULT_SETTINGS,
-          previousMessages
+          previousMessages,
+          promptContext
         );
 
         // Check if aiResponseData contains appointment details
@@ -1102,4 +1126,4 @@ const messageController = {
   }
 };
 
-module.exports = messageController;
+export default messageController;

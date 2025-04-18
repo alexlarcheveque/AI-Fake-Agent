@@ -28,4 +28,4 @@ const DEFAULT_SETTINGS = {
   FOLLOW_UP_INTERVAL_INACTIVE: 30,
 };
 
-module.exports = DEFAULT_SETTINGS;
+export default DEFAULT_SETTINGS;

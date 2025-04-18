@@ -159,7 +159,7 @@ export default function NotificationsPage() {
           <ul className="divide-y divide-gray-200">
             {filteredNotifications.map((notification) => (
               <li
-                key={`notification-${notification.id}-${notification.isRead ? 'read' : 'unread'}`}
+                key={notification.id}
                 className={`${
                   !notification.isRead ? "bg-blue-50" : ""
                 } hover:bg-gray-50`}

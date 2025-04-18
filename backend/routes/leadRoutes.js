@@ -1,7 +1,8 @@
-const express = require("express");
+import express from "express";
+import leadController from "../controllers/leadController.js";
+import multer from "multer";
+
 const router = express.Router();
-const leadController = require("../controllers/leadController");
-const multer = require("multer");
 
 // Configure multer for CSV file uploads
 const upload = multer({
@@ -61,4 +62,4 @@ router.put("/:id", leadController.updateLead);
 // Delete a lead
 router.delete("/:id", leadController.deleteLead);
 
-module.exports = router;
+export default router;

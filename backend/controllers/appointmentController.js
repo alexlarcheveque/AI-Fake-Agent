@@ -1,11 +1,11 @@
-const Appointment = require('../models/Appointment');
-const Lead = require('../models/Lead');
-const Notification = require('../models/Notification');
-const googleCalendarService = require('../services/googleCalendarService');
-const { Op } = require('sequelize');
-const { format } = require('date-fns');
+import Appointment from '../models/Appointment.js';
+import Lead from '../models/Lead.js';
+import Notification from '../models/Notification.js';
+import googleCalendarService from '../services/googleCalendarService.js';
+import { Op } from 'sequelize';
+import { format } from 'date-fns';
 
-exports.createAppointment = async (req, res) => {
+export const createAppointment = async (req, res) => {
   try {
     const { leadId, title, startTime, endTime, location, description } = req.body;
     
@@ -115,7 +115,7 @@ exports.createAppointment = async (req, res) => {
   }
 };
 
-exports.getAppointmentsByLead = async (req, res) => {
+export const getAppointmentsByLead = async (req, res) => {
   try {
     const { leadId } = req.params;
     
@@ -135,7 +135,7 @@ exports.getAppointmentsByLead = async (req, res) => {
   }
 };
 
-exports.getUpcomingAppointments = async (req, res) => {
+export const getUpcomingAppointments = async (req, res) => {
   try {
     const appointments = await Appointment.findAll({
       where: {
@@ -162,7 +162,7 @@ exports.getUpcomingAppointments = async (req, res) => {
   }
 };
 
-exports.updateAppointment = async (req, res) => {
+export const updateAppointment = async (req, res) => {
   try {
     const { id } = req.params;
     const { title, startTime, endTime, location, description, status } = req.body;
@@ -242,7 +242,7 @@ exports.updateAppointment = async (req, res) => {
   }
 };
 
-exports.deleteAppointment = async (req, res) => {
+export const deleteAppointment = async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -260,3 +260,11 @@ exports.deleteAppointment = async (req, res) => {
     res.status(500).json({ error: 'Failed to delete appointment' });
   }
 }; 
+
+export default {
+  createAppointment,
+  getAppointmentsByLead,
+  getUpcomingAppointments,
+  updateAppointment,
+  deleteAppointment
+};

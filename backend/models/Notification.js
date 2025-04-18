@@ -1,5 +1,5 @@
-const { Model, DataTypes } = require('sequelize');
-const db = require('../config/database');
+import { Model, DataTypes } from 'sequelize';
+import db from '../config/database.js';
 
 class Notification extends Model {}
 
@@ -44,4 +44,4 @@ Notification.init({
   timestamps: true
 });
 
-module.exports = Notification; 
+export default Notification; 

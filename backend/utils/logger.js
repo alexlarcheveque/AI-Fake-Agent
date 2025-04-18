@@ -6,4 +6,4 @@ const logger = {
     process.env.NODE_ENV !== "production" && console.debug(...args),
 };
 
-module.exports = logger;
+export default logger;

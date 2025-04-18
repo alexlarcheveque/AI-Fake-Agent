@@ -1,10 +1,8 @@
-const express = require('express');
-const router = express.Router();
-const notificationController = require('../controllers/notificationController');
-const authMiddleware = require('../middleware/authMiddleware');
+import express from 'express';
+import notificationController from '../controllers/notificationController.js';
 
-// Apply auth middleware to all routes
-router.use(authMiddleware);
+
+const router = express.Router();
 
 // Test endpoint
 router.get('/test', notificationController.testConnection);
@@ -33,4 +31,4 @@ router.put('/mark-all-read', notificationController.markAllAsRead);
 // Delete notification
 router.delete('/:id', notificationController.delete);
 
-module.exports = router; 
+export default router; 

@@ -1,8 +1,9 @@
-const express = require("express");
-const router = express.Router();
-const appSettings = require("../config/appSettings");
-const fs = require("fs");
-const path = require("path");
+  const express = require("express");
+  const appSettings = require("../config/appSettings");
+  const fs = require("fs");
+  const path = require("path");
+  
+  const router = express.Router();
 
 // Get all settings
 router.get("/", (req, res) => {
@@ -43,4 +44,4 @@ router.put("/", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

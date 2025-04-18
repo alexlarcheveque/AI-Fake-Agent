@@ -1,5 +1,5 @@
-const UserSettings = require("../models/UserSettings");
-const { Op } = require("sequelize");
+import UserSettings from "../models/UserSettings.js";
+import { Op } from "sequelize";
 
 const agentSettings = {
   _settings: {
@@ -114,4 +114,4 @@ const agentSettings = {
   },
 };
 
-module.exports = agentSettings;
+export default agentSettings;

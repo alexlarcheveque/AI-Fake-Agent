@@ -1,5 +1,5 @@
-const { Op } = require("sequelize");
-const logger = require("../utils/logger");
+import { Op } from "sequelize";
+import logger from "../utils/logger.js";
 
 /**
  * Base service class with common CRUD operations
@@ -119,4 +119,4 @@ class BaseService {
   }
 }
 
-module.exports = BaseService;
+export default BaseService;

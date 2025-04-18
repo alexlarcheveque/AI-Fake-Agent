@@ -1,5 +1,5 @@
-const { DataTypes } = require("sequelize");
-const sequelize = require("../config/database");
+import { DataTypes } from "sequelize";
+import sequelize from "../config/database.js";
 
 const UserSettings = sequelize.define(
   "UserSettings",
@@ -35,6 +35,19 @@ const UserSettings = sequelize.define(
     aiAssistantEnabled: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
+    },
+    // Store the different prompt types
+    buyerLeadPrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    sellerLeadPrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    followUpPrompt: {
+      type: DataTypes.TEXT,
+      allowNull: true,
     },
     // Follow-up interval settings (in days)
     followUpIntervalNew: {
@@ -77,4 +90,4 @@ const UserSettings = sequelize.define(
   }
 );
 
-module.exports = UserSettings;
+export default UserSettings;

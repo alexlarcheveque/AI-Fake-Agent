@@ -1,11 +1,11 @@
-const Lead = require("../models/Lead");
-const openaiService = require("./openaiService");
-const twilioService = require("./twilioService");
-const logger = require("../utils/logger");
-const { Op } = require("sequelize");
-const Message = require("../models/Message");
-const userSettingsService = require("./userSettingsService");
-const DEFAULT_SETTINGS = require("../config/defaultSettings");
+import Lead from "../models/Lead.js";
+import openaiService from "./openaiService.js";
+import twilioService from "./twilioService.js";
+import logger from "../utils/logger.js";
+import { Op } from "sequelize";
+import Message from "../models/Message.js";
+import userSettingsService from "./userSettingsService.js";
+import DEFAULT_SETTINGS from "../config/defaultSettings.js";
 
 // Follow-up intervals based on lead status (in days) - kept for backward compatibility
 // These are the default values used only if user settings can't be retrieved
@@ -366,4 +366,4 @@ const scheduledMessageService = {
   }
 };
 
-module.exports = scheduledMessageService;
+export default scheduledMessageService;

@@ -1,7 +1,7 @@
-const OpenAI = require("openai");
-const logger = require("../utils/logger");
-const agentSettings = require("../config/agentSettings");
-const { format, addDays, getDay } = require("date-fns");
+import OpenAI from "openai";
+import logger from "../utils/logger.js";
+import agentSettings from "../config/agentSettings.js";
+import { format, addDays, getDay } from "date-fns";
 
 const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
 
@@ -17,8 +17,9 @@ const openaiService = {
     try {
       // Destructure promptContext to get lead information
       const { 
-        leadName = "the client", 
-        leadStatus = "New",
+        leadType = "buyer",
+        isFollowUp = false,
+        context = "", // Add context for property details
         qualifyingLeadDetected = false
       } = promptContext;
       
@@ -38,7 +39,6 @@ const openaiService = {
           : (typeof configSettings.AI_ASSISTANT_ENABLED !== 'undefined' 
              ? configSettings.AI_ASSISTANT_ENABLED 
              : true),
-        // Follow-up intervals with consistent naming
         FOLLOW_UP_INTERVAL_NEW: configSettings.followUpIntervalNew || configSettings.FOLLOW_UP_INTERVAL_NEW || 2,
         FOLLOW_UP_INTERVAL_IN_CONVERSATION: configSettings.followUpIntervalInConversation || configSettings.FOLLOW_UP_INTERVAL_IN_CONVERSATION || 3,
         FOLLOW_UP_INTERVAL_QUALIFIED: configSettings.followUpIntervalQualified || configSettings.FOLLOW_UP_INTERVAL_QUALIFIED || 5,
@@ -78,6 +78,8 @@ const openaiService = {
         COMPANY_NAME: configSettings.companyName,
         AGENT_STATE: configSettings.agentState,
         CURRENT_DATE: formattedCurrentDate,
+        LEAD_TYPE: leadType,
+        IS_FOLLOW_UP: isFollowUp
       });
 
       // Convert previous messages to OpenAI format
@@ -106,18 +108,138 @@ const openaiService = {
 
       console.log("messageHistory", messageHistory);
 
+      // Define prompts directly in the file
+      const BUYER_LEAD_PROMPT = `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.agentState} acting as a real estate agent named "${configSettings.agentName}" and working for "${configSettings.companyName}". You are interacting with potential home buyers who have filled out an ad or form on our website. Since they don't have any context about our company or you, your goal is to build rapport and get to know them.
+
+Confirm their timeline, search criteria, budget, and preapproval status. If they haven't filled out a form, ask for these details.
+
+${context ? `
+# Lead Context Information
+This lead has the following context information that you should use to personalize responses:
+${context}
+` : ''}
+
+Objective:
+	•	Build rapport with the buyer.
+	•	Assist in identifying property requirements.
+	•	Set an appointment to view a property.
+	•	On follow-up messages, provide value with homes matching their criteria, market updates, interest rate news, or any other relevant information.
+
+Instructions:
+	1.	Ask for Details:
+Request their timeline, search criteria, budget, and preapproval status. Ask clarifying questions if any detail is missing.
+	2.	Output Formats:
+	•	For Property Search Criteria:
+When search criteria is mentioned or updated, confirm details and then append exactly:
+
+NEW SEARCH CRITERIA: MIN BEDROOMS: <value>, MAX BEDROOMS: <value>, MIN BATHROOMS: <value>, MAX BATHROOMS: <value>, MIN PRICE: <value>, MAX PRICE: <value>, MIN SQUARE FEET: <value>, MAX SQUARE FEET: <value>, LOCATIONS: <value>, PROPERTY TYPES: <value>
+
+Example: If a buyer says they want a 3-bedroom house in Austin under $500,000, your output should end with:
+
+NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 500000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, PROPERTY TYPES: House
+
+
+	•	For Appointment Scheduling:
+When scheduling an appointment, confirm the details then append exactly:
+
+NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM
+
+Ensure dates use MM/DD/YYYY (with leading zeros) and times are in HH:MM AM/PM format.
+Example: If an appointment is for June 15, 2025 at 2:30 PM, your output should end with:
+
+NEW APPOINTMENT SET: 06/15/2025 at 2:30 PM
+
+
+	3.	Combining Outputs:
+If both property search criteria and an appointment are included in one message, separate them with a PIPE character (|) on the same line.
+Example:
+
+NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 500000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, PROPERTY TYPES: House | NEW APPOINTMENT SET: 06/15/2025 at 2:30 PM
+
+
+	4.	General Reminders:
+	•	Use explicit examples and formatting instructions in every response.
+	•	If the output does not meet the format, request a reformat using a follow-up prompt.
+
+Today's date is ${formattedCurrentDate} (${currentDayName}), and the earliest appointment can be scheduled for tomorrow (${tomorrowFormatted}).
+Keep your responses concise, text-friendly, and focused on guiding the buyer toward the next steps in their home search.`;
+
+      const SELLER_LEAD_PROMPT = `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.agentState} acting as a real estate agent named "${configSettings.agentName}" and working for "${configSettings.companyName}". You are interacting with potential home sellers who have filled out an ad or form on our website. Since they don't have any context about our company or you, your goal is to build rapport and understand their needs for selling their property.
+
+${context ? `
+# Lead Context Information
+This lead has the following context information that you should use to personalize responses:
+${context}
+` : ''}
+
+Objective:
+	•	Assist potential home sellers in setting an appointment to discuss listing their property.
+	•	Answer any questions they may have about the local real estate market.
+	•	On follow-up messages, provide value that encourages faster responses.
+
+Instructions:
+	1.	Ask for Details:
+Inquire about their timeline for selling, details about their current property, and any market-related questions they might have.
+	2.	Output Format for Appointment Scheduling:
+When setting an appointment, confirm the date and time, then append exactly:
+
+NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM
+
+Ensure dates use MM/DD/YYYY (with leading zeros) and times are in HH:MM AM/PM format.
+Example: If an appointment is set for June 15, 2025 at 2:30 PM, the message should end with:
+
+NEW APPOINTMENT SET: 06/15/2025 at 2:30 PM
+
+
+	3.	General Reminders:
+	•	Provide market insights relevant to their area.
+	•	Use explicit examples and format instructions as a final part of your message.
+	•	If the output does not match the exact format, request a reformat using a follow-up prompt.
+
+Today's date is ${formattedCurrentDate} (${currentDayName}), and the earliest appointment can be scheduled for tomorrow (${tomorrowFormatted}).
+Keep your responses concise, text-friendly, and focused on building rapport while guiding them to the next steps in listing their property.`;
+
+      // Select the appropriate prompt based on lead type and follow-up context
+      let systemPrompt = "";
+      
+       if (leadType === "seller") {
+        // Use the seller lead prompt
+        systemPrompt = SELLER_LEAD_PROMPT;
+      } else {
+        // Use the buyer lead prompt 
+        systemPrompt = BUYER_LEAD_PROMPT; // default to buyer lead prompt
+      } 
+
+      // Process template variables in the prompt
+      systemPrompt = systemPrompt
+        .replace(/\${configSettings.agentName}/g, configSettings.agentName)
+        .replace(/\${configSettings.companyName}/g, configSettings.companyName)
+        .replace(/\${configSettings.agentState}/g, configSettings.agentState)
+        .replace(/\${configSettings.agentCity}/g, configSettings.agentCity)
+        .replace(/\${formattedCurrentDate}/g, formattedCurrentDate)
+        .replace(/\${currentDayName}/g, currentDayName)
+        .replace(/\${tomorrowFormatted}/g, tomorrowFormatted)
+        .replace(/\${saturdayFormatted}/g, saturdayFormatted)
+        .replace(/\${sundayFormatted}/g, sundayFormatted)
+        .replace(/\${tuesdayFormatted}/g, tuesdayFormatted);
+
       // If qualifying lead detected, add instructions to ask qualification questions
       let qualificationInstructions = "";
       if (qualifyingLeadDetected) {
         qualificationInstructions = `
-        IMPORTANT: This lead has shown interest in buying/selling real estate. Ask 1-2 friendly 
+        IMPORTANT: This lead has shown interest in ${leadType === "buyer" ? "buying" : "selling"} real estate. Ask 1-2 friendly 
         questions to gather more information about their needs in ONE of these areas:
-        - Timeline (When they want to buy/sell)
-        - Budget (What price range they're considering)
-        - Location (What areas they're interested in)
+        - Timeline (When they want to ${leadType === "buyer" ? "buy" : "sell"})
+        ${leadType === "buyer" ? "- Budget (What price range they're considering)" : "- Property details (What type of property they're selling)"}
+        - Location (${leadType === "buyer" ? "What areas they're interested in" : "Where their property is located"})
         
         Keep it conversational, not like a formal survey. Don't ask about all three at once.
         `;
+      }
+
+      // Append any qualification instructions to the system prompt
+      if (qualificationInstructions) {
+        systemPrompt += "\n\n" + qualificationInstructions;
       }
 
       const completion = await openai.chat.completions.create({
@@ -125,115 +247,7 @@ const openaiService = {
         messages: [
           {
             role: "system",
-            content: `You are a professional, experienced, and helpful real estate agent assistant in the state of ${configSettings.agentState} acting as a real estate agent named "${configSettings.agentName}" and are working for a company named "${configSettings.companyName}". 
-            You are interacting with potential home buyers or sellers. 
-            You have experience in serving the lead's location as your team has helped buy and sell properties in that area. 
-            You are texting these leads, so keep formatting simple and concise.
-
-            Today's date is ${formattedCurrentDate} (${currentDayName}).
-
-            All leads have filled out some sort of ad or form on our website. They don't have any context about our company or agent, so we need to build rapport and get to know them.
-            Make sure to confirm with them that their timeline, search criteria, budget, and preapproval status is correct. If they have not filled out a form, find out their timeline, search criteria, budget, and preapproval status.
-
-              ## Instructions for Buyers:
-
-              - **Objective**: Help potential home buyers set an appointment to view a property.
-              - **Services**:
-                - The main goal is to firstly build rapport with the buyer.
-                - Then help potential home buyers set an appointment to view a property.
-                - Assist them in finding properties in their area that meet their criteria. If their criteria is missing or not specific, ask them for more details.
-                - Ask proactive questions and address any questions/objections they have regarding the local real estate market.
-                - If there is an update regarding their search criteria, always include the NEW SEARCH CRITERIA format at the end of your message. (More instructions under "Property Search Format Requirements")
-                - If an appointment is scheduled, conclude with the exact text "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" at the end of your message, where MM/DD/YYYY is the actual date with real numbers (not placeholders). For example, if the appointment is for June 1, 2025, you would write "NEW APPOINTMENT SET: 06/01/2025 at 2:00 PM". Be sure to include leading zeros for single-digit months and days.
-              - **Tone and Style**: Maintain professionalism, be informative, and steer them towards the next steps in their real estate journey. Ensure responses are concise and informative, suitable for text conversation.
-
-              ## Instructions for Sellers:
-
-              - **Objective**: Assist potential home sellers in setting an appointment to sell their property.
-              - **Services**: 
-                - Answer any questions they may have about the real estate market in their area.
-              - **Tone and Style**: Maintain professionalism, be informative, and guide them towards the next steps in their real estate journey.
-
-              # Output Format
-
-              Provide responses in a concise and text-friendly format, with clear actionable steps for the client.
-
-              # Appointment Format Requirements:
-              
-              When scheduling appointments, ALWAYS follow these rules:
-              1. Format dates as MM/DD/YYYY (with leading zeros for single digits)
-              2. Format times as HH:MM AM/PM or HH:MM PM (include minutes even for whole hours)
-              3. Use the exact phrase "NEW APPOINTMENT SET: MM/DD/YYYY at HH:MM AM/PM" at the end of your message
-              4. NEVER use placeholders like "<MM/DD/YYYY>" - always use real dates
-              5. IF a client asks for a specific date (e.g., "Saturday"), convert it to the correct MM/DD/YYYY format based on today's date (${formattedCurrentDate})
-              6. Use REALISTIC scheduling: No appointments in the past or same day, earliest is tomorrow (${tomorrowFormatted})
-              
-              # Property Search Format Requirements:
-              
-              When identifying property requirements, ALWAYS follow these rules:
-              1. Use the exact format "NEW SEARCH CRITERIA: MIN BEDROOMS: <value>, MAX BEDROOMS: <value>, MAX BATHROOMS: <value>, MIN PRICE: <value>, MAX PRICE: <value>, MIN SQUARE FEET: <value>, MAX SQUARE FEET: <value>, LOCATIONS: <value>, PROPERTY TYPES: <value> at the end of your message
-              2. ALWAYS include ALL fields listed below, even for partial updates
-              3. For fields not mentioned by the user, include the field with an empty value (e.g., "MIN BEDROOMS: ")
-              4. Format all fields as follows:
-                - MIN BEDROOMS: <number>
-                - MAX BEDROOMS: <number>
-                - MIN BATHROOMS: <number>
-                - MAX BATHROOMS: <number>
-                - MIN PRICE: <dollar_amount>
-                - MAX PRICE: <dollar_amount>
-                - MIN SQUARE FEET: <number>
-                - MAX SQUARE FEET: <number>
-                - LOCATIONS: <city_names_comma_separated>
-                - PROPERTY TYPES: <types_comma_separated>
-              5. Only include the NEW SEARCH CRITERIA format when a client clearly expresses property search criteria
-              6. IMPORTANT: Include ALL fields every time, even if some have no value
-              7. Always use actual numbers, not placeholders (e.g., "MIN BEDROOMS: 3" not "MIN BEDROOMS: <MIN_BED_COUNT>")
-              8. CRITICAL: ALWAYS use the NEW SEARCH CRITERIA format whenever updating ANY property criteria, even for minor updates to existing searches
-              9. DO NOT use bullet points or human-readable lists for property criteria - ONLY use the exact NEW SEARCH CRITERIA format
-              10. Important: You may describe the property criteria in normal text during your message, but you MUST ALSO include the machine-readable NEW SEARCH CRITERIA format at the end of your message
-
-              # Both Appointment and Property Search Requirements:	
-
-              1. When including BOTH property search and appointment in the same message, put them on the SAME LINE separated by a PIPE CHARACTER (|) not a space or newline
-
-              # Examples
-              
-              Example 1: Property Search
-              - **Input**: "I'm looking for a 3-bedroom house in Austin under $500,000."
-              - **Output**: "I'll help you find homes matching your criteria in Austin. Based on your requirements, I'll search for 3-bedroom properties under $500,000. I'll send you matching listings as soon as possible. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 500000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, PROPERTY TYPES: House"
-
-              Example 2: Appointment Setting
-              - **Input**: "Can we meet to discuss listing my property this weekend?"
-              - **Output**: "I'd be happy to meet with you to discuss listing your property. I have availability this Sunday at 2:00 PM. Does that work for you? NEW APPOINTMENT SET: ${sundayFormatted} at 2:00 PM"
-              
-              Example 3: Combined Search Refinement and Appointment
-              - **Input**: "I want to see 4-bedroom houses with at least 2.5 bathrooms. Can we tour some properties next Tuesday?"
-              - **Output**: "I'll update your search to focus on 4+ bedroom homes with at least 2.5 bathrooms. I'd be happy to show you matching properties next Tuesday. Does 1:00 PM work for your schedule? NEW SEARCH CRITERIA: MIN BEDROOMS: 4, MAX BEDROOMS: , MIN BATHROOMS: 2.5, MAX BATHROOMS: , MIN PRICE: , MAX PRICE: , MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: , PROPERTY TYPES: House, NOTE: | NEW APPOINTMENT SET: ${tuesdayFormatted} at 1:00 PM"
-              
-              Example 4: Property Search Update
-              - **Input**: "Actually, I'd like to increase my budget to $800,000 and look in both Austin and Round Rock."
-              - **Output**: "I've updated your search criteria with the higher budget of $800,000 and expanded the location to include both Austin and Round Rock. I'll send you updated listings shortly. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 800000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, Round Rock, PROPERTY TYPES: House"
-              
-              Example 5: Asking about current search criteria
-              - **Input**: "What are my current search criteria again?"
-              - **Output**: "Here are your current search criteria: You're looking for properties with at least 3 bedrooms in Austin and Round Rock. Your budget is up to $800,000, and you haven't specified any particular bathroom requirements or square footage preferences.
-
-              I'll continue to send you listings that match these parameters. Let me know if you'd like to adjust any of these criteria. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: , MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 800000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, Round Rock, PROPERTY TYPES: House"
-
-              Example 6: Simple property update
-              - **Input**: "Can you change my max bedrooms to 5?"
-              - **Output**: "I've updated your search criteria to include properties with up to 5 bedrooms maximum. Your other preferences remain the same: minimum 3 bedrooms, budget up to $800,000, and locations in Austin and Round Rock.
-
-              I'll send you matching listings that meet these updated requirements soon. NEW SEARCH CRITERIA: MIN BEDROOMS: 3, MAX BEDROOMS: 5, MIN BATHROOMS: , MAX BATHROOMS: , MIN PRICE: , MAX PRICE: 800000, MIN SQUARE FEET: , MAX SQUARE FEET: , LOCATIONS: Austin, Round Rock, PROPERTY TYPES: House"
-
-              # Note:
-              - Always use exact formatting for both appointment and property search information
-              - For appointments, always use the specific MM/DD/YYYY format with actual dates
-              - For property searches, include only the criteria mentioned by the client
-              - Never use placeholder text like <COUNT> or <dollar_amount> - use real numbers
-
-
-              ${qualificationInstructions}`,
+            content: systemPrompt,
           },
           ...messageHistory,
           ...(userMessage
@@ -448,23 +462,32 @@ const openaiService = {
       let prompt = "";
 
       if (lead.messageCount === 0) {
-        prompt = `Generate an initial follow-up message to a potential real estate lead named ${lead.name}. 
+        prompt = `Generate an initial follow-up message to a potential real estate ${lead.leadType || 'buyer'} lead named ${lead.name}. 
         The message should be friendly, professional, and encourage a response. 
         Keep it brief (under 160 characters if possible) and conversational.`;
       } else {
         // For subsequent follow-ups
         prompt = `Generate follow-up message #${
           lead.messageCount + 1
-        } for a real estate lead named ${lead.name} 
+        } for a real estate ${lead.leadType || 'buyer'} lead named ${lead.name} 
         who hasn't responded to previous messages. Keep it casual but professional, 
         and don't be pushy. The message should be brief (under 160 characters if possible).`;
       }
+
+      // Set up lead context for the follow-up
+      const leadDetails = {
+        leadName: lead.name,
+        leadStatus: lead.status,
+        leadType: lead.leadType || 'buyer',
+        isFollowUp: true  // This is a follow-up message
+      };
 
       // Generate the response using the existing generateResponse function
       const followUpMessage = await this.generateResponse(
         prompt,
         settingsMap,
-        [] // No previous messages needed for follow-up
+        [], // No previous messages needed for follow-up
+        leadDetails
       );
 
       return followUpMessage;
@@ -481,8 +504,6 @@ const openaiService = {
   // Handle property search criteria from AI-detected text
   async handlePropertySearchCriteria(searchCriteria, leadId, isNewFormat = false) {
     try {
-      const propertyService = require('./propertyService');
-      
       // Log the detected search criteria
       logger.info(`Handling property search criteria for lead ${leadId}:`, searchCriteria);
       
@@ -523,8 +544,22 @@ const openaiService = {
         originalSearchText: dbSearchCriteria.originalSearchText || searchCriteria
       };
       
-      // Save the search and run matching
-      const search = await propertyService.saveLeadPropertySearch(leadId, dbSearchCriteria);
+      // Save the search
+      const [search, created] = await LeadPropertySearch.findOrCreate({
+        where: { leadId, isActive: true },
+        defaults: {
+          ...dbSearchCriteria,
+          isActive: true
+        }
+      });
+      
+      if (!created) {
+        // Update existing search
+        logger.info(`Updating existing property search for lead ${leadId}`);
+        await search.update(dbSearchCriteria);
+      } else {
+        logger.info(`Created new property search for lead ${leadId}`);
+      }
       
       logger.info(`Created property search for lead ${leadId} with ID ${search.id}`);
       return search.id;
@@ -868,4 +903,4 @@ const openaiService = {
   },
 };
 
-module.exports = openaiService;
+export default openaiService;

@@ -1,4 +1,24 @@
-require("dotenv").config();
+import dotenv from "dotenv";
+import express from "express";
+import cors from "cors";
+import { Server } from "socket.io";
+import http from "http";
+import sequelize from "./config/database.js";
+import leadRoutes from "./routes/leadRoutes.js";
+import messageRoutes from "./routes/messageRoutes.js";
+import userSettingsRoutes from "./routes/userSettingsRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import appointmentRoutes from "./routes/appointmentRoutes.js";
+import oauthRoutes from "./routes/oauthRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import agentSettings from "./config/agentSettings.js";
+import scheduledMessageService from "./services/scheduledMessageService.js";
+import responseHandler from "./middleware/responseHandler.js";
+import initializeAssociations from "./models/associations.js";
+import messageController from "./controllers/messageController.js";
+import { globalAuth } from "./middleware/globalAuth.js";
+
+dotenv.config();
 
 // Add environment variable check only when debug mode is enabled
 if (process.env.DEBUG_REQUESTS === 'true') {
@@ -12,26 +32,6 @@ if (process.env.DEBUG_REQUESTS === 'true') {
   console.log("GOOGLE_CLIENT_SECRET exists:", !!process.env.GOOGLE_CLIENT_SECRET);
   console.log("GOOGLE_REDIRECT_URI:", process.env.GOOGLE_REDIRECT_URI);
 }
-
-const express = require("express");
-const cors = require("cors");
-const sequelize = require("./config/database");
-const leadRoutes = require("./routes/leadRoutes");
-const messageRoutes = require("./routes/messageRoutes");
-const userSettingsRoutes = require("./routes/userSettingsRoutes");
-const authRoutes = require("./routes/authRoutes");
-const appointmentRoutes = require("./routes/appointmentRoutes");
-const oauthRoutes = require("./routes/oauthRoutes");
-const notificationRoutes = require("./routes/notificationRoutes");
-const agentSettings = require("./config/agentSettings");
-const scheduledMessageService = require("./services/scheduledMessageService");
-const responseHandler = require("./middleware/responseHandler");
-require("./models/associations");
-const http = require("http");
-const { Server } = require("socket.io");
-const messageController = require("./controllers/messageController");
-const propertyRoutes = require("./routes/propertyRoutes");
-const propertyMatcherService = require("./services/propertyMatcherService");
 
 const app = express();
 
@@ -84,13 +84,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Apply global authentication to all routes
+app.use(globalAuth);
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
-app.use("/api/properties", propertyRoutes);
 app.use("/api/oauth", oauthRoutes);
 app.use("/api/notifications", notificationRoutes);
 
@@ -114,7 +116,7 @@ app.post("/messages/receive", (req, res) => {
   messageController.receiveMessage(req, res);
 });
 
-// Add this route at the root level - CONSOLIDATED THE TWO DUPLICATE BLOCKS INTO ONE
+// Add this route at the root level
 app.post("/messages/receive", (req, res) => {
   if (process.env.DEBUG_REQUESTS === 'true') {
     console.log("========== INCOMING WEBHOOK ==========");
@@ -186,6 +188,9 @@ app.set("io", io);
 // Sync database and start server
 const initializeApp = async () => {
   try {
+    // Load associations
+    initializeAssociations();
+    
     // Check if migrations should be skipped
     if (process.env.SKIP_MIGRATIONS !== 'true') {
       // Use a safer sync option that doesn't alter existing tables
@@ -207,9 +212,6 @@ const initializeApp = async () => {
     // Keep the agentSettings initialization which is now updated to use the new model
     await agentSettings.initialize();
 
-    // Initialize the property matcher service
-    propertyMatcherService.init();
-
     // Start the server (use server instead of app)
     server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
@@ -229,4 +231,4 @@ const initializeApp = async () => {
 initializeApp();
 
 // Export for testing purposes
-module.exports = app;
+export default app;

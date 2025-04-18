@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import leadApi from "../api/leadApi";
-import { Lead, LeadStatus } from "../types/lead";
+import { Lead, LeadStatus, LeadFormData, LeadType } from "../types/lead";
+import { useNavigate } from "react-router-dom";
 
 // Validation constants
 const VALIDATION_RULES = {
@@ -23,8 +24,11 @@ const VALIDATION_RULES = {
       "Phone number can only contain numbers, spaces, +, -, and parentheses",
   },
   STATUS: {
-    VALID_VALUES: ["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"] as const,
+    VALID_VALUES: ["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"] as LeadStatus[],
   },
+  LEAD_TYPE: {
+    VALID_VALUES: ["buyer", "seller"] as LeadType[],
+  }
 } as const;
 
 // First message timing options
@@ -36,11 +40,7 @@ const FIRST_MESSAGE_TIMING_OPTIONS = [
 ];
 
 interface FormErrors {
-  name?: string;
-  email?: string;
-  phoneNumber?: string;
-  status?: string;
-  submit?: string;
+  [key: string]: ValidationError | string | undefined;
 }
 
 interface ValidationError {
@@ -52,15 +52,14 @@ interface LeadFormProps {
   onLeadCreated: (lead: Lead) => void;
 }
 
-interface FormData {
-  name: string;
-  email: string;
+interface FormData extends Omit<LeadFormData, 'phoneNumber'> {
   phoneNumber: string;
-  status: LeadStatus;
+  messageTime: string;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
-  firstMessageTiming: string;
+  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   messageCount: number;
+  context: string;
 }
 
 const initialFormData: FormData = {
@@ -69,56 +68,66 @@ const initialFormData: FormData = {
   phoneNumber: "",
   status: "New",
   aiAssistantEnabled: true,
-  enableFollowUps: true,
+  messageTime: "now",
+  leadType: "buyer",
+  enableFollowUps: false,
   firstMessageTiming: "immediate",
-  messageCount: 0
+  messageCount: 0,
+  context: ""
 };
 
 // Validation functions
-const validateName = (name: string): string | undefined => {
-  if (!name.trim()) return "Name is required";
+const validateName = (name: string): ValidationError | undefined => {
+  if (!name.trim()) return { field: "name", message: "Name is required" };
   if (name.trim().length < VALIDATION_RULES.NAME.MIN_LENGTH) {
-    return `Name must be at least ${VALIDATION_RULES.NAME.MIN_LENGTH} characters`;
+    return { field: "name", message: `Name must be at least ${VALIDATION_RULES.NAME.MIN_LENGTH} characters` };
   }
   if (name.trim().length > VALIDATION_RULES.NAME.MAX_LENGTH) {
-    return `Name must be less than ${VALIDATION_RULES.NAME.MAX_LENGTH} characters`;
+    return { field: "name", message: `Name must be less than ${VALIDATION_RULES.NAME.MAX_LENGTH} characters` };
   }
   if (!VALIDATION_RULES.NAME.PATTERN.test(name.trim())) {
-    return VALIDATION_RULES.NAME.PATTERN_MESSAGE;
+    return { field: "name", message: VALIDATION_RULES.NAME.PATTERN_MESSAGE };
   }
 };
 
-const validateEmail = (email: string): string | undefined => {
-  if (!email) return "Email is required";
+const validateEmail = (email: string): ValidationError | undefined => {
+  if (!email) return { field: "email", message: "Email is required" };
   if (!VALIDATION_RULES.EMAIL.PATTERN.test(email)) {
-    return "Please enter a valid email address";
+    return { field: "email", message: "Please enter a valid email address" };
   }
   if (email.length > VALIDATION_RULES.EMAIL.MAX_LENGTH) {
-    return `Email must be less than ${VALIDATION_RULES.EMAIL.MAX_LENGTH} characters`;
+    return { field: "email", message: `Email must be less than ${VALIDATION_RULES.EMAIL.MAX_LENGTH} characters` };
   }
 };
 
-const validatePhone = (phone: string): string | undefined => {
-  if (!phone) return "Phone number is required";
+const validatePhone = (phone: string): ValidationError | undefined => {
+  if (!phone) return { field: "phoneNumber", message: "Phone number is required" };
   const cleanPhone = phone.replace(/\D/g, "");
   if (
     cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
     cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
   ) {
-    return `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits`;
+    return { field: "phoneNumber", message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits` };
   }
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
-    return VALIDATION_RULES.PHONE.PATTERN_MESSAGE;
+    return { field: "phoneNumber", message: VALIDATION_RULES.PHONE.PATTERN_MESSAGE };
   }
 };
 
-const validateStatus = (status: string): string | undefined => {
+const validateStatus = (status: string): ValidationError | undefined => {
   if (!VALIDATION_RULES.STATUS.VALID_VALUES.includes(status as any)) {
-    return "Invalid status selected";
+    return { field: "status", message: "Invalid status selected" };
   }
 };
 
-const validateField = (name: string, value: string): string | undefined => {
+const validateLeadType = (leadType: string): ValidationError | undefined => {
+  if (!VALIDATION_RULES.LEAD_TYPE.VALID_VALUES.includes(leadType as LeadType)) {
+    return { field: "leadType", message: "Lead type must be 'buyer' or 'seller'" };
+  }
+  return undefined;
+};
+
+const validateField = (name: keyof FormData, value: string): ValidationError | undefined => {
   switch (name) {
     case "name":
       return validateName(value);
@@ -128,6 +137,8 @@ const validateField = (name: string, value: string): string | undefined => {
       return validatePhone(value);
     case "status":
       return validateStatus(value);
+    case "leadType":
+      return validateLeadType(value);
     default:
       return undefined;
   }
@@ -145,7 +156,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
       if (key === "aiAssistantEnabled" || key === "enableFollowUps") return;
       const value = formData[key as keyof typeof formData];
       if (typeof value === "string") {
-        const error = validateField(key, value);
+        const error = validateField(key as keyof FormData, value);
         if (error) {
           newErrors[key as keyof FormErrors] = error;
         }
@@ -156,7 +167,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
 
@@ -167,7 +178,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
 
     // Only validate if field has been touched
     if (touchedFields.has(name)) {
-      const error = validateField(name, value);
+      const error = validateField(name as keyof FormData, value);
       setErrors((prev) => ({
         ...prev,
         [name]: error,
@@ -176,7 +187,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   };
 
   const handleBlur = (
-    e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
 
@@ -184,7 +195,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     setTouchedFields((prev) => new Set(prev).add(name));
 
     // Validate on blur
-    const error = validateField(name, value);
+    const error = validateField(name as keyof FormData, value);
     setErrors((prev) => ({
       ...prev,
       [name]: error,
@@ -217,7 +228,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         const apiErrors = err.response.data.details;
         const fieldErrors: FormErrors = {};
         apiErrors.forEach((error: ValidationError) => {
-          fieldErrors[error.field as keyof FormErrors] = error.message;
+          fieldErrors[error.field as keyof FormErrors] = error;
         });
         setErrors(fieldErrors);
       } else {
@@ -236,7 +247,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     <form onSubmit={handleSubmit} className="space-y-6">
       {errors.submit && (
         <div className="p-4 bg-red-50 border-l-4 border-red-400 text-red-700">
-          {errors.submit}
+          {typeof errors.submit === 'string' ? errors.submit : errors.submit?.message}
         </div>
       )}
 
@@ -261,7 +272,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           disabled={isLoading}
         />
         {errors.name && touchedFields.has("name") && (
-          <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.name === 'string' ? errors.name : errors.name.message}
+          </p>
         )}
       </div>
 
@@ -286,7 +299,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           disabled={isLoading}
         />
         {errors.email && touchedFields.has("email") && (
-          <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.email === 'string' ? errors.email : errors.email.message}
+          </p>
         )}
       </div>
 
@@ -306,14 +321,14 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.phoneNumber
-              ? "border-red-500 ring-red-100"
-              : "border-gray-300"
+            errors.phoneNumber ? "border-red-500 ring-red-100" : "border-gray-300"
           }`}
           disabled={isLoading}
         />
         {errors.phoneNumber && touchedFields.has("phoneNumber") && (
-          <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.phoneNumber === 'string' ? errors.phoneNumber : errors.phoneNumber.message}
+          </p>
         )}
       </div>
 
@@ -342,8 +357,63 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           ))}
         </select>
         {errors.status && touchedFields.has("status") && (
-          <p className="mt-1 text-sm text-red-600">{errors.status}</p>
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.status === 'string' ? errors.status : errors.status.message}
+          </p>
         )}
+      </div>
+
+      <div>
+        <label
+          htmlFor="leadType"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Lead Type
+        </label>
+        <select
+          id="leadType"
+          name="leadType"
+          value={formData.leadType}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            errors.leadType ? "border-red-500 ring-red-100" : "border-gray-300"
+          }`}
+          disabled={isLoading}
+        >
+          {VALIDATION_RULES.LEAD_TYPE.VALID_VALUES.map((type) => (
+            <option key={type} value={type}>
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </option>
+          ))}
+        </select>
+        {errors.leadType && touchedFields.has("leadType") && (
+          <p className="mt-1 text-sm text-red-600">
+            {typeof errors.leadType === 'string' ? errors.leadType : errors.leadType.message}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label
+          htmlFor="context"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Lead Context
+        </label>
+        <textarea
+          id="context"
+          name="context"
+          rows={5}
+          value={formData.context || ""}
+          onChange={handleChange}
+          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300"
+          placeholder="Enter property details, lead information, or any additional context that would help AI responses (size, built year, valuation, reason for selling, etc.)"
+          disabled={isLoading}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          This information will be used to improve AI responses to the lead.
+        </p>
       </div>
 
       {/* AI Assistant Toggle */}

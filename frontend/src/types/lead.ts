@@ -1,27 +1,25 @@
 import { Message } from "./message";
 
-export type LeadStatus = 
-  | "New" 
-  | "In Conversation" 
-  | "Qualified" 
-  | "Appointment Set" 
-  | "Converted" 
-  | "Inactive";
+export type LeadStatus = "New" | "In Conversation" | "Qualified" | "Appointment Set" | "Converted" | "Inactive";
+
+export type LeadType = "buyer" | "seller";
 
 export interface Lead {
-  id: number;
+  id: string;
   name: string;
   email: string;
   phoneNumber: string;
   status: LeadStatus;
+  leadType: LeadType;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
-  firstMessageTiming: string;
+  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   nextScheduledMessage?: string; // ISO date string
   lastMessageDate?: string;
   messageCount: number;
   archived: boolean;
   notes?: string;
+  context?: string; // Property metadata for AI responses
   createdAt?: string;
   updatedAt?: string;
   messages?: Message[];
@@ -37,9 +35,11 @@ export interface LeadFormData {
   email: string;
   phoneNumber: string;
   status: LeadStatus;
+  leadType: LeadType;
   aiAssistantEnabled: boolean;
   enableFollowUps: boolean;
-  firstMessageTiming: string;
+  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
+  context?: string; // Property metadata for AI responses
 }
 
 export interface BulkImportResponse {

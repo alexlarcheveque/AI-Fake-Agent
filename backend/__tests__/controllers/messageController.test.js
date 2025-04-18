@@ -1,4 +1,4 @@
-const messageController = require('../../controllers/messageController');
+import messageController from '../../controllers/messageController';
 
 describe('messageController', () => {
   test('should have expected methods', () => {

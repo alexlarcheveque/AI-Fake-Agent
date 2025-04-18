@@ -93,14 +93,22 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
   };
 
   // Format the notification time
-  const formatNotificationTime = (date: Date) => {
+  const formatNotificationTime = (date: Date | string) => {
     try {
-      if (!date || isNaN(new Date(date).getTime())) {
+      if (!date) {
+        return 'Unknown date';
+      }
+      
+      const dateObj = date instanceof Date ? date : new Date(date);
+      
+      // Check if date is valid
+      if (isNaN(dateObj.getTime())) {
         return 'Invalid date';
       }
-      return format(new Date(date), "dd/MM/yyyy hh:mm a");
+      
+      return format(dateObj, "dd/MM/yyyy hh:mm a");
     } catch (error) {
-      console.error('Error formatting date:', error);
+      console.error('Error formatting date:', error, date);
       return 'Invalid date';
     }
   };
@@ -284,7 +292,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                         <div className="max-h-96 overflow-y-auto">
                           {notifications.map((notification) => (
                             <div 
-                              key={`${notification.id}-${notification.isRead ? 'read' : 'unread'}`} 
+                              key={notification.id} 
                               onClick={() => handleNotificationClick(notification)} 
                               className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start ${!notification.isRead ? 'bg-blue-50' : ''}`}
                             >

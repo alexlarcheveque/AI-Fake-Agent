@@ -1,11 +1,10 @@
-const Lead = require("../models/Lead");
-const Message = require("../models/Message");
-const { Op } = require("sequelize");
-const logger = require("../utils/logger");
-const scheduledMessageService = require("../services/scheduledMessageService");
-const leadStatusService = require("../services/leadStatusService");
-const csv = require('csv-parser');
-const { Readable } = require('stream');
+import Lead from "../models/Lead.js"; 
+import { Op } from "sequelize";
+import logger from "../utils/logger.js";
+import scheduledMessageService from "../services/scheduledMessageService.js";
+import leadStatusService from "../services/leadStatusService.js";
+import csv from 'csv-parser';
+import { Readable } from 'stream';
 
 const leadController = {
   // Get all leads with pagination and search
@@ -685,4 +684,4 @@ const leadController = {
   }
 };
 
-module.exports = leadController;
+export default leadController;

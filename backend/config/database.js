@@ -1,5 +1,6 @@
-const { Sequelize } = require("sequelize");
-require("dotenv").config();
+import { Sequelize } from "sequelize";
+import dotenv from "dotenv";
+dotenv.config();
 
 // Add debug logging for database config
 console.log("Database Config:", {
@@ -35,4 +36,4 @@ sequelize
     console.error("Unable to connect to the database:", err);
   });
 
-module.exports = sequelize;
+export default sequelize;

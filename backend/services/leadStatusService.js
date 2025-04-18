@@ -1,9 +1,9 @@
-const Lead = require("../models/Lead");
-const Message = require("../models/Message");
-const Appointment = require("../models/Appointment");
-const scheduledMessageService = require("./scheduledMessageService");
-const logger = require("../utils/logger");
-const { Op } = require("sequelize");
+import Lead from "../models/Lead.js";
+import Message from "../models/Message.js";
+import Appointment from "../models/Appointment.js";
+import scheduledMessageService from "./scheduledMessageService.js";
+import logger from "../utils/logger.js";
+import { Op } from "sequelize";
 
 /**
  * Service that handles lead status transitions and related automation
@@ -201,4 +201,4 @@ const leadStatusService = {
   }
 };
 
-module.exports = leadStatusService; 
+export default leadStatusService; 
