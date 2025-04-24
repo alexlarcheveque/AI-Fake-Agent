@@ -9,7 +9,6 @@ import messageRoutes from "./routes/messageRoutes.js";
 import userSettingsRoutes from "./routes/userSettingsRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
-import oauthRoutes from "./routes/oauthRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import agentSettings from "./config/agentSettings.js";
 import scheduledMessageService from "./services/scheduledMessageService.js";
@@ -94,7 +93,6 @@ app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
-app.use("/api/oauth", oauthRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 // Add this before your other routes

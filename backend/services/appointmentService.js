@@ -3,8 +3,6 @@ const Lead = require('../models/Lead');
 const User = require('../models/User');
 const logger = require('../utils/logger');
 const { parse, addHours } = require('date-fns');
-// Import the updated Google Calendar service
-const googleCalendarService = require('./googleCalendarService');
 
 /**
  * Service to handle appointment-related operations
@@ -19,7 +17,7 @@ const appointmentService = {
    * @param {string} appointmentDetails.time - The appointment time (HH:MM AM/PM)
    * @returns {Promise<Object>} The created appointment
    */
-  async createAppointmentFromAI(leadId, userId, appointmentDetails) {
+  async createAppointment(leadId, userId, appointmentDetails) {
     try {
       logger.info('Creating appointment from AI detected details', { leadId, userId, appointmentDetails });
       
@@ -39,23 +37,6 @@ const appointmentService = {
       let user = null;
       if (userId) {
         user = await User.findByPk(userId);
-      } else {
-        logger.warn(`No userId provided for appointment creation. Looking for a user with Google Calendar connected.`);
-        // Find the first user with Google Calendar connected
-        user = await User.findOne({ 
-          where: { 
-            googleCalendarConnected: true 
-          }
-        });
-        
-        if (user) {
-          logger.info(`Found user ${user.id} with Google Calendar connected. Using their credentials.`);
-          // Update the lead to associate it with this user
-          await lead.update({ userId: user.id });
-          logger.info(`Updated lead ${leadId} to be associated with user ${user.id}`);
-        } else {
-          logger.warn(`No user with Google Calendar connected found. Using default system settings.`);
-        }
       }
 
       // Parse the date and time
@@ -119,114 +100,9 @@ const appointmentService = {
         endTime: endDate.toISOString()
       });
       
-      // Create Google Calendar event if the user exists and has connected their account
-      if (user && user.googleCalendarConnected) {
-        try {
-          logger.info('User has Google Calendar connected, creating calendar event', {
-            userId: user.id,
-            googleCalendarConnected: user.googleCalendarConnected
-          });
-          
-          // Prepare attendees - add lead's email if available
-          const attendees = [];
-          if (lead.email) {
-            attendees.push(lead.email);
-          }
-          
-          // Create event in Google Calendar using OAuth
-          const calendarResult = await googleCalendarService.createEvent(
-            user.id, // Use user.id directly instead of userId which could be null
-            {
-              title,
-              description: `Appointment with ${lead.name} (Phone: ${lead.phoneNumber})`,
-              startTime: startDate,
-              endTime: endDate,
-              location: 'To be determined',
-              attendees
-            }
-          );
-          
-          logger.info('Google Calendar event created successfully:', calendarResult);
-          
-          // Update the appointment with Google Calendar information
-          await appointment.update({
-            googleCalendarEventId: calendarResult.eventId,
-            googleCalendarEventLink: calendarResult.eventLink,
-            googleCalendarEventStatus: calendarResult.eventStatus
-          });
-          
-          logger.info('Appointment updated with Google Calendar information');
-        } catch (calendarError) {
-          logger.error('Failed to create Google Calendar event:', {
-            error: calendarError.message,
-            stack: calendarError.stack
-          });
-          // Continue without Google Calendar integration if it fails
-        }
-      } else {
-        logger.info('No user or Google Calendar connection, skipping calendar integration');
-      }
-      
       return appointment;
     } catch (error) {
       logger.error('Error creating appointment from AI:', error);
-      throw error;
-    }
-  },
-  
-  /**
-   * Update an existing appointment
-   * @param {number} appointmentId - The ID of the appointment to update
-   * @param {Object} updatedDetails - The updated appointment details
-   * @returns {Promise<Object>} The updated appointment
-   */
-  async updateAppointment(appointmentId, updatedDetails) {
-    try {
-      logger.info(`Updating appointment ${appointmentId}`, updatedDetails);
-      
-      const appointment = await Appointment.findByPk(appointmentId);
-      if (!appointment) {
-        throw new Error(`Appointment with ID ${appointmentId} not found`);
-      }
-      
-      // Update the appointment in the database
-      await appointment.update(updatedDetails);
-      
-      // Update Google Calendar event if it exists
-      if (appointment.googleCalendarEventId && appointment.userId) {
-        try {
-          const user = await User.findByPk(appointment.userId);
-          
-          if (user && user.googleCalendarConnected) {
-            logger.info('Updating Google Calendar event', {
-              eventId: appointment.googleCalendarEventId
-            });
-            
-            await googleCalendarService.updateEvent(
-              appointment.userId,
-              appointment.googleCalendarEventId,
-              {
-                title: appointment.title,
-                description: appointment.description,
-                startTime: appointment.startTime,
-                endTime: appointment.endTime,
-                location: appointment.location
-              }
-            );
-            
-            logger.info('Google Calendar event updated successfully');
-          } else {
-            logger.warn('Cannot update Google Calendar event - user not connected');
-          }
-        } catch (calendarError) {
-          logger.error('Failed to update Google Calendar event:', calendarError);
-          // Continue even if calendar update fails
-        }
-      }
-      
-      return appointment;
-    } catch (error) {
-      logger.error(`Error updating appointment ${appointmentId}:`, error);
       throw error;
     }
   },

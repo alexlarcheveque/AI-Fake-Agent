@@ -47,18 +47,6 @@ const Appointment = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-    googleCalendarEventId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    googleCalendarEventLink: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    googleCalendarEventStatus: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     status: {
       type: DataTypes.STRING,
       allowNull: false,

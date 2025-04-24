@@ -16,15 +16,6 @@ import pkg from 'twilio/lib/twiml/MessagingResponse.js';
 const { MessagingResponse } = pkg;
 
 const messageController = {
-  // send test twilio message
-  async testTwilio(req, res) {
-    const twilioMessage = await twilioService.sendMessage(
-      "+5571981265131",
-      "test"
-    );
-    res.json({ message: twilioMessage });
-  },
-
   // Send a message to a lead via Twilio
   async sendMessage(req, res) {
     try {
@@ -66,13 +57,6 @@ const messageController = {
           aiAssistantEnabled: userSettings.aiAssistantEnabled !== undefined 
             ? userSettings.aiAssistantEnabled 
             : true,
-          // Follow-up intervals
-          followUpIntervalNew: userSettings.followUpIntervalNew || 2,
-          followUpIntervalInConversation: userSettings.followUpIntervalInConversation || 3,
-          followUpIntervalQualified: userSettings.followUpIntervalQualified || 5,
-          followUpIntervalAppointmentSet: userSettings.followUpIntervalAppointmentSet || 1,
-          followUpIntervalConverted: userSettings.followUpIntervalConverted || 14,
-          followUpIntervalInactive: userSettings.followUpIntervalInactive || 30,
         };
         logger.info("Using user settings from frontend for AI response:", settingsMap);
       } else if (userId) {
@@ -570,12 +554,6 @@ const messageController = {
               if (aiResponseData.appointmentDetails) {
                 // It has appointment details
                 appointmentDetails = aiResponseData.appointmentDetails;
-                
-                if (appointmentDetails) {
-                  console.log('Appointment detected in playground:', appointmentDetails);
-                  // For playground, we log the appointment details but don't add text to the message
-                  console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
-                }
               }
               
               // Check for property search (can exist alongside appointment)
@@ -708,160 +686,11 @@ const messageController = {
         order: [["createdAt", "ASC"]],
       });
 
-      console.log("messages", messages);
-
       logger.info(`Found ${messages.length} messages for lead ${leadId}`);
       res.json(messages);
     } catch (error) {
       logger.error("Error fetching messages:", error);
       res.status(500).json({ error: "Failed to fetch messages" });
-    }
-  },
-
-  // Send a local message (for playground testing)
-  async sendLocalMessage(req, res) {
-    console.log("sendLocalMessage", req.body);
-    try {
-      const { text, previousMessages, userId, leadType = "buyer", context = "" } = req.body;
-
-      // Check if userId is provided
-      if (!userId) {
-        console.log("No userId provided, using default settings");
-        // Use default settings
-        const promptContext = {
-          leadName: "Test Lead", 
-          leadStatus: "New",
-          leadType,
-          context,
-          isFollowUp: false
-        };
-        
-        const aiResponseData = await openaiService.generateResponse(
-          text,
-          DEFAULT_SETTINGS,
-          previousMessages,
-          promptContext
-        );
-
-        // Check if aiResponseData contains appointment details
-        let aiResponseText;
-        let appointmentDetails = null;
-        
-        if (typeof aiResponseData === 'object' && aiResponseData.text) {
-          // It's the new format with appointment details
-          aiResponseText = aiResponseData.text;
-          appointmentDetails = aiResponseData.appointmentDetails;
-          
-          if (appointmentDetails) {
-            console.log('Appointment detected:', appointmentDetails);
-            // For playground, we log the appointment details but don't add text to the message
-            console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
-          }
-        } else {
-          // It's just a string (old format or no appointment detected)
-          aiResponseText = aiResponseData;
-        }
-
-        // Create a message object that mimics what we'd store in the database
-        const messageObj = {
-          id: Date.now(), // using timestamp as a temporary ID
-          text: aiResponseText,
-          sender: "agent",
-          direction: "outbound",
-          createdAt: new Date(),
-          metadata: this.buildMessageMetadata(false, null, appointmentDetails)
-        };
-        
-        // Add the AI message to the history
-        const allMessages = [messageObj];
-
-        // Return the conversation history along with any appointment information
-        return res.json({ 
-          conversation: allMessages,
-          success: true 
-        });
-      }
-
-      // Get user settings
-      let settingsMap;
-      try {
-        settingsMap = await userSettingsService.getAllSettings(userId);
-        console.log("Using user settings for playground:", settingsMap);
-      } catch (error) {
-        console.error("Error getting user settings:", error);
-        settingsMap = DEFAULT_SETTINGS;
-      }
-
-      // Generate AI response
-      const aiResponseData = await openaiService.generateResponse(
-        text,
-        settingsMap,
-        previousMessages
-      );
-
-      // Check if aiResponseData contains appointment details
-      let aiResponseText;
-      let appointmentDetails = null;
-      let isPropertySearch = false;
-      let propertySearchCriteria = null;
-      let propertySearchMeta = null;
-      
-      if (typeof aiResponseData === 'object' && aiResponseData.text) {
-        // It's the new format with additional data
-        aiResponseText = aiResponseData.text;
-        
-        // Check for appointment details (not exclusive)
-        if (aiResponseData.appointmentDetails) {
-          // It has appointment details
-          appointmentDetails = aiResponseData.appointmentDetails;
-          
-          if (appointmentDetails) {
-            console.log('Appointment detected in playground:', appointmentDetails);
-            // For playground, we log the appointment details but don't add text to the message
-            console.log(`Playground would create appointment for ${appointmentDetails.date} at ${appointmentDetails.time}`);
-          }
-        }
-        
-        // Check for property search (can exist alongside appointment)
-        if (aiResponseData.isPropertySearch || aiResponseData.hasPropertySearch) {
-          // It has property search criteria
-          isPropertySearch = true;
-          propertySearchCriteria = aiResponseData.searchCriteria;
-          console.log('Property search criteria detected in AI response');
-          
-          // Prepare property search metadata
-          propertySearchMeta = {
-            isPropertySearch: true,
-            propertySearchCriteria: propertySearchCriteria,
-            propertySearchFormat: aiResponseData.propertySearchFormat || 'legacy'
-          };
-        }
-      } else {
-        // It's just a string (old format or no appointment/search detected)
-        aiResponseText = aiResponseData;
-      }
-
-      // Create a message object that mimics what we'd store in the database
-      const messageObj = {
-        id: Date.now(), // using timestamp as a temporary ID
-        text: aiResponseText,
-        sender: "agent",
-        direction: "outbound",
-        createdAt: new Date(),
-        metadata: this.buildMessageMetadata(isPropertySearch, propertySearchMeta, appointmentDetails)
-      };
-      
-      // Add the AI message to the history
-      const allMessages = [messageObj];
-
-      // Return the conversation history along with any appointment information
-      return res.json({ 
-        conversation: allMessages,
-        success: true 
-      });
-    } catch (error) {
-      logger.error("Error processing local message:", error);
-      res.status(500).json({ error: "Failed to process message" });
     }
   },
 

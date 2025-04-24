@@ -8,7 +8,6 @@ import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
 import LeadManagement from "./components/LeadManagement";
 import MessageCenter from "./components/MessageCenter";
-import Playground from "./components/Playground";
 import Settings from "./components/Settings";
 import Login from "./components/Login";
 import Register from "./components/Register";
@@ -50,7 +49,6 @@ function AppRoutes() {
               <Route path="/leads" element={<LeadManagement />} />
               <Route path="/messages" element={<MessageCenter />} />
               <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/playground" element={<Playground />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Routes>

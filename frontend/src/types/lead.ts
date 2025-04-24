@@ -23,11 +23,6 @@ export interface Lead {
   createdAt?: string;
   updatedAt?: string;
   messages?: Message[];
-  calendlyEventUri?: string;
-  calendlyInviteeUri?: string;
-  googleCalendarEventId?: string;
-  googleCalendarEventLink?: string;
-  googleCalendarEventStatus?: string;
 }
 
 export interface LeadFormData {

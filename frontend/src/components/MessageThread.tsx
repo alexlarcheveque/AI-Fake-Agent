@@ -8,7 +8,6 @@ import MessageInput from "./MessageInput";
 import AppointmentCreator from "./AppointmentCreator";
 import AppointmentsList from "./AppointmentsList";
 import { useSocket } from "../contexts/SocketContext";
-import useCalendly from "../hooks/useCalendly";
 import { useNotifications } from "../contexts/NotificationContext";
 import settingsApi from "../api/settingsApi";
 import "../styles/MessageThread.css";
@@ -107,14 +106,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     
     return normalizedMessage;
   };
-
-  // Use the Calendly hook
-  const { 
-    isCalendlyAvailable, 
-    isCalendlyRequest, 
-    createCalendlyLink, 
-    loading: calendlyLoading 
-  } = useCalendly(leadId);
 
   // Format next scheduled message date and time
   const formatScheduledDate = (dateString?: string) => {
@@ -319,25 +310,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           setLatestMessage(normalizedMessage.text);
         }
         
-        // Check for Calendly-related requests using the hook
-        if (isCalendlyRequest(normalizedMessage.text)) {
-          // If Calendly is available, create a link automatically
-          if (isCalendlyAvailable && !calendlyLoading) {
-            const clientName = leadName || "Client";
-            const clientEmail = leadEmail || `${leadId}@example.com`;
-            
-            // Create a Calendly link automatically
-            createCalendlyLink(
-              clientName,
-              clientEmail,
-              handleCalendlySuccess,
-              handleCalendlyError
-            );
-          } else {
-            // Show the appointment form
-            setLatestMessage(normalizedMessage.text);
-          }
-        }
         
         // If this is an AI generated message, refresh the lead data to get the updated next scheduled message
         const refreshLeadData = async () => {
@@ -403,7 +375,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     return () => {
       socket.off("new-message", handleNewMessage);
     };
-  }, [socket, leadId, connected, leadName, leadEmail, isCalendlyAvailable, isCalendlyRequest, calendlyLoading]);
+  }, [socket, leadId, connected, leadName, leadEmail]);
 
   // Add this useEffect to listen for status updates
   useEffect(() => {

@@ -39,16 +39,6 @@ const User = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
-    // New fields for Google Calendar OAuth
-    googleTokens: {
-      type: DataTypes.TEXT, // Store the JSON token object as text
-      allowNull: true,
-    },
-    googleCalendarConnected: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
   },
   {
     hooks: {

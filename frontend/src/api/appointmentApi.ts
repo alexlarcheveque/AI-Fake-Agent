@@ -13,13 +13,6 @@ export interface Appointment {
   status: string;
   createdAt: string;
   updatedAt: string;
-  // Calendly fields (legacy)
-  calendlyEventUri?: string;
-  calendlyInviteeUri?: string;
-  // Google Calendar fields
-  googleCalendarEventId?: string;
-  googleCalendarEventLink?: string;
-  googleCalendarEventStatus?: string;
   Lead?: {
     id: number;
     name: string;
@@ -53,7 +46,6 @@ export interface ApiError {
   message: string;
   code: number;
   isAuthError?: boolean;
-  isCalendlyError?: boolean;
 }
 
 // Helper function to handle errors consistently
@@ -104,36 +96,6 @@ const appointmentApi = {
   getAppointmentsByLead: async (leadId: number): Promise<Appointment[]> => {
     try {
       const response = await axios.get(`${API_URL}/api/appointments/lead/${leadId}`, {
-        withCredentials: true,
-      });
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  createAppointment: async (data: CreateAppointmentRequest): Promise<{ appointment: Appointment; calendlyLink: string | null }> => {
-    try {
-      // First create the appointment in our database
-      const response = await axios.post(`${API_URL}/api/appointments`, data, {
-        withCredentials: true,
-      });
-
-      // Check if we have a Calendly link and automatically open it
-      if (response.data.calendlyLink) {
-        // Open Calendly scheduling page in a new tab
-        window.open(response.data.calendlyLink, '_blank');
-      }
-      
-      return response.data;
-    } catch (error) {
-      return handleApiError(error);
-    }
-  },
-
-  updateAppointment: async (id: number, data: Partial<CreateAppointmentRequest>): Promise<Appointment> => {
-    try {
-      const response = await axios.put(`${API_URL}/api/appointments/${id}`, data, {
         withCredentials: true,
       });
       return response.data;

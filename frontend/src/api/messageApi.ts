@@ -36,8 +36,7 @@ const messageApi = {
         throw new Error("Message text is required");
       }
 
-      // Get user settings to include with the message
-      let userSettings = null;
+      let userSettings = {};
       try {
         userSettings = await settingsApi.getSettings();
         console.log("Including user settings with message:", userSettings);
@@ -57,20 +56,6 @@ const messageApi = {
       console.error("Error in sendMessage API call:", error);
       throw error;
     }
-  },
-
-  // Send a local test message (playground)
-  async sendLocalMessage(
-    text: string,
-    previousMessages: Message[],
-    leadContext?: string
-  ): Promise<{ message: Message }> {
-    const response = await axios.post(`${BASE_URL}/api/messages/send-local`, {
-      text,
-      previousMessages,
-      leadContext,
-    });
-    return response.data;
   },
 
   // Test Twilio
@@ -108,88 +93,6 @@ const messageApi = {
       params: { startDate, endDate },
     });
     return response.data;
-  },
-
-  // Add a utility method to test socket message delivery
-  async testSocketMessage(leadId: number, text?: string): Promise<any> {
-    try {
-      console.log(`🧪 Testing socket message for lead ${leadId} with text: "${text}"`);
-      
-      // Ensure leadId is a number
-      const numericLeadId = typeof leadId === 'string' ? parseInt(leadId, 10) : leadId;
-      
-      // Log request details
-      console.log('🧪 Test socket message request:', {
-        url: `${BASE_URL}/api/messages/test-socket`,
-        method: 'POST',
-        data: { leadId: numericLeadId, text }
-      });
-      
-      const response = await axios.post(`${BASE_URL}/api/messages/test-socket`, {
-        leadId: numericLeadId,
-        text,
-      });
-      
-      console.log("🧪 Socket test response:", response.data);
-      console.log("🧪 Emitted message should match this format:", {
-        leadId: numericLeadId,
-        message: {
-          id: "any-number",
-          leadId: numericLeadId,
-          text: text || "This is a test message from the server",
-          sender: "lead",
-          direction: "inbound",
-          isAiGenerated: false,
-          deliveryStatus: "delivered"
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error("❌ Error testing socket message:", error);
-      throw error;
-    }
-  },
-
-  // Add a method to test AI response simulation
-  async simulateAiResponse(leadId: number, text?: string): Promise<any> {
-    try {
-      console.log(`🤖 Simulating AI response for lead ${leadId} with text: "${text}"`);
-      
-      // Ensure leadId is a number
-      const numericLeadId = typeof leadId === 'string' ? parseInt(leadId, 10) : leadId;
-      
-      // Log request details
-      console.log('🤖 Simulate AI response request:', {
-        url: `${BASE_URL}/api/messages/simulate-ai-response`,
-        method: 'POST',
-        data: { leadId: numericLeadId, text }
-      });
-      
-      const response = await axios.post(`${BASE_URL}/api/messages/simulate-ai-response`, {
-        leadId: numericLeadId,
-        text,
-      });
-      
-      console.log("🤖 Simulated AI response data:", response.data);
-      console.log("🤖 Emitted message should match this format:", {
-        leadId: numericLeadId,
-        message: {
-          id: "any-number",
-          leadId: numericLeadId,
-          text: text || "This is a simulated AI response message.",
-          sender: "agent",
-          direction: "outbound",
-          isAiGenerated: true,
-          deliveryStatus: "delivered"
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error("❌ Error simulating AI response:", error);
-      throw error;
-    }
   },
 };
 

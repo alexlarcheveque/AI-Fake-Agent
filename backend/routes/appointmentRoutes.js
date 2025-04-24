@@ -12,10 +12,7 @@ router.get('/lead/:leadId', appointmentController.getAppointmentsByLead);
 // Create new appointment
 router.post('/', appointmentController.createAppointment);
 
-// Update appointment
-router.put('/:id', appointmentController.updateAppointment);
-
 // Delete appointment
 router.delete('/:id', appointmentController.deleteAppointment);
 
-export default router; 
+export default router;

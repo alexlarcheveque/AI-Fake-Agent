@@ -6,6 +6,7 @@ import { Op } from "sequelize";
 import Message from "../models/Message.js";
 import userSettingsService from "./userSettingsService.js";
 import DEFAULT_SETTINGS from "../config/defaultSettings.js";
+import messageService from "./messageService.js";
 
 // Follow-up intervals based on lead status (in days) - kept for backward compatibility
 // These are the default values used only if user settings can't be retrieved
@@ -28,7 +29,7 @@ const scheduledMessageService = {
    * @param {object} settings - User settings map
    * @returns {number} - Follow-up interval in days
    */
-  getFollowUpInterval(leadStatus, settings = DEFAULT_SETTINGS) {
+  getFollowUpInterval(leadStatus, settings) {
     // Default to 7 days if nothing matches
     let interval = 7;
     
@@ -151,70 +152,6 @@ const scheduledMessageService = {
     }
   },
 
-  async processScheduledMessages() {
-    try {
-      // Get all leads with due messages
-      const leads = await Lead.findAll({
-        where: {
-          nextScheduledMessage: {
-            [Op.lte]: new Date(),
-          },
-          enableFollowUps: true,
-        },
-      });
-
-      for (const lead of leads) {
-        try {
-          // Get user settings for the lead owner
-          let settings = DEFAULT_SETTINGS;
-          if (lead.userId) {
-            settings = await userSettingsService.getAllSettings(lead.userId);
-          }
-
-          // Get the appropriate follow-up interval based on lead status and user settings
-          const followUpInterval = this.getFollowUpInterval(lead.status, settings);
-
-          // Generate and send follow-up message
-          const aiResponseData = await openaiService.generateResponse(
-            `Generate follow-up message #${lead.messageCount + 1} for a lead with status "${lead.status}" who hasn't responded in ${followUpInterval} days. Keep it casual but professional.`,
-            settings,
-            [] // No previous messages needed for follow-up
-          );
-
-          // Check if aiResponseData contains appointment details
-          let aiResponseText;
-          if (typeof aiResponseData === 'object' && aiResponseData.text) {
-            // It's the new format with appointment details - for follow-ups we don't need the details
-            aiResponseText = aiResponseData.text;
-          } else {
-            // It's just a string (old format or no appointment detected)
-            aiResponseText = aiResponseData;
-          }
-
-          // Send message via Twilio
-          await twilioService.sendMessage(lead.phoneNumber, aiResponseText);
-
-          // Update lead
-          await lead.update({
-            lastMessageDate: new Date(),
-            nextScheduledMessage: null, // Clear the scheduled message after sending
-            messageCount: lead.messageCount + 1
-          });
-
-          // Schedule next message
-          await this.scheduleNextMessage(lead.id);
-        } catch (error) {
-          logger.error(
-            `Error processing scheduled message for lead ${lead.id}:`,
-            error
-          );
-        }
-      }
-    } catch (error) {
-      logger.error("Error processing scheduled messages:", error);
-    }
-  },
-
   async checkAndSendScheduledMessages() {
     try {
       const now = new Date();
@@ -237,36 +174,17 @@ const scheduledMessageService = {
       // Send messages for each lead
       for (const lead of leadsWithDueMessages) {
         try {
-          // Get user settings for the lead owner
-          let settings = DEFAULT_SETTINGS;
-          if (lead.userId) {
-            settings = await userSettingsService.getAllSettings(lead.userId);
-          }
-
-          // Get the appropriate follow-up interval based on lead status and user settings
-          const followUpInterval = this.getFollowUpInterval(lead.status, settings);
-
-          // Generate message text
-          const aiResponseData = await openaiService.generateResponse(
-            `Generate follow-up message #${lead.messageCount + 1} for a lead with status "${lead.status}" who hasn't responded in ${followUpInterval} days. Keep it casual but professional. Use the same tone and style as previous messages.`,
-            settings,
-            [] // No previous messages needed
+          const leadPreviousMessages = await messageService.getPreviousMessages(lead.id);
+          
+          const aiTextResponse = await openaiService.generateResponse(
+            lead.context,
+            leadPreviousMessages
           );
-
-          // Check if aiResponseData contains appointment details
-          let messageText;
-          if (typeof aiResponseData === 'object' && aiResponseData.text) {
-            // It's the new format with appointment details
-            messageText = aiResponseData.text;
-          } else {
-            // It's just a string (old format or no appointment detected)
-            messageText = aiResponseData;
-          }
 
           // Create message record
           const message = await Message.create({
             leadId: lead.id,
-            text: messageText,
+            text: aiTextResponse,
             sender: "agent",
             isAiGenerated: true,
             deliveryStatus: "queued",
@@ -277,8 +195,7 @@ const scheduledMessageService = {
           try {
             await twilioService.sendMessage(
               lead.phoneNumber,
-              messageText,
-              message.id
+              aiTextResponse,
             );
 
             // Update message status to sent

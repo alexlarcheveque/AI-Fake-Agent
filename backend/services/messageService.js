@@ -1,4 +1,4 @@
-const Message = require("../models/Message");
+import Message from "../models/Message.js";
 
 const messageService = {
   async createMessage(data) {
@@ -11,6 +11,14 @@ const messageService = {
 
     return await Message.create(messageData);
   },
+
+  async getPreviousMessages(leadId) {
+    const messages = await Message.findAll({
+        where: { leadId },
+        order: [['createdAt', 'DESC']]
+    });
+    return messages;
+  },
 };
 
-module.exports = messageService;
+export default messageService;

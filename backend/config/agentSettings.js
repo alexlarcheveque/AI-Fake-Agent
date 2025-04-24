@@ -70,7 +70,6 @@ const agentSettings = {
           agentName: userSettings.agentName || this._settings.agentName,
           companyName: userSettings.companyName || this._settings.companyName,
           agentState: userSettings.agentState || this._settings.agentState,
-          agentCity: userSettings.agentCity || this._settings.agentCity,
         };
       }
     } catch (error) {
@@ -96,7 +95,7 @@ const agentSettings = {
   },
 
   // Method to get all settings as an object
-  getAll() {
+  async getAll() {
     return {
       AGENT_NAME: this.agentName,
       AGENT_STATE: this.agentState,

@@ -1,7 +1,5 @@
 import Appointment from '../models/Appointment.js';
 import Lead from '../models/Lead.js';
-import Notification from '../models/Notification.js';
-import googleCalendarService from '../services/googleCalendarService.js';
 import { Op } from 'sequelize';
 import { format } from 'date-fns';
 
@@ -28,39 +26,6 @@ export const createAppointment = async (req, res) => {
       return res.status(400).json({ error: 'No user ID available for this appointment' });
     }
 
-    let googleCalendarData = null;
-    
-    // Try to create a Google Calendar event
-    if (googleCalendarService.isConfigured) {
-      try {
-        // Prepare attendees
-        const attendees = [];
-        if (lead.email) {
-          attendees.push({
-            email: lead.email,
-            name: lead.name
-          });
-        }
-        
-        // Create event in Google Calendar
-        googleCalendarData = await googleCalendarService.createEvent(
-          {
-            title,
-            startTime: new Date(startTime),
-            endTime: new Date(endTime),
-            description: description || `Appointment with ${lead.name}`,
-            location: location || 'To be determined'
-          },
-          attendees
-        );
-        
-        console.log('Google Calendar event created successfully:', googleCalendarData);
-      } catch (error) {
-        console.error('Google Calendar error:', error);
-        // Continue without Google Calendar if it fails
-      }
-    }
-    
     // Create appointment in database
     const appointment = await Appointment.create({
       leadId,
@@ -70,44 +35,11 @@ export const createAppointment = async (req, res) => {
       endTime: new Date(endTime),
       location,
       description,
-      googleCalendarEventId: googleCalendarData?.calendarEventId || null,
-      googleCalendarEventLink: googleCalendarData?.calendarEventLink || null,
-      googleCalendarEventStatus: googleCalendarData?.calendarEventStatus || null,
       status: 'scheduled'
     });
 
-    // Create a notification for the new appointment
-    try {
-      const startDateTime = new Date(startTime);
-      const formattedDate = format(startDateTime, 'MMMM d');
-      const formattedTime = format(startDateTime, 'h:mm a');
-      
-      await Notification.create({
-        userId: userId,
-        type: 'appointment',
-        title: 'New Appointment Created',
-        message: `${title} on ${formattedDate} at ${formattedTime}`,
-        isRead: false,
-        isNew: true,
-        metadata: {
-          appointmentId: appointment.id,
-          leadId: lead.id,
-          startTime: startTime,
-          endTime: endTime,
-          location: location,
-          title: title
-        }
-      });
-      
-      console.log(`Created notification for new appointment with lead ${lead.id}`);
-    } catch (notificationError) {
-      console.error(`Error creating notification for appointment:`, notificationError);
-      // Continue even if notification creation fails
-    }
-    
     res.status(201).json({
-      appointment,
-      calendarEventLink: googleCalendarData?.calendarEventLink || null
+      appointment
     });
   } catch (error) {
     console.error('Error creating appointment:', error);
@@ -162,86 +94,6 @@ export const getUpcomingAppointments = async (req, res) => {
   }
 };
 
-export const updateAppointment = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, startTime, endTime, location, description, status } = req.body;
-    
-    const appointment = await Appointment.findByPk(id, {
-      include: [{
-        model: Lead,
-        attributes: ['id', 'name', 'userId']
-      }]
-    });
-    
-    if (!appointment) {
-      return res.status(404).json({ error: 'Appointment not found' });
-    }
-    
-    // Get userId - either from req.user, appointment.userId, or Lead.userId
-    const userId = req.user?.id || appointment.userId || (appointment.Lead ? appointment.Lead.userId : null);
-    
-    // Make sure we have a userId for the notification
-    if (!userId) {
-      console.warn(`No userId found for notification of appointment ${id}`);
-    }
-    
-    // Keep old values to check if time has changed
-    const oldStartTime = appointment.startTime;
-    const oldStatus = appointment.status;
-    
-    // Update fields
-    if (title) appointment.title = title;
-    if (startTime) appointment.startTime = new Date(startTime);
-    if (endTime) appointment.endTime = new Date(endTime);
-    if (location !== undefined) appointment.location = location;
-    if (description !== undefined) appointment.description = description;
-    if (status) appointment.status = status;
-    
-    await appointment.save();
-    
-    // Create notification if the time has changed or status has changed to "rescheduled"
-    if (userId && ((startTime && oldStartTime.getTime() !== new Date(startTime).getTime()) || 
-        (status && status === 'rescheduled' && oldStatus !== 'rescheduled'))) {
-        
-      try {
-        const startDateTime = new Date(appointment.startTime);
-        const formattedDate = format(startDateTime, 'MMMM d');
-        const formattedTime = format(startDateTime, 'h:mm a');
-        const leadName = appointment.Lead ? appointment.Lead.name : 'Lead';
-        
-        await Notification.create({
-          userId: userId,
-          type: 'appointment',
-          title: 'Appointment Updated',
-          message: `${appointment.title} with ${leadName} rescheduled to ${formattedDate} at ${formattedTime}`,
-          isRead: false,
-          isNew: true,
-          metadata: {
-            appointmentId: appointment.id,
-            leadId: appointment.leadId,
-            startTime: appointment.startTime,
-            endTime: appointment.endTime,
-            location: appointment.location,
-            title: appointment.title,
-            status: appointment.status
-          }
-        });
-        
-        console.log(`Created notification for updated appointment with lead ${appointment.leadId}`);
-      } catch (notificationError) {
-        console.error(`Error creating notification for appointment update:`, notificationError);
-        // Continue even if notification creation fails
-      }
-    }
-    
-    res.json(appointment);
-  } catch (error) {
-    console.error('Error updating appointment:', error);
-    res.status(500).json({ error: 'Failed to update appointment' });
-  }
-};
-
 export const deleteAppointment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -265,6 +117,5 @@ export default {
   createAppointment,
   getAppointmentsByLead,
   getUpcomingAppointments,
-  updateAppointment,
   deleteAppointment
 };
