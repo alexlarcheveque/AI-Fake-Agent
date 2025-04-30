@@ -1,198 +1,106 @@
-import { Op } from 'sequelize';
-import Notification from '../models/Notification.js';
-import logger from '../utils/logger.js';
+import supabase from "../config/supabase.js";
 
-const notificationService = {
-  /**
-   * Find all notifications with pagination and search
-   */
-  async findAll({
-    page = 1,
-    limit = 10,
-    search = "",
-    searchFields = [],
-    where = {},
-    order = [["createdAt", "DESC"]],
-    include = [],
-  } = {}) {
-    try {
-      const offset = (page - 1) * limit;
+export const createNotification = async (settings) => {
+  const {
+    lead_id,
+    user_id,
+    type,
+    title,
+    message,
+    read,
+    created_at,
+    updated_at,
+  } = settings;
 
-      // Add search conditions if provided
-      if (search && searchFields.length > 0) {
-        const searchConditions = searchFields.map((field) => ({
-          [field]: { [Op.iLike]: `%${search}%` },
-        }));
+  const { data, error } = await supabase
+    .from("notifications")
+    .insert([
+      { lead_id, user_id, type, title, message, read, created_at, updated_at },
+    ]);
 
-        where = {
-          ...where,
-          [Op.or]: searchConditions,
-        };
-      }
-
-      // Execute query
-      const { count, rows } = await Notification.findAndCountAll({
-        where,
-        limit,
-        offset,
-        order,
-        include,
-        distinct: true,
-      });
-
-      return {
-        items: rows,
-        currentPage: page,
-        totalPages: Math.ceil(count / limit),
-        totalItems: count,
-      };
-    } catch (error) {
-      logger.error('Error finding all notifications:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Find notification by primary key
-   */
-  async findById(id, { include = [] } = {}) {
-    try {
-      const item = await Notification.findByPk(id, { include });
-
-      if (!item) {
-        throw new Error(`Notification not found with id ${id}`);
-      }
-
-      return item;
-    } catch (error) {
-      logger.error('Error finding notification by id:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Find a single notification
-   */
-  async findOne({ where = {}, include = [] } = {}) {
-    try {
-      const item = await Notification.findOne({ where, include });
-      return item;
-    } catch (error) {
-      logger.error('Error finding notification:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Create a new notification
-   */
-  async create(data) {
-    try {
-      const item = await Notification.create(data);
-      return item;
-    } catch (error) {
-      logger.error('Error creating notification:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Update an existing notification
-   */
-  async update(id, data) {
-    try {
-      const item = await this.findById(id);
-      await item.update(data);
-      return item;
-    } catch (error) {
-      logger.error('Error updating notification:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Delete a notification
-   */
-  async delete(id) {
-    try {
-      const item = await this.findById(id);
-      await item.destroy();
-      return true;
-    } catch (error) {
-      logger.error('Error deleting notification:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Get unread notification count for a user
-   */
-  async getUnreadCount(userId) {
-    try {
-      const count = await Notification.count({
-        where: { 
-          userId,
-          isRead: false
-        }
-      });
-      return count;
-    } catch (error) {
-      logger.error('Error getting unread count:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Mark all notifications as read for a user
-   */
-  async markAllAsRead(userId) {
-    try {
-      await Notification.update(
-        { isRead: true },
-        { where: { userId, isRead: false } }
-      );
-      return true;
-    } catch (error) {
-      logger.error('Error marking all as read:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Mark a notification as read
-   */
-  async markAsRead(id, userId) {
-    try {
-      const notification = await this.findById(id);
-      if (notification.userId !== userId) {
-        throw new Error('Unauthorized');
-      }
-      notification.isRead = true;
-      await notification.save();
-      return notification;
-    } catch (error) {
-      logger.error('Error marking as read:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Mark a notification as unread
-   */
-  async markAsUnread(id, userId) {
-    try {
-      const notification = await this.findById(id);
-      if (notification.userId !== userId) {
-        throw new Error('Unauthorized');
-      }
-      notification.isRead = false;
-      await notification.save();
-      return notification;
-    } catch (error) {
-      logger.error('Error marking as unread:', error);
-      throw error;
-    }
-  }
+  if (error) throw new Error(error.message);
+  return data;
 };
 
-export default notificationService; 
+export const getNotificationsByUserId = async (userId) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .order("is_read", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const getNotificationsByLeadId = async (leadId) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("lead_id", leadId);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const updateNotification = async (id, settings) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .update(settings)
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const getUnreadCount = async (userId) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("read", false);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const markAllAsRead = async (userId) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", userId);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const markAsRead = async (id, userId) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const markAsUnread = async (id, userId) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .update({ read: false })
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const deleteNotification = async (id) => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw new Error(error.message);
+  return data;
+};

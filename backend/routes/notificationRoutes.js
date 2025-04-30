@@ -1,33 +1,57 @@
-import express from 'express';
-import notificationController from '../controllers/notificationController.js';
+import express from "express";
+import {
+  createNotification,
+  getNotificationsByUserId,
+  getNotificationsByLeadId,
+  deleteNotification,
+  markAllAsRead,
+  markAsRead,
+  markAsUnread,
+} from "../controllers/notificationController.js";
+import asyncHandler from "express-async-handler";
 
 const router = express.Router();
 
-// Test endpoint
-router.get('/test', notificationController.testConnection);
-
 // Get all notifications for current user
-router.get('/', notificationController.getAll);
-
-// Get unread count
-router.get('/unread-count', notificationController.getUnreadCount);
+router.get(
+  "/",
+  asyncHandler((req, res) => getNotificationsByUserId(req, res))
+);
 
 // Create new notification
-router.post('/', notificationController.create);
+router.post(
+  "/",
+  asyncHandler((req, res) => createNotification(req, res))
+);
 
 // Get single notification
-router.get('/:id', notificationController.getOne);
+router.get(
+  "/:id",
+  asyncHandler((req, res) => getNotificationsByLeadId(req, res))
+);
 
 // Mark notification as read
-router.put('/:id/read', notificationController.markAsRead);
+router.put(
+  "/:id/read",
+  asyncHandler((req, res) => markAsRead(req, res))
+);
 
 // Mark notification as unread
-router.put('/:id/unread', notificationController.markAsUnread);
+router.put(
+  "/:id/unread",
+  asyncHandler((req, res) => markAsUnread(req, res))
+);
 
 // Mark all notifications as read
-router.put('/mark-all-read', notificationController.markAllAsRead);
+router.put(
+  "/mark-all-read",
+  asyncHandler((req, res) => markAllAsRead(req, res))
+);
 
 // Delete notification
-router.delete('/:id', notificationController.delete);
+router.delete(
+  "/:id",
+  asyncHandler((req, res) => deleteNotification(req, res))
+);
 
-export default router; 
+export default router;

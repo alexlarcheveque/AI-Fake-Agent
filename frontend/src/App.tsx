@@ -16,7 +16,6 @@ import ResetPassword from "./components/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
-import { SocketProvider } from "./contexts/SocketContext";
 import NotificationsPage from "./components/NotificationsPage";
 
 function AppRoutes() {
@@ -62,9 +61,7 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <SocketProvider>
-          <AppRoutes />
-        </SocketProvider>
+        <AppRoutes />
       </AuthProvider>
     </Router>
   );

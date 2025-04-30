@@ -1,9 +1,8 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import { getUser, createUser, updateUser } from "../services/userService.js";
 import logger from "../utils/logger.js";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import settingsController from "./userSettingsController.js";
 import { Op } from "sequelize";
 
 // Generate JWT token
@@ -50,13 +49,13 @@ const authController = {
       const { name, email, password } = req.body;
 
       // Check if user already exists
-      const existingUser = await User.findOne({ where: { email } });
+      const existingUser = await getUser(null, { email });
       if (existingUser) {
         return res.status(400).json({ error: "Email already registered" });
       }
 
       // Create new user
-      const user = await User.create({
+      const user = await createUser({
         name,
         email,
         password,
@@ -69,7 +68,7 @@ const authController = {
       const token = generateToken(user);
 
       // Remove password from response
-      const userResponse = user.toJSON();
+      const userResponse = { ...user };
       delete userResponse.password;
 
       res.status(201).json({ user: userResponse, token });
@@ -85,7 +84,7 @@ const authController = {
       const { email, password } = req.body;
 
       // Find user
-      const user = await User.findOne({ where: { email } });
+      const user = await getUser(null, { email });
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
@@ -100,7 +99,7 @@ const authController = {
       const token = generateToken(user);
 
       // Remove password from response
-      const userResponse = user.toJSON();
+      const userResponse = { ...user };
       delete userResponse.password;
 
       res.json({ user: userResponse, token });
@@ -131,9 +130,9 @@ const authController = {
       delete updates.password;
 
       // Update user
-      await user.update(updates);
+      const updatedUser = await updateUser(user.id, updates);
 
-      res.json(user);
+      res.json(updatedUser);
     } catch (error) {
       logger.error("User update error:", error);
       res.status(500).json({ error: "Error updating user" });
@@ -156,7 +155,7 @@ const authController = {
       const { email } = req.body;
 
       // Find user
-      const user = await User.findOne({ where: { email } });
+      const user = await getUser(null, { email });
       if (!user) {
         // Don't reveal if email exists
         return res.json({
@@ -212,12 +211,10 @@ const authController = {
       const { token, password } = req.body;
 
       // Find user with valid reset token
-      const user = await User.findOne({
-        where: {
-          resetToken: token,
-          resetTokenExpiry: {
-            [Op.gt]: new Date(),
-          },
+      const user = await getUser(null, {
+        resetToken: token,
+        resetTokenExpiry: {
+          [Op.gt]: new Date(),
         },
       });
 
@@ -228,7 +225,7 @@ const authController = {
       }
 
       // Update password and clear reset token
-      await user.update({
+      await updateUser(user.id, {
         password,
         resetToken: null,
         resetTokenExpiry: null,

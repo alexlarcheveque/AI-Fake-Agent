@@ -1,18 +1,29 @@
-import express from 'express';
-import appointmentController from '../controllers/appointmentController.js';
+import express from "express";
+import asyncHandler from "express-async-handler";
+import {
+  getAppointmentsByLeadId,
+  createAppointment,
+  deleteAppointment,
+} from "../controllers/appointmentController.js";
 
 const router = express.Router();
 
 // Get upcoming appointments
-router.get('/upcoming', appointmentController.getUpcomingAppointments);
-
-// Get appointments for a specific lead
-router.get('/lead/:leadId', appointmentController.getAppointmentsByLead);
+router.get(
+  "/upcoming",
+  asyncHandler((req, res) => getAppointmentsByLeadId(req, res))
+);
 
 // Create new appointment
-router.post('/', appointmentController.createAppointment);
+router.post(
+  "/",
+  asyncHandler((req, res) => createAppointment(req, res))
+);
 
 // Delete appointment
-router.delete('/:id', appointmentController.deleteAppointment);
+router.delete(
+  "/:id",
+  asyncHandler((req, res) => deleteAppointment(req, res))
+);
 
 export default router;

@@ -1,10 +1,14 @@
-import Lead from "./Lead.js";
-import { DataTypes } from "sequelize";
-import sequelize from "../config/database.js";
-import bcrypt from "bcryptjs";
+import { Model, DataTypes } from 'sequelize';
+import bcrypt from 'bcryptjs';
+import sequelize from '../config/database.js';
 
-const User = sequelize.define(
-  "User",
+class User extends Model {
+  async checkPassword(password) {
+    return bcrypt.compare(password, this.password);
+  }
+}
+
+User.init(
   {
     id: {
       type: DataTypes.UUID,
@@ -27,10 +31,6 @@ const User = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
-    avatar: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
     resetToken: {
       type: DataTypes.STRING,
       allowNull: true,
@@ -41,38 +41,23 @@ const User = sequelize.define(
     },
   },
   {
+    sequelize,
+    modelName: 'User',
     hooks: {
       beforeCreate: async (user) => {
         if (user.password) {
-          user.password = await bcrypt.hash(user.password, 10);
+          const salt = await bcrypt.genSalt(10);
+          user.password = await bcrypt.hash(user.password, salt);
         }
       },
       beforeUpdate: async (user) => {
-        if (user.changed("password")) {
-          user.password = await bcrypt.hash(user.password, 10);
+        if (user.changed('password')) {
+          const salt = await bcrypt.genSalt(10);
+          user.password = await bcrypt.hash(user.password, salt);
         }
       },
     },
   }
 );
 
-// Instance method to check password
-User.prototype.checkPassword = async function (password) {
-  return bcrypt.compare(password, this.password);
-};
-
-// Set up associations after export (this avoids circular dependencies)
-setTimeout(() => {
-  
-  
-  User.hasMany(Lead, {
-    foreignKey: 'userId',
-    as: 'leads',
-    onDelete: 'CASCADE'
-  });
-}, 0);
-
-// This relationship will be properly set up in Settings.js
-// User.hasMany(Settings, { foreignKey: 'userId' });
-
-export default User;
+export default User; 

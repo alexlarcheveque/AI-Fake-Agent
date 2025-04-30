@@ -1,44 +1,47 @@
 import express from "express";
+import asyncHandler from "express-async-handler";
 import messageController from "../controllers/messageController.js";
-import Lead from "../models/Lead.js";
-import Message from "../models/Message.js";
 
 const router = express.Router();
 
-// Get all messages with optional status filter
-router.get("/", messageController.getAllMessages);
-
 // Get message history for a lead
-router.get("/lead/:leadId", messageController.getMessages);
+router.get(
+  "/lead/:lead_id",
+  asyncHandler((req, res) =>
+    messageController.getMessagesByLeadIdDescending(req, res)
+  )
+);
 
-// Send a message to a lead (with optional AI response)
-router.post("/send", messageController.sendMessage);
+// Send a message to a lead
+router.post(
+  "/send",
+  asyncHandler((req, res) => messageController.createOutgoingMessage(req, res))
+);
 
 // Webhook for receiving messages (for Twilio)
-router.post("/receive", (req, res) => {
-  console.log("Received incoming message webhook:", {
-    body: req.body,
-    headers: req.headers,
-    method: req.method,
-  });
-
-  messageController.receiveMessage(req, res);
-});
-
+router.post(
+  "/receive",
+  asyncHandler((req, res) => messageController.receiveIncomingMessage(req, res))
+);
 
 // Add this route for status callbacks
-router.post("/status-callback", (req, res) => {
-  console.log("Received Twilio status callback:", {
-    body: req.body,
-    headers: req.headers,
-    method: req.method,
-  });
+router.post(
+  "/status-callback",
+  asyncHandler((req, res) => {
+    console.log("Received Twilio status callback:", {
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+    });
+    // Assuming statusCallback is implemented in messageController
+    messageController.statusCallback(req, res);
+  })
+);
 
-  messageController.statusCallback(req, res);
-});
-
-// Add these routes to your existing messageRoutes.js
-router.get("/stats", messageController.getMessageStats);
-router.get("/scheduled", messageController.getScheduledMessages);
+// Mark message as read
+router.patch(
+  "/messages/:messageId/read",
+  asyncHandler((req, res) => messageController.markAsRead(req, res))
+);
 
 export default router;
