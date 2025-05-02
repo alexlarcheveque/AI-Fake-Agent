@@ -3,11 +3,17 @@ import {
   getLeadById as getLeadByIdService,
   updateLead as updateLeadService,
   deleteLead as deleteLeadService,
+  getLeadsByUserId as getLeadsByUserIdService,
 } from "../services/leadService.js";
+import logger from "../utils/logger.js";
 
 export const getLeadsByUserId = async (req, res) => {
   try {
-    const leads = await getLeadsByUserIdService(req.user.id);
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ message: "User ID not found in request" });
+    }
+    const leads = await getLeadsByUserIdService(userId);
     res.json(leads);
   } catch (error) {
     logger.error("Error fetching leads:", error);

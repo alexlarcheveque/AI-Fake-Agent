@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import supabase from "./config/supabase.js";
 
 // Routes
+import userRoutes from "./routes/userRoutes.js";
 import leadRoutes from "./routes/leadRoutes.js";
 import messageRoutes from "./routes/messageRoutes.js";
 import userSettingsRoutes from "./routes/userSettingsRoutes.js";
@@ -29,7 +30,32 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Make supabase client available globally
+app.set("supabase", supabase);
+
+// ===== Authentication Middleware =====
+app.use(async (req, res, next) => {
+  // Define public paths that don't require authentication
+  const publicPaths = [
+    // Auth related paths
+    "/api/user/register",
+    "/api/user/login",
+    "/api/user/forgot-password",
+    "/api/user/reset-password",
+
+    // Webhook and messaging paths
+    "/api/messages/receive",
+    "/messages/receive",
+    "/sms",
+    "/api/mesages/receive", // Keeping the typo route for compatibility
+
+    // Health check
+    "/test",
+  ];
+});
+
 // ===== API Routes =====
+app.use("/api/user", userRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);

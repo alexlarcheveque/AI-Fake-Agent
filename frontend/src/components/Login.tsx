@@ -1,16 +1,21 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
-interface LoginProps {
-  onLogin: (email: string, password: string) => Promise<void>;
-}
-
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,11 +23,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      await onLogin(email, password);
+      await login(email, password);
       navigate("/");
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.response?.data?.error || err.message || "Failed to sign in");
+      setError(err.message || "Failed to sign in");
     } finally {
       setIsLoading(false);
     }

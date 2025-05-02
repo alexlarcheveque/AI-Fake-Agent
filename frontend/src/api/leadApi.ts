@@ -1,5 +1,12 @@
-import axios from "axios";
 import { Lead } from "../types/lead";
+import apiClient from "./apiClient";
+
+// Fix TypeScript error by declaring type for import.meta.env
+declare global {
+  interface ImportMeta {
+    env: Record<string, string>;
+  }
+}
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -28,6 +35,16 @@ interface BulkImportResponse {
 }
 
 const leadApi = {
+  // Get leads by user ID
+  async getLeadsByUserId(): Promise<Lead[]> {
+    try {
+      return await apiClient.get("/api/leads/user");
+    } catch (error) {
+      console.error("Error fetching leads by user ID:", error);
+      throw error;
+    }
+  },
+
   // Get all leads with pagination and search
   async getLeads(
     page: number = 1,
@@ -40,7 +57,7 @@ const leadApi = {
       .filter(([_, enabled]) => enabled)
       .map(([field]) => (field === "phone" ? "phoneNumber" : field));
 
-    const response = await axios.get(`${BASE_URL}/api/leads`, {
+    return await apiClient.get("/api/leads", {
       params: {
         page,
         limit,
@@ -48,71 +65,74 @@ const leadApi = {
         searchFields: JSON.stringify(searchFields),
       },
     });
-    return response.data;
   },
 
-  // Get a single lead
+  // Get a single lead by ID
   async getLead(id: number): Promise<Lead> {
-    const response = await axios.get(`${BASE_URL}/api/leads/${id}`);
-    return response.data;
+    return await apiClient.get(`/api/leads/${id}`);
   },
 
   // Create a new lead
   async createLead(
     lead: Omit<Lead, "id" | "createdAt" | "updatedAt" | "archived">
   ): Promise<Lead> {
-    const response = await axios.post(`${BASE_URL}/api/leads`, lead);
-    return response.data;
+    return await apiClient.post("/api/leads", lead);
   },
 
   // Update a lead
   async updateLead(id: number, lead: Partial<Lead>): Promise<Lead> {
-    const response = await axios.put(`${BASE_URL}/api/leads/${id}`, lead);
-    return response.data;
-  },
-
-  // Archive a lead
-  async archiveLead(id: string): Promise<void> {
-    await axios.put(`${BASE_URL}/api/leads/${id}/archive`);
+    return await apiClient.put(`/api/leads/${id}`, lead);
   },
 
   // Delete a lead
   async deleteLead(id: number): Promise<void> {
-    await axios.delete(`${BASE_URL}/api/leads/${id}`);
+    await apiClient.delete(`/api/leads/${id}`);
   },
-  
+
+  // Archive a lead
+  async archiveLead(id: string): Promise<void> {
+    await apiClient.put(`/api/leads/${id}/archive`);
+  },
+
   // Import leads from CSV file
   async importLeadsFromCSV(
-    file: File, 
-    aiFeatures?: { 
-      aiAssistantEnabled: boolean; 
-      enableFollowUps: boolean; 
+    file: File,
+    aiFeatures?: {
+      aiAssistantEnabled: boolean;
+      enableFollowUps: boolean;
       firstMessageTiming: string;
     }
   ): Promise<BulkImportResponse> {
     const formData = new FormData();
-    formData.append('file', file);
-    
+    formData.append("file", file);
+
     // Append AI feature settings if provided
     if (aiFeatures) {
-      formData.append('aiAssistantEnabled', aiFeatures.aiAssistantEnabled.toString());
-      formData.append('enableFollowUps', aiFeatures.enableFollowUps.toString());
-      formData.append('firstMessageTiming', aiFeatures.firstMessageTiming);
+      formData.append(
+        "aiAssistantEnabled",
+        aiFeatures.aiAssistantEnabled.toString()
+      );
+      formData.append("enableFollowUps", aiFeatures.enableFollowUps.toString());
+      formData.append("firstMessageTiming", aiFeatures.firstMessageTiming);
     }
-    
-    const response = await axios.post(`${BASE_URL}/api/leads/bulk`, formData, {
+
+    const axios = apiClient.getInstance();
+    const response = await axios.post(`/api/leads/bulk`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        "Content-Type": "multipart/form-data",
       },
     });
-    
+
     return response.data;
   },
-  
+
   // Download lead template
   downloadLeadTemplate(): void {
-    window.open(`${BASE_URL}/api/leads/template`, '_blank');
-  }
+    // For downloads, we don't use the apiClient directly
+    // but we could add the token as a query parameter
+    const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    window.open(`${BASE_URL}/api/leads/template`, "_blank");
+  },
 };
 
 export default leadApi;

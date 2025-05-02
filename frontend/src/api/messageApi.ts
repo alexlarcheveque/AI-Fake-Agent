@@ -2,11 +2,18 @@ import axios from "axios";
 import { Message } from "../types/message";
 import settingsApi from "./settingsApi";
 
+// Fix TypeScript error by declaring type for import.meta.env
+declare global {
+  interface ImportMeta {
+    env: Record<string, string>;
+  }
+}
+
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const messageApi = {
-  // Get messages for a lead
-  async getMessages(leadId: string): Promise<Message[]> {
+  // Get messages for a lead ordered by descending timestamp
+  async getMessagesByLeadIdDescending(leadId: string): Promise<Message[]> {
     try {
       console.log(`Fetching messages for lead ${leadId}`);
       const response = await axios.get(
@@ -20,8 +27,8 @@ const messageApi = {
     }
   },
 
-  // Send a message
-  async sendMessage(
+  // Create an outgoing message
+  async createOutgoingMessage(
     leadId: number,
     text: string,
     isAiGenerated = false
@@ -41,24 +48,84 @@ const messageApi = {
         userSettings = await settingsApi.getSettings();
         console.log("Including user settings with message:", userSettings);
       } catch (settingsError) {
-        console.warn("Failed to get user settings, continuing without them:", settingsError);
+        console.warn(
+          "Failed to get user settings, continuing without them:",
+          settingsError
+        );
       }
 
-      const response = await axios.post(`${BASE_URL}/api/messages/send`, {
-        leadId,
+      const response = await axios.post(`${BASE_URL}/api/messages`, {
+        lead_id: leadId,
         text,
-        isAiGenerated,
-        userSettings // Include user settings with the message
+        is_ai_generated: isAiGenerated,
+        user_settings: userSettings, // Include user settings with the message
       });
 
-      return response.data.message;
+      return response.data;
     } catch (error) {
-      console.error("Error in sendMessage API call:", error);
+      console.error("Error in createOutgoingMessage API call:", error);
       throw error;
     }
   },
 
-  // Test Twilio
+  // Update a message
+  async updateMessage(
+    messageId: string,
+    data: Partial<Message>
+  ): Promise<Message> {
+    try {
+      const response = await axios.put(
+        `${BASE_URL}/api/messages/${messageId}`,
+        {
+          message_id: messageId,
+          data,
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error updating message:", error);
+      throw error;
+    }
+  },
+
+  // Delete a message
+  async deleteMessage(messageId: string): Promise<Message> {
+    try {
+      const response = await axios.delete(
+        `${BASE_URL}/api/messages/${messageId}`,
+        {
+          data: { message_id: messageId },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      throw error;
+    }
+  },
+
+  // Get messages that are overdue
+  async getMessagesThatAreOverdue(): Promise<Message[]> {
+    try {
+      const response = await axios.get(`${BASE_URL}/api/messages/overdue`);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching overdue messages:", error);
+      throw error;
+    }
+  },
+
+  // Mark a message as read
+  async markAsRead(messageId: string): Promise<void> {
+    try {
+      await axios.put(`${BASE_URL}/api/messages/${messageId}/read`);
+    } catch (error) {
+      console.error("Error marking message as read:", error);
+      throw error;
+    }
+  },
+
+  // Test Twilio (keeping this as it might be useful)
   async testTwilio(text: string): Promise<{ message: Message }> {
     const response = await axios.post(`${BASE_URL}/api/messages/test-twilio`, {
       text,

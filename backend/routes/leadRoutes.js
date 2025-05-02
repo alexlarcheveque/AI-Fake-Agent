@@ -7,8 +7,12 @@ import {
   getLeadsByUserId,
 } from "../controllers/leadController.js";
 import asyncHandler from "express-async-handler";
+import protect from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+// Apply protect middleware to all lead routes
+router.use(protect);
 
 // Get all leads
 router.get(

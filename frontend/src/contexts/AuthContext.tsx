@@ -1,111 +1,180 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import axios from "axios";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+import React, { createContext, useContext, useEffect, useState } from "react";
+import supabase from "../config/supabase";
 
 interface User {
   id: string;
-  name: string;
   email: string;
-  avatar?: string;
+  name?: string;
 }
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  getToken: () => Promise<string | null>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  token: null,
+  isLoading: true,
+  login: async () => {},
+  logout: async () => {},
+  getToken: async () => null,
+});
+
+export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored token on initial load
-    const initAuth = async () => {
-      console.log("Initializing auth...");
-      const token = localStorage.getItem("token");
+    // Check for existing session on component mount
+    const checkSession = async () => {
+      setIsLoading(true);
 
-      if (token) {
-        console.log("Token found in localStorage");
-        try {
-          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-          console.log("Making request to /auth/me...");
+      try {
+        // Get the current session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-          const response = await axios.get(`${API_URL}/api/auth/me`);
-          console.log("Auth verification successful:", response.data);
-          setUser(response.data);
-        } catch (error) {
-          console.error("Auth verification failed:", error);
-          localStorage.removeItem("token");
-          delete axios.defaults.headers.common["Authorization"];
+        if (session) {
+          setToken(session.access_token);
+
+          // Get user data
+          const {
+            data: { user },
+          } = await supabase.auth.getUser(session.access_token);
+
+          if (user) {
+            setUser({
+              id: user.id,
+              email: user.email || "",
+              name: user.user_metadata?.name || "",
+            });
+          }
         }
-      } else {
-        console.log("No token found in localStorage");
+      } catch (error) {
+        console.error("Error checking authentication session:", error);
+        // Clear potentially corrupted auth state
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem("token");
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     };
 
-    initAuth();
+    checkSession();
+
+    // Subscribe to auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        setToken(session.access_token);
+
+        // Store token in localStorage for API calls
+        localStorage.setItem("token", session.access_token);
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser(session.access_token);
+
+        if (user) {
+          setUser({
+            id: user.id,
+            email: user.email || "",
+            name: user.user_metadata?.name || "",
+          });
+        }
+      } else {
+        // If no session, clear the auth state
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem("token");
+      }
+    });
+
+    // Clean up subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await axios.post(`${API_URL}/api/auth/login`, {
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const { user, token } = response.data;
-    setUser(user);
-    localStorage.setItem("token", token);
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      if (error) throw error;
+
+      // The onAuthStateChange handler will update the state
+    } catch (error) {
+      console.error("Login error:", error);
+      throw error;
+    }
   };
 
-  const register = async (name: string, email: string, password: string) => {
-    const response = await axios.post(`${API_URL}/api/auth/register`, {
-      name,
-      email,
-      password,
-    });
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
 
-    const { user, token } = response.data;
-    setUser(user);
-    localStorage.setItem("token", token);
-    axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      // Clear auth state
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem("token");
+    } catch (error) {
+      console.error("Logout error:", error);
+      throw error;
+    }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("token");
-    delete axios.defaults.headers.common["Authorization"];
+  const getToken = async (): Promise<string | null> => {
+    // If we already have a token in state, return it
+    if (token) return token;
+
+    try {
+      // Try to get a fresh token
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const currentToken = session?.access_token || null;
+
+      // Update state and localStorage if token exists
+      if (currentToken) {
+        setToken(currentToken);
+        localStorage.setItem("token", currentToken);
+      }
+
+      return currentToken;
+    } catch (error) {
+      console.error("Error getting token:", error);
+      return null;
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        token,
         isLoading,
         login,
-        register,
         logout,
+        getToken,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 };
