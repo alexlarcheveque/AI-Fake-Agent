@@ -56,7 +56,6 @@ interface FormData extends Omit<LeadFormData, 'phoneNumber'> {
   phoneNumber: string;
   messageTime: string;
   aiAssistantEnabled: boolean;
-  enableFollowUps: boolean;
   firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   messageCount: number;
   context: string;

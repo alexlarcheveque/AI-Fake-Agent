@@ -2,17 +2,13 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import cookieParser from "cookie-parser";
-import supabase from "./config/supabase.js";
 
 // Routes
-import leadRoutes from "./routes/leadRoutes.js";
-import messageRoutes from "./routes/messageRoutes.js";
-import userSettingsRoutes from "./routes/userSettingsRoutes.js";
-import appointmentRoutes from "./routes/appointmentRoutes.js";
-import notificationRoutes from "./routes/notificationRoutes.js";
-
-// Controllers
-import messageController from "./controllers/messageController.js";
+import leadRoutes from "./routes/leadRoutes";
+import messageRoutes from "./routes/messageRoutes";
+import userSettingsRoutes from "./routes/userSettingsRoutes";
+import appointmentRoutes from "./routes/appointmentRoutes";
+import notificationRoutes from "./routes/notificationRoutes";
 
 // Initialize Express app
 const app = express();
@@ -35,65 +31,6 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
-
-// Test form endpoint
-app.post("/api/test-form", (req, res) => {
-  console.log("Test form data received:", req.body);
-  res.json({ received: req.body });
-});
-
-// ===== Messaging Webhook Routes =====
-// Handle API prefixed webhook
-app.post("/api/messages/receive", (req, res) => {
-  if (process.env.DEBUG_REQUESTS === "true") {
-    console.log("Received webhook at /api/messages/receive");
-  }
-  messageController.receiveIncomingMessage(req, res);
-});
-
-// Handle webhook without API prefix (for Twilio)
-app.post("/messages/receive", (req, res) => {
-  if (process.env.DEBUG_REQUESTS === "true") {
-    console.log("========== INCOMING WEBHOOK ==========");
-    console.log("Body:", req.body);
-    console.log("From:", req.body.From);
-    console.log("To:", req.body.To);
-    console.log("Body:", req.body.Body);
-    console.log("MessageSid:", req.body.MessageSid);
-    console.log("======================================");
-  } else {
-    console.log(
-      `[${new Date().toISOString()}] SMS received: ${
-        req.body.From || "unknown"
-      } -> ${req.body.To || "unknown"}`
-    );
-  }
-
-  messageController.receiveIncomingMessage(req, res);
-});
-
-// Handle SMS endpoint
-app.post("/sms", (req, res) => {
-  if (process.env.DEBUG_REQUESTS === "true") {
-    console.log("Received SMS webhook:", req.body);
-  } else {
-    console.log(`[${new Date().toISOString()}] SMS received via /sms endpoint`);
-  }
-  messageController.receiveIncomingMessage(req, res);
-});
-
-// Handle typo in URL (backward compatibility)
-app.post("/api/mesages/receive", (req, res) => {
-  if (process.env.DEBUG_REQUESTS === "true") {
-    console.log("Received webhook at misspelled URL");
-  }
-  messageController.receiveIncomingMessage(req, res);
-});
-
-// ===== Health Check =====
-app.get("/test", (req, res) => {
-  res.send("Server is running");
-});
 
 // ===== Server Initialization =====
 const server = http.createServer(app);
