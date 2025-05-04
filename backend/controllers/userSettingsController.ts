@@ -8,7 +8,12 @@ import logger from "../utils/logger.ts";
 
 export const getUserSettings = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     const userSettings = await getUserSettingsService(userId);
     res.json(userSettings);
   } catch (error) {
@@ -21,7 +26,14 @@ export const getUserSettings = async (req, res) => {
 
 export const createUserSettings = async (req, res) => {
   try {
-    const { userId, settings } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    const settings = req.body.settings || req.body;
+
     const userSettings = await createUserSettingsService(userId, settings);
     res.json(userSettings);
   } catch (error) {
@@ -34,8 +46,14 @@ export const createUserSettings = async (req, res) => {
 
 export const updateUserSettings = async (req, res) => {
   try {
-    const { userId } = req.params;
-    const settings = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    const settings = req.body.settings || req.body;
+
     const userSettings = await updateUserSettingsService(userId, settings);
     res.json(userSettings);
   } catch (error) {
@@ -48,7 +66,12 @@ export const updateUserSettings = async (req, res) => {
 
 export const deleteUserSettings = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     await deleteUserSettingsService(userId);
     res.json({ success: true });
   } catch (error) {
@@ -56,50 +79,5 @@ export const deleteUserSettings = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error deleting user settings", error: error.message });
-  }
-};
-
-// Get settings for the currently authenticated user
-export const getCurrentUserSettings = async (req, res) => {
-  try {
-    // Get the authenticated user's ID from the request
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ message: "User not authenticated" });
-    }
-
-    logger.info(`Getting settings for authenticated user: ${userId}`);
-    const userSettings = await getUserSettingsService(userId);
-    res.json(userSettings);
-  } catch (error) {
-    logger.error(`Error in getCurrentUserSettings: ${error.message}`);
-    res.status(500).json({
-      message: "Error getting current user settings",
-      error: error.message,
-    });
-  }
-};
-
-// Update settings for the currently authenticated user
-export const updateCurrentUserSettings = async (req, res) => {
-  try {
-    // Get the authenticated user's ID from the request
-    const userId = req.user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ message: "User not authenticated" });
-    }
-
-    const settings = req.body;
-    logger.info(`Updating settings for authenticated user: ${userId}`);
-    const userSettings = await updateUserSettingsService(userId, settings);
-    res.json(userSettings);
-  } catch (error) {
-    logger.error(`Error in updateCurrentUserSettings: ${error.message}`);
-    res.status(500).json({
-      message: "Error updating current user settings",
-      error: error.message,
-    });
   }
 };

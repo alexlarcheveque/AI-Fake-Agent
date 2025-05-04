@@ -22,10 +22,7 @@ export const getNotificationsByUserId = async (req, res) => {
     }
     const notifications = await getNotificationsByUserIdService(userId);
 
-    return res.json({
-      items: notifications,
-      count: notifications.length,
-    });
+    return res.json(notifications);
   } catch (error) {
     console.error("Error in getNotificationsByUserId:", error);
     return res.status(500).json({ error: error.message });

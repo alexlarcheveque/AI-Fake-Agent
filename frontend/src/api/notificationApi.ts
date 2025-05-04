@@ -25,9 +25,17 @@ class NotificationApi {
   ): Promise<Notification> {
     try {
       const data = await apiClient.post("/api/notifications", notificationData);
+
+      console.log("notification data", data);
+
       return {
-        ...data,
-        timestamp: new Date(data.createdAt),
+        id: data.id,
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        timestamp: data.createdAt,
+        isRead: data.is_read,
+        metadata: data.metadata,
       };
     } catch (error) {
       console.error("Error creating notification:", error);

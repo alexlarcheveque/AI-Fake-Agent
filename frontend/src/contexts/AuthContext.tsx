@@ -1,10 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useMemo,
-} from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import supabase from "../config/supabase";
 
 interface User {
@@ -32,9 +26,6 @@ const AuthContext = createContext<AuthContextType>({
   getToken: async () => null,
 });
 
-// Create a single instance of auth state to share across the app
-let globalAuthState: AuthContextType | null = null;
-
 export const useAuth = () => {
   const context = useContext(AuthContext);
 
@@ -43,17 +34,7 @@ export const useAuth = () => {
   }
 
   // Return the global instance if available, otherwise use context
-  return globalAuthState || context;
-};
-
-// Create a wrapper component to consume auth context once and pass it to children
-export const WithAuth = ({
-  children,
-}: {
-  children: (auth: AuthContextType) => React.ReactNode;
-}) => {
-  const auth = useAuth();
-  return <>{children(auth)}</>;
+  return context;
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -62,34 +43,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Add safety timeout to prevent infinite loading
+  useEffect(() => {
+    // Set a timeout to force loading to false after 5 seconds
+    // This ensures we don't get stuck in a loading state if there's a problem
+    const safetyTimeout = setTimeout(() => {
+      if (isLoading && !isInitialized) {
+        console.warn(
+          "Auth initialization timed out - forcing loading state to false"
+        );
+        setIsLoading(false);
+        setIsInitialized(true);
+      }
+    }, 5000);
+
+    return () => clearTimeout(safetyTimeout);
+  }, [isLoading, isInitialized]);
 
   useEffect(() => {
     // Check for existing session on component mount
     const checkSession = async () => {
       setIsLoading(true);
+      console.log("Checking auth session...");
 
       try {
         // Get the current session
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("Supabase session error:", error);
+          throw error;
+        }
+
+        console.log("Session check result:", data);
+        const { session } = data;
 
         if (session) {
+          console.log("Active session found");
           setToken(session.access_token);
 
           // Get user data
-          const {
-            data: { user },
-          } = await supabase.auth.getUser(session.access_token);
+          const userResponse = await supabase.auth.getUser(
+            session.access_token
+          );
+
+          if (userResponse.error) {
+            console.error("Error getting user:", userResponse.error);
+            throw userResponse.error;
+          }
+
+          const { user } = userResponse.data;
 
           if (user) {
+            console.log("User data retrieved:", user.id);
             setUser({
               id: user.id,
               email: user.email || "",
               name: user.user_metadata?.name || "",
               avatar: user.user_metadata?.avatar || "",
             });
+          } else {
+            console.log("No user data in the session");
+            setUser(null);
           }
+        } else {
+          console.log("No active session");
+          setUser(null);
+          setToken(null);
         }
       } catch (error) {
         console.error("Error checking authentication session:", error);
@@ -98,7 +120,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setToken(null);
         localStorage.removeItem("token");
       } finally {
+        console.log("Auth check completed, setting isLoading to false");
         setIsLoading(false);
+        setIsInitialized(true);
       }
     };
 
@@ -108,30 +132,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state changed:", event);
+
       if (session) {
+        console.log("New session established");
         setToken(session.access_token);
 
         // Store token in localStorage for API calls
         localStorage.setItem("token", session.access_token);
 
-        const {
-          data: { user },
-        } = await supabase.auth.getUser(session.access_token);
+        try {
+          const userResponse = await supabase.auth.getUser(
+            session.access_token
+          );
 
-        if (user) {
-          setUser({
-            id: user.id,
-            email: user.email || "",
-            name: user.user_metadata?.name || "",
-            avatar: user.user_metadata?.avatar || "",
-          });
+          if (userResponse.error) {
+            console.error(
+              "Error getting user after state change:",
+              userResponse.error
+            );
+            throw userResponse.error;
+          }
+
+          const { user } = userResponse.data;
+
+          if (user) {
+            console.log("User data updated after state change");
+            setUser({
+              id: user.id,
+              email: user.email || "",
+              name: user.user_metadata?.name || "",
+              avatar: user.user_metadata?.avatar || "",
+            });
+          }
+        } catch (error) {
+          console.error("Error processing auth state change:", error);
+          setUser(null);
+          setToken(null);
         }
       } else {
         // If no session, clear the auth state
+        console.log("Session ended, clearing auth state");
         setUser(null);
         setToken(null);
         localStorage.removeItem("token");
       }
+
+      // Always ensure loading state is updated
+      setIsLoading(false);
     });
 
     // Clean up subscription on unmount
@@ -142,31 +190,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const login = async (email: string, password: string) => {
     try {
+      setIsLoading(true);
+      console.log("Attempting login...");
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Login failed:", error);
+        throw error;
+      }
 
+      console.log("Login successful");
       // The onAuthStateChange handler will update the state
     } catch (error) {
       console.error("Login error:", error);
+      // Ensure loading state is updated even on error
+      setIsLoading(false);
       throw error;
     }
   };
 
   const logout = async () => {
     try {
-      await supabase.auth.signOut();
+      setIsLoading(true);
+      console.log("Logging out...");
+
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("Logout error from Supabase:", error);
+        throw error;
+      }
 
       // Clear auth state
+      console.log("Logout successful, clearing state");
       setUser(null);
       setToken(null);
       localStorage.removeItem("token");
     } catch (error) {
       console.error("Logout error:", error);
       throw error;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -175,11 +243,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     if (token) return token;
 
     try {
+      console.log("Getting fresh token...");
       // Try to get a fresh token
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const currentToken = session?.access_token || null;
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error("Error getting session for token:", error);
+        throw error;
+      }
+
+      const currentToken = data.session?.access_token || null;
+      console.log("Token retrieved:", currentToken ? "Yes" : "No");
 
       // Update state and localStorage if token exists
       if (currentToken) {
@@ -203,14 +277,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     logout,
     getToken,
   };
-
-  // Update the global auth state whenever context changes
-  useEffect(() => {
-    globalAuthState = authValue;
-    return () => {
-      globalAuthState = null;
-    };
-  }, [user, token, isLoading]);
 
   return (
     <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>

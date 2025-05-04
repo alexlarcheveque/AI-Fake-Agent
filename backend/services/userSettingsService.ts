@@ -1,14 +1,14 @@
 import supabase from "../config/supabase.ts";
 import {
-  UserSettings,
   UserSettingsInsert,
+  UserSettingsModel,
   UserSettingsUtils,
 } from "../models/UserSettings.ts";
 import logger from "../utils/logger.ts";
 
 export const getUserSettings = async (
   userId: string
-): Promise<UserSettings[]> => {
+): Promise<UserSettingsModel> => {
   try {
     logger.info(`Fetching user settings for userId: ${userId}`);
 
@@ -16,101 +16,133 @@ export const getUserSettings = async (
     const { data, error } = await supabase
       .from("user_settings")
       .select("*")
-      .eq("uuid", userId);
+      .eq("uuid", userId)
+      .single();
 
     if (error) {
+      // If the error is just that no rows were returned, create default settings
+      if (error.code === "PGRST116") {
+        logger.info(
+          `No settings found for userId: ${userId}, creating defaults`
+        );
+        return await createUserSettings(userId);
+      }
+
       logger.error(`Error fetching user settings: ${error.message}`);
       throw new Error(error.message);
     }
 
-    // If no settings exist, create default settings
-    if (!data || data.length === 0) {
+    // If no data returned for some reason
+    if (!data) {
       logger.info(`No settings found for userId: ${userId}, creating defaults`);
-      return await createUserSettings(
-        userId,
-        UserSettingsUtils.createDefault(userId)
-      );
+      return await createUserSettings(userId);
     }
 
-    logger.info(`Found ${data.length} settings for userId: ${userId}`);
-    return data.map((settings) => UserSettingsUtils.toModel(settings));
+    logger.info(`Found settings for userId: ${userId}`);
+    return UserSettingsUtils.toModel(data);
   } catch (error) {
     logger.error(`Error in getUserSettings: ${error.message}`);
     throw error;
   }
 };
 
-export interface CreateUserSettingsParams {
-  agentName?: string | null;
-  companyName?: string | null;
-  agentState?: string | null;
-  agentCity?: string[] | null;
-  aiAssistantEnabled?: boolean;
-  followUpIntervalNew?: number | null;
-  followUpIntervalInConversation?: number | null;
-  followUpIntervalQualified?: number | null;
-  followUpIntervalAppointmentSet?: number | null;
-  followUpIntervalConverted?: number | null;
-  followUpIntervalInactive?: number | null;
-}
-
 export const createUserSettings = async (
   userId: string,
-  settings: CreateUserSettingsParams
-): Promise<UserSettings[]> => {
-  const userSettingsData: UserSettingsInsert = {
-    uuid: userId,
-    agent_name: settings.agentName,
-    company_name: settings.companyName,
-    agent_state: settings.agentState,
-    agent_city: settings.agentCity,
-    follow_up_interval_new: settings.followUpIntervalNew,
-    follow_up_interval_in_converesation:
-      settings.followUpIntervalInConversation,
-    follow_up_interval_inactive: settings.followUpIntervalInactive,
-    // Handle any missing fields if needed
-  };
+  settings?: UserSettingsModel
+): Promise<UserSettingsModel> => {
+  try {
+    logger.info(`Creating user settings for userId: ${userId}`);
+    logger.info(`Settings: ${JSON.stringify(settings)}`);
 
-  const { data, error } = await supabase
-    .from("user_settings")
-    .insert([userSettingsData])
-    .select();
+    const userSettingsData: UserSettingsInsert = {
+      uuid: userId,
+      agent_name: settings?.agentName || "",
+      company_name: settings?.companyName || "",
+      agent_state: settings?.agentState || "",
+      follow_up_interval_new: settings?.followUpIntervalNew || 2,
+      follow_up_interval_in_converesation:
+        settings?.followUpIntervalInConversation || 5,
+      follow_up_interval_inactive: settings?.followUpIntervalInactive || 30,
+    };
 
-  if (error) throw new Error(error.message);
-  return data.map((settings) => UserSettingsUtils.toModel(settings));
+    logger.info(`Inserting settings data: ${JSON.stringify(userSettingsData)}`);
+
+    const { data, error } = await supabase
+      .from("user_settings")
+      .insert([userSettingsData])
+      .select()
+      .single();
+
+    if (error) {
+      logger.error(`Error creating user settings: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      logger.error("No data returned after creating user settings");
+      throw new Error("Failed to create user settings");
+    }
+
+    logger.info(`Successfully created user settings for userId: ${userId}`);
+    return UserSettingsUtils.toModel(data);
+  } catch (error) {
+    logger.error(`Error in createUserSettings: ${error.message}`);
+    throw error;
+  }
 };
 
 export const updateUserSettings = async (
   userId: string,
-  settings: Partial<CreateUserSettingsParams>
-): Promise<UserSettings[]> => {
-  const userSettingsData: Partial<UserSettingsInsert> = {};
+  settings: Partial<UserSettingsModel>
+): Promise<UserSettingsModel> => {
+  try {
+    logger.info(`Updating user settings for userId: ${userId}`);
+    logger.info(`Settings: ${JSON.stringify(settings)}`);
 
-  if (settings.agentName !== undefined)
-    userSettingsData.agent_name = settings.agentName;
-  if (settings.companyName !== undefined)
-    userSettingsData.company_name = settings.companyName;
-  if (settings.agentState !== undefined)
-    userSettingsData.agent_state = settings.agentState;
-  if (settings.agentCity !== undefined)
-    userSettingsData.agent_city = settings.agentCity;
-  if (settings.followUpIntervalNew !== undefined)
-    userSettingsData.follow_up_interval_new = settings.followUpIntervalNew;
-  if (settings.followUpIntervalInConversation !== undefined)
-    userSettingsData.follow_up_interval_in_converesation =
-      settings.followUpIntervalInConversation;
-  if (settings.followUpIntervalInactive !== undefined)
-    userSettingsData.follow_up_interval_inactive =
-      settings.followUpIntervalInactive;
+    const currentSettings = await getUserSettings(userId);
+    logger.info(`Current settings: ${JSON.stringify(currentSettings)}`);
 
-  const { data, error } = await supabase
-    .from("user_settings")
-    .update(userSettingsData)
-    .eq("uuid", userId)
-    .select();
+    const updatedSettings = {
+      ...currentSettings,
+      ...settings,
+    };
+    logger.info(`Merged settings: ${JSON.stringify(updatedSettings)}`);
 
-  if (error) throw new Error(error.message);
-  return data.map((settings) => UserSettingsUtils.toModel(settings));
+    const settingsToInsert: UserSettingsInsert = {
+      uuid: userId,
+      agent_name: updatedSettings.agentName,
+      company_name: updatedSettings.companyName,
+      agent_state: updatedSettings.agentState,
+      follow_up_interval_new: updatedSettings.followUpIntervalNew,
+      follow_up_interval_in_converesation:
+        updatedSettings.followUpIntervalInConversation,
+      follow_up_interval_inactive: updatedSettings.followUpIntervalInactive,
+    };
+    logger.info(`Settings to update: ${JSON.stringify(settingsToInsert)}`);
+
+    const { data, error } = await supabase
+      .from("user_settings")
+      .update(settingsToInsert)
+      .eq("uuid", userId)
+      .select()
+      .single();
+
+    if (error) {
+      logger.error(`Error updating user settings: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      logger.error("No data returned after updating user settings");
+      throw new Error("Failed to update user settings");
+    }
+
+    logger.info(`Successfully updated user settings for userId: ${userId}`);
+    return UserSettingsUtils.toModel(data);
+  } catch (error) {
+    logger.error(`Error in updateUserSettings: ${error.message}`);
+    throw error;
+  }
 };
 
 export const deleteUserSettings = async (userId: string): Promise<void> => {
