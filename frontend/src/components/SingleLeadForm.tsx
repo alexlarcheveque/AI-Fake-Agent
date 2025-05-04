@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import leadApi from "../api/leadApi";
 import { Lead, LeadStatus, LeadFormData, LeadType } from "../types/lead";
-import { useNavigate } from "react-router-dom";
 
 // Validation constants
 const VALIDATION_RULES = {

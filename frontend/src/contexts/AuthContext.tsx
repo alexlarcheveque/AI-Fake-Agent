@@ -1,13 +1,20 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+} from "react";
 import supabase from "../config/supabase";
 
 interface User {
   id: string;
   email: string;
   name?: string;
+  avatar?: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
@@ -25,7 +32,29 @@ const AuthContext = createContext<AuthContextType>({
   getToken: async () => null,
 });
 
-export const useAuth = () => useContext(AuthContext);
+// Create a single instance of auth state to share across the app
+let globalAuthState: AuthContextType | null = null;
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+
+  // Return the global instance if available, otherwise use context
+  return globalAuthState || context;
+};
+
+// Create a wrapper component to consume auth context once and pass it to children
+export const WithAuth = ({
+  children,
+}: {
+  children: (auth: AuthContextType) => React.ReactNode;
+}) => {
+  const auth = useAuth();
+  return <>{children(auth)}</>;
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -58,6 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               id: user.id,
               email: user.email || "",
               name: user.user_metadata?.name || "",
+              avatar: user.user_metadata?.avatar || "",
             });
           }
         }
@@ -93,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             id: user.id,
             email: user.email || "",
             name: user.user_metadata?.name || "",
+            avatar: user.user_metadata?.avatar || "",
           });
         }
       } else {
@@ -163,18 +194,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  // Create auth context value object
+  const authValue: AuthContextType = {
+    user,
+    token,
+    isLoading,
+    login,
+    logout,
+    getToken,
+  };
+
+  // Update the global auth state whenever context changes
+  useEffect(() => {
+    globalAuthState = authValue;
+    return () => {
+      globalAuthState = null;
+    };
+  }, [user, token, isLoading]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        login,
-        logout,
-        getToken,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
   );
 };

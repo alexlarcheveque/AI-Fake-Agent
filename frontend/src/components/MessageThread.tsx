@@ -29,25 +29,6 @@ interface MessageThreadProps {
   isOpen?: boolean;
 }
 
-// Define interface for socket message data
-interface SocketMessageData {
-  leadId: number;
-  message: Message;
-}
-
-interface SocketStatusData {
-  leadId: number;
-  messageId: number;
-  status:
-    | "queued"
-    | "sending"
-    | "sent"
-    | "delivered"
-    | "failed"
-    | "undelivered"
-    | "read";
-}
-
 const MessageThread: React.FC<MessageThreadProps> = ({
   leadId,
   leadName,
@@ -170,22 +151,28 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     const fetchData = async () => {
       try {
         setError(null);
-        // Fetch messages, lead data, and user settings in parallel
-        const [fetchedMessages, lead, userSettings] = await Promise.all([
-          messageApi.getMessages(leadId.toString()),
-          leadApi.getLead(leadId),
-          settingsApi.getSettings(), // Get the user settings from Settings page
-        ]);
+
+        console.log("leadId", leadId);
+
+        const lead = await leadApi.getLead(leadId);
+        console.log("lead", lead);
+
+        const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
+          leadId
+        );
+        console.log("fetchedMessages", fetchedMessages);
 
         setMessages(fetchedMessages);
 
-        // Check for user settings first, then fall back to lead settings
-        // This ensures the global settings from the Settings page take precedence
-        setAiAssistantEnabled(
-          userSettings.aiAssistantEnabled !== undefined
-            ? userSettings.aiAssistantEnabled
-            : lead.aiAssistantEnabled
-        );
+        // Get user settings using the updated settingsApi that doesn't rely on localStorage
+        let userSettings;
+        try {
+          userSettings = await settingsApi.getSettings();
+        } catch (settingsError) {
+          console.warn("Could not fetch user settings:", settingsError);
+          // If we can't get settings, default to the lead settings
+          userSettings = { aiAssistantEnabled: lead.aiAssistantEnabled };
+        }
       } catch (err) {
         setError("Failed to load messages");
         console.error("Error fetching data:", err);
@@ -252,7 +239,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     setError(null);
 
     try {
-      const fetchedMessages = await messageApi.getMessages(leadId.toString());
+      const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
+        leadId.toString()
+      );
       setMessages(fetchedMessages);
 
       // Scroll to bottom after messages load
@@ -380,8 +369,8 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         typeof leadId === "string" ? parseInt(leadId, 10) : leadId;
 
       // Send the message
-      const sentMessage = await messageApi.sendMessage(
-        numericLeadId.toString(),
+      const sentMessage = await messageApi.createOutgoingMessage(
+        numericLeadId,
         text
       );
       console.log("Message sent successfully:", sentMessage);

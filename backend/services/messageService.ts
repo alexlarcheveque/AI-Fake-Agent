@@ -52,16 +52,51 @@ export const getMessagesByLeadId = async (
 };
 
 export const getMessagesByLeadIdDescending = async (
-  leadId: number
+  leadId: number,
+  userId: number
 ): Promise<Message[]> => {
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: false });
+  try {
+    // Debugging information
+    console.log(`Getting messages for leadId: ${leadId}, userId: ${userId}`);
 
-  if (error) throw new Error(error.message);
-  return data.map((msg) => MessageUtils.toModel(msg));
+    // First, check if the lead belongs to the user
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("id", leadId)
+      .eq("user_uuid", userId)
+      .single();
+
+    if (leadError) {
+      if (leadError.code === "PGRST116") {
+        // Not found
+        console.error(`Lead ${leadId} does not belong to user ${userId}`);
+        throw new Error(
+          `Lead ${leadId} not found or does not belong to the user`
+        );
+      }
+      console.error(`Supabase lead query error: ${leadError.message}`);
+      throw new Error(leadError.message);
+    }
+
+    // Get all messages for this lead (without user_id filter since it might not exist)
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(`Supabase messages query error: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    console.log(`Found ${data.length} messages for lead ${leadId}`);
+    return data.map((msg) => MessageUtils.toModel(msg));
+  } catch (error) {
+    console.error(`Error in getMessagesByLeadIdDescending: ${error.message}`);
+    throw error;
+  }
 };
 
 export const getMessagesThatAreOverdue = async (): Promise<Message[]> => {

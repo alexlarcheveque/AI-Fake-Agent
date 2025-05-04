@@ -7,13 +7,13 @@ export type NotificationUpdate = TablesUpdate<"notifications">;
 
 // Extend the database type with additional properties/methods
 export interface Notification
-  extends Omit<NotificationRow, "created_at" | "upated_at"> {
+  extends Omit<NotificationRow, "created_at" | "upated_at" | "messsage"> {
   // Override date properties to allow Date objects
   created_at: string | Date;
-  updated_at?: string | Date | null; // Naming fixed from upated_at to updated_at
+  updated_at?: string | Date | null; // Renamed from upated_at to updated_at for consistency
+  message?: string | null; // Using message instead of messsage (typo in DB)
 
   // Additional properties
-  message?: string | null; // Fixed typo from messsage to message
   read?: boolean | null; // For compatibility with existing code using read instead of is_read
   user_id?: string; // For compatibility with old code
 }

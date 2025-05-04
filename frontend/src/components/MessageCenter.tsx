@@ -17,77 +17,83 @@ const MessagesCenter: React.FC = () => {
   useEffect(() => {
     const loadInitialData = async () => {
       const leadIdParam = searchParams.get("leadId");
-      
+
       if (leadIdParam) {
         const leadId = parseInt(leadIdParam, 10);
         if (!isNaN(leadId)) {
           setSelectedLeadId(leadId);
-          
+
           // Immediately fetch this specific lead before anything else
           try {
             const leadData = await leadApi.getLead(leadId);
             if (leadData) {
               // Add this specific lead to our state
               setLeads([leadData]);
-              
+
               // Then continue with regular lead loading
-              fetchPagedLeads(currentPage);
+              fetchLeads();
             }
           } catch (err) {
             console.error("Error fetching specific lead:", err);
             setError("Failed to load lead details");
             // Continue with regular lead loading even if specific lead fails
-            fetchPagedLeads(currentPage);
+            fetchLeads();
           }
         } else {
           // No valid leadId, just load regular leads
-          fetchPagedLeads(currentPage);
+          fetchLeads();
         }
       } else {
         // No leadId param, just load regular leads
-        fetchPagedLeads(currentPage);
+        fetchLeads();
       }
     };
-    
+
     loadInitialData();
-    
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on component mount
-  
+
   // Update leads when page changes
   useEffect(() => {
     // Skip on initial mount as it's handled by the first effect
     if (!isLoading) {
-      fetchPagedLeads(currentPage);
+      fetchLeads();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
-  // Helper function to fetch leads by page
-  const fetchPagedLeads = async (page: number) => {
+  // Helper function to fetch leads
+  const fetchLeads = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await leadApi.getLeads(page, 10);
-      
+      const response = await leadApi.getLeads();
+
       // Preserve the specific lead if it exists
       if (selectedLeadId) {
-        const existingSpecificLead = leads.find(l => Number(l.id) === selectedLeadId);
-        if (existingSpecificLead && !response.leads.some(l => Number(l.id) === selectedLeadId)) {
+        const existingSpecificLead = leads.find(
+          (l) => Number(l.id) === selectedLeadId
+        );
+        if (
+          existingSpecificLead &&
+          !response.some((l) => Number(l.id) === selectedLeadId)
+        ) {
           // Make sure we don't lose our selected lead when changing pages
-          setLeads([...response.leads, existingSpecificLead]);
+          setLeads([...response, existingSpecificLead]);
         } else {
-          setLeads(response.leads);
+          setLeads(response);
         }
       } else {
-        setLeads(response.leads);
+        setLeads(response);
         // If no lead is selected and we have leads, select the first one
-        if (response.leads.length > 0 && !selectedLeadId) {
-          setSelectedLeadId(Number(response.leads[0].id));
+        if (response.length > 0 && !selectedLeadId) {
+          setSelectedLeadId(Number(response[0].id));
         }
       }
-      
-      setTotalPages(response.totalPages);
+
+      // Pagination is no longer needed as we're getting all leads
+      setTotalPages(1);
     } catch (err) {
       setError("Failed to load leads");
       console.error("Error fetching leads:", err);
@@ -99,28 +105,36 @@ const MessagesCenter: React.FC = () => {
   // Listen for lead-updated custom events
   useEffect(() => {
     const handleLeadUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{leadId: number, nextScheduledMessage: string | null}>;
+      const customEvent = event as CustomEvent<{
+        leadId: number;
+        nextScheduledMessage: string | null;
+      }>;
       const { leadId, nextScheduledMessage } = customEvent.detail;
-      
-      setLeads(prevLeads => 
-        prevLeads.map(lead => 
-          Number(lead.id) === leadId 
-            ? { ...lead, nextScheduledMessage: nextScheduledMessage || undefined } 
+
+      setLeads((prevLeads) =>
+        prevLeads.map((lead) =>
+          Number(lead.id) === leadId
+            ? {
+                ...lead,
+                nextScheduledMessage: nextScheduledMessage || undefined,
+              }
             : lead
         )
       );
     };
-    
-    window.addEventListener('lead-updated', handleLeadUpdated);
+
+    window.addEventListener("lead-updated", handleLeadUpdated);
     return () => {
-      window.removeEventListener('lead-updated', handleLeadUpdated);
+      window.removeEventListener("lead-updated", handleLeadUpdated);
     };
   }, []);
 
   // Find the selected lead once to avoid repeated lookups
-  const selectedLead = selectedLeadId ? leads.find((l) => Number(l.id) === selectedLeadId) : undefined;
+  const selectedLead = selectedLeadId
+    ? leads.find((l) => Number(l.id) === selectedLeadId)
+    : undefined;
 
-  console.log('selectedLead', selectedLead);
+  console.log("selectedLead", selectedLead);
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col p-6">
@@ -184,35 +198,6 @@ const MessagesCenter: React.FC = () => {
                 </div>
               </div>
             )}
-
-            {/* Pagination */}
-            {!isLoading && totalPages > 1 && (
-              <div className="p-4 border-t border-gray-200 flex-shrink-0">
-                <div className="flex justify-between items-center">
-                  <button
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.max(prev - 1, 1))
-                    }
-                    disabled={currentPage === 1}
-                    className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50"
-                  >
-                    Previous
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1 text-sm bg-white border rounded disabled:opacity-50"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Main Content - Message Thread */}
@@ -220,13 +205,18 @@ const MessagesCenter: React.FC = () => {
             {selectedLeadId ? (
               <MessageThread
                 leadId={selectedLeadId}
-                leadName={selectedLead?.name || 'Unknown Lead'}
+                leadName={selectedLead?.name || "Unknown Lead"}
                 leadEmail={selectedLead?.email}
                 leadPhone={selectedLead?.phoneNumber}
                 leadType={selectedLead?.leadType}
                 leadSource={selectedLead?.status}
                 nextScheduledMessage={selectedLead?.nextScheduledMessage}
                 messageCount={selectedLead?.messageCount}
+                onClose={() => {}}
+                onLeadUpdate={() => {}}
+                onAppointmentCreated={() => {}}
+                onAppointmentUpdated={() => {}}
+                onAppointmentDeleted={() => {}}
               />
             ) : (
               <div className="h-full flex items-center justify-center text-gray-500">

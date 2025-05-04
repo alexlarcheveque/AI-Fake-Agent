@@ -33,7 +33,7 @@ export const getLeadById = async (req, res) => {
 
 export const createLead = async (req, res) => {
   try {
-    const lead = await createLeadService(req.body);
+    const lead = await createLeadService(req.user, req.body);
     res.status(201).json(lead);
   } catch (error) {
     logger.error("Error creating lead:", error);

@@ -20,6 +20,8 @@ const LeadList: React.FC<LeadListProps> = ({
   onLeadsChange,
   onError,
 }) => {
+  console.log("leads", leads);
+
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [updateLoading, setUpdateLoading] = useState<number | null>(null);
   const navigate = useNavigate();
@@ -59,34 +61,6 @@ const LeadList: React.FC<LeadListProps> = ({
         Number(editingLead.id),
         updateData
       );
-
-      // If we're turning ON AI Assistant, schedule a new follow-up message
-      if (isTogglingOn) {
-        try {
-          // Call the schedule-followup endpoint
-          const response = await fetch(
-            `${
-              import.meta.env.VITE_API_URL || "http://localhost:3000"
-            }/api/leads/schedule-followup/${editingLead.id}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-            }
-          );
-
-          if (response.ok) {
-            // Refresh lead data to get the updated scheduled message
-            const refreshedLead = await leadApi.getLead(editingLead.id);
-            updatedLead.nextScheduledMessage =
-              refreshedLead.nextScheduledMessage;
-          }
-        } catch (err) {
-          console.error("Error scheduling follow-up:", err);
-          // We'll still continue even if scheduling fails
-        }
-      }
 
       // Update the local state using the server response to ensure we have the complete updated lead
       onLeadsChange(
@@ -417,7 +391,7 @@ const LeadList: React.FC<LeadListProps> = ({
                                   nextScheduledMessage={
                                     lead.nextScheduledMessage
                                   }
-                                  messageCount={lead.messageCount + 1}
+                                  messageCount={(lead.messageCount || 0) + 1}
                                   className="text-blue-600"
                                 />
                               )}

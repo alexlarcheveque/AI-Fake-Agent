@@ -1,71 +1,54 @@
-import supabase from "../config/supabase";
-import { Lead, LeadInsert, LeadUpdate, LeadUtils } from "../models/Lead";
-
-interface CreateLeadSettings {
-  user_id?: number;
-  user_uuid?: string;
-  name: string;
-  phone_number: number;
-  email?: string | null;
-  status?: string | null;
-  is_ai_enabled?: boolean | null;
-  last_message_date?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  is_archived?: boolean | null;
-  lead_type?: string | null;
-  context?: string | null;
-}
+import supabase from "../config/supabase.ts";
+import {
+  Lead,
+  LeadInsert,
+  LeadModel,
+  LeadUpdate,
+  LeadUtils,
+} from "../models/Lead.ts";
 
 export const createLead = async (
-  settings: CreateLeadSettings
-): Promise<Lead[]> => {
+  user,
+  settings: LeadModel
+): Promise<LeadModel[]> => {
   const {
-    user_id,
-    user_uuid,
     name,
-    phone_number,
     email,
+    phoneNumber,
     status,
-    is_ai_enabled,
-    last_message_date,
-    created_at,
-    updated_at,
-    is_archived,
-    lead_type,
+    aiAssistantEnabled,
+    leadType,
     context,
   } = settings;
 
-  // Ensure we have a user_uuid
-  const lead_user_uuid =
-    user_uuid || (user_id ? user_id.toString() : undefined);
+  console.log("user", user);
 
   const { data, error } = await supabase
     .from("leads")
     .insert([
       {
-        user_uuid: lead_user_uuid,
         name,
-        phone_number,
         email,
+        phone_number: phoneNumber,
         status,
-        is_ai_enabled,
-        last_message_date, // This might need conversion if your DB schema changed
-        created_at,
-        updated_at, // This might need conversion if your DB schema changed
-        is_archived,
-        lead_type,
+        lead_type: leadType,
+        is_ai_enabled: aiAssistantEnabled,
+        is_archived: false,
+        user_uuid: user.id,
         context,
       },
     ])
     .select();
 
-  if (error) throw new Error(error.message);
+  console.log("data", data);
+
   return data.map((lead) => LeadUtils.toModel(lead));
 };
 
-export const getLeadsByUserId = async (userId: string): Promise<Lead[]> => {
-  const { data, error } = await supabase
+export const getLeadsByUserId = async (
+  userId: string
+): Promise<LeadModel[]> => {
+  const { data, error }: { data: Lead[]; error: any } = await supabase
     .from("leads")
     .select("*")
     .eq("user_uuid", userId);
@@ -74,7 +57,7 @@ export const getLeadsByUserId = async (userId: string): Promise<Lead[]> => {
   return data.map((lead) => LeadUtils.toModel(lead));
 };
 
-export const getLeadById = async (id: number): Promise<Lead | null> => {
+export const getLeadById = async (id: number): Promise<LeadModel> => {
   const { data, error } = await supabase
     .from("leads")
     .select("*")

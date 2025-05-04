@@ -19,6 +19,8 @@ interface CreateNotificationParams {
 export const createNotification = async (
   settings: CreateNotificationParams
 ): Promise<Notification[]> => {
+  console.log("notification settings", settings);
+
   const notificationData = NotificationUtils.toInsert(settings);
 
   const { data, error } = await supabase
@@ -33,10 +35,12 @@ export const createNotification = async (
 export const getNotificationsByUserId = async (
   userId: string
 ): Promise<Notification[]> => {
+  console.log("get notifications by user id");
+
   const { data, error } = await supabase
     .from("notifications")
     .select("*")
-    .eq("user_id", userId)
+    .eq("uuid", userId)
     .order("created_at", { ascending: false })
     .order("is_read", { ascending: false });
 

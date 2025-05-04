@@ -1,27 +1,35 @@
 import express from "express";
 import asyncHandler from "express-async-handler";
-import messageController from "../controllers/messageController.ts";
+import {
+  getMessagesByLeadIdDescending,
+  createOutgoingMessage,
+  receiveIncomingMessage,
+  statusCallback,
+  markAsRead,
+} from "../controllers/messageController.ts";
+import protect from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
 
+// Apply protect middleware to all message routes
+router.use(protect);
+
 // Get message history for a lead
 router.get(
-  "/lead/:lead_id",
-  asyncHandler((req, res) =>
-    messageController.getMessagesByLeadIdDescending(req, res)
-  )
+  "/lead/:leadId",
+  asyncHandler((req, res) => getMessagesByLeadIdDescending(req, res))
 );
 
 // Send a message to a lead
 router.post(
   "/send",
-  asyncHandler((req, res) => messageController.createOutgoingMessage(req, res))
+  asyncHandler((req, res) => createOutgoingMessage(req, res))
 );
 
 // Webhook for receiving messages (for Twilio)
 router.post(
   "/receive",
-  asyncHandler((req, res) => messageController.receiveIncomingMessage(req, res))
+  asyncHandler((req, res) => receiveIncomingMessage(req, res))
 );
 
 // Add this route for status callbacks
@@ -34,14 +42,14 @@ router.post(
       method: req.method,
     });
     // Assuming statusCallback is implemented in messageController
-    messageController.statusCallback(req, res);
+    statusCallback(req, res);
   })
 );
 
 // Mark message as read
 router.patch(
   "/messages/:messageId/read",
-  asyncHandler((req, res) => messageController.markAsRead(req, res))
+  asyncHandler((req, res) => markAsRead(req, res))
 );
 
 export default router;

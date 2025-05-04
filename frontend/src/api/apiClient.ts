@@ -38,22 +38,49 @@ class ApiClient {
     this.api.interceptors.response.use(
       (response) => response,
       async (error) => {
-        // Handle unauthorized errors by redirecting to login
-        if (error.response && error.response.status === 401) {
-          // Check if we have a session that might need refreshing
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
+        // Enhanced error logging
+        if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          console.error("API Error Response:", {
+            status: error.response.status,
+            data: error.response.data,
+            headers: error.response.headers,
+            url: error.config?.url,
+            method: error.config?.method,
+          });
 
-          if (!session) {
-            // If no session, redirect to login
-            window.location.href = "/login";
+          // Handle unauthorized errors by redirecting to login
+          if (error.response.status === 401) {
+            // Check if we have a session that might need refreshing
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+
+            if (!session) {
+              // If no session, redirect to login
+              window.location.href = "/login";
+            }
+
+            // Let the error propagate for further handling
+            return Promise.reject({
+              ...error,
+              isAuthError: true,
+            });
           }
-
-          // Let the error propagate for further handling
-          return Promise.reject({
-            ...error,
-            isAuthError: true,
+        } else if (error.request) {
+          // The request was made but no response was received
+          console.error("API No Response:", {
+            request: error.request,
+            url: error.config?.url,
+            method: error.config?.method,
+          });
+        } else {
+          // Something happened in setting up the request that triggered an Error
+          console.error("API Request Error:", {
+            message: error.message,
+            url: error.config?.url,
+            method: error.config?.method,
           });
         }
 
@@ -64,8 +91,13 @@ class ApiClient {
 
   // Generic GET request
   async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.api.get(url, config);
-    return response.data;
+    try {
+      const response: AxiosResponse<T> = await this.api.get(url, config);
+      return response.data;
+    } catch (error) {
+      console.error(`GET request failed for ${url}:`, error);
+      throw error;
+    }
   }
 
   // Generic POST request
@@ -74,8 +106,13 @@ class ApiClient {
     data?: any,
     config?: AxiosRequestConfig
   ): Promise<T> {
-    const response: AxiosResponse<T> = await this.api.post(url, data, config);
-    return response.data;
+    try {
+      const response: AxiosResponse<T> = await this.api.post(url, data, config);
+      return response.data;
+    } catch (error) {
+      console.error(`POST request failed for ${url}:`, error);
+      throw error;
+    }
   }
 
   // Generic PUT request
@@ -84,14 +121,24 @@ class ApiClient {
     data?: any,
     config?: AxiosRequestConfig
   ): Promise<T> {
-    const response: AxiosResponse<T> = await this.api.put(url, data, config);
-    return response.data;
+    try {
+      const response: AxiosResponse<T> = await this.api.put(url, data, config);
+      return response.data;
+    } catch (error) {
+      console.error(`PUT request failed for ${url}:`, error);
+      throw error;
+    }
   }
 
   // Generic DELETE request
   async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response: AxiosResponse<T> = await this.api.delete(url, config);
-    return response.data;
+    try {
+      const response: AxiosResponse<T> = await this.api.delete(url, config);
+      return response.data;
+    } catch (error) {
+      console.error(`DELETE request failed for ${url}:`, error);
+      throw error;
+    }
   }
 
   // Get the underlying axios instance for special cases

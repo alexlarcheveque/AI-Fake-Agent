@@ -1,14 +1,5 @@
 import axios, { AxiosError } from "axios";
 
-// Fix TypeScript error by declaring type for import.meta.env
-declare global {
-  interface ImportMeta {
-    env: Record<string, string>;
-  }
-}
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
-
 export interface Appointment {
   id: number;
   leadId: number;

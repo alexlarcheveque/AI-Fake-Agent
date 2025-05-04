@@ -1,10 +1,22 @@
-import { Tables, TablesInsert, TablesUpdate } from "../database.types";
+import { Tables, TablesInsert, TablesUpdate } from "../database.types.ts";
 
 // Get the Lead row type from the database types
 export type LeadRow = Tables<"leads">;
 export type LeadInsert = TablesInsert<"leads">;
 export type LeadUpdate = TablesUpdate<"leads">;
 
+export interface LeadModel {
+  id: number;
+  name: string;
+  email: string;
+  phoneNumber: number;
+  status: string;
+  aiAssistantEnabled: boolean;
+  isArchived: boolean;
+  context: string;
+  leadType: string;
+  formattedPhone: string;
+}
 // Extend the database type with additional properties/methods
 export interface Lead extends LeadRow {
   // Additional properties not in the database
@@ -29,12 +41,18 @@ export function formatLeadPhone(lead: Lead): string {
 // Utility functions for working with Leads
 export const LeadUtils = {
   // Convert database date strings to JavaScript Date objects
-  toModel(data: LeadRow): Lead {
+  toModel(data: LeadRow): LeadModel {
     return {
-      ...data,
+      id: data.id,
+      name: data.name,
+      email: data.email,
       formattedPhone: formatLeadPhone(data as Lead),
-      // Map user_uuid to user_id for backward compatibility
-      user_id: data.user_uuid ? parseInt(data.user_uuid) : undefined,
+      aiAssistantEnabled: data.is_ai_enabled,
+      isArchived: data.is_archived,
+      leadType: data.lead_type,
+      phoneNumber: data.phone_number,
+      status: data.status,
+      context: data.context,
     };
   },
 

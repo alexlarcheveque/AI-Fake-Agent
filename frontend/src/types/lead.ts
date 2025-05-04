@@ -11,24 +11,18 @@ export type LeadStatus =
 export type LeadType = "buyer" | "seller";
 
 export interface Lead {
-  id: string;
+  id: number;
   name: string;
   email: string;
   phoneNumber: string;
-  status: LeadStatus;
-  leadType: LeadType;
+  status: string;
   aiAssistantEnabled: boolean;
-  enableFollowUps: boolean;
-  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
-  nextScheduledMessage?: string; // ISO date string
-  lastMessageDate?: string;
-  messageCount: number;
-  archived: boolean;
-  notes?: string;
-  context?: string; // Property metadata for AI responses
-  createdAt?: string;
-  updatedAt?: string;
-  messages?: Message[];
+  isArchived: boolean;
+  context: string;
+  leadType: string;
+  formattedPhone: string;
+  nextScheduledMessage?: string;
+  messageCount?: number;
 }
 
 export interface LeadFormData {

@@ -4,17 +4,40 @@ import {
   UserSettingsInsert,
   UserSettingsUtils,
 } from "../models/UserSettings.ts";
+import logger from "../utils/logger.ts";
 
 export const getUserSettings = async (
   userId: string
 ): Promise<UserSettings[]> => {
-  const { data, error } = await supabase
-    .from("user_settings")
-    .select("*")
-    .eq("uuid", userId);
+  try {
+    logger.info(`Fetching user settings for userId: ${userId}`);
 
-  if (error) throw new Error(error.message);
-  return data.map((settings) => UserSettingsUtils.toModel(settings));
+    // First, check if settings exist for this user
+    const { data, error } = await supabase
+      .from("user_settings")
+      .select("*")
+      .eq("uuid", userId);
+
+    if (error) {
+      logger.error(`Error fetching user settings: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    // If no settings exist, create default settings
+    if (!data || data.length === 0) {
+      logger.info(`No settings found for userId: ${userId}, creating defaults`);
+      return await createUserSettings(
+        userId,
+        UserSettingsUtils.createDefault(userId)
+      );
+    }
+
+    logger.info(`Found ${data.length} settings for userId: ${userId}`);
+    return data.map((settings) => UserSettingsUtils.toModel(settings));
+  } catch (error) {
+    logger.error(`Error in getUserSettings: ${error.message}`);
+    throw error;
+  }
 };
 
 export interface CreateUserSettingsParams {
@@ -88,4 +111,13 @@ export const updateUserSettings = async (
 
   if (error) throw new Error(error.message);
   return data.map((settings) => UserSettingsUtils.toModel(settings));
+};
+
+export const deleteUserSettings = async (userId: string): Promise<void> => {
+  const { error } = await supabase
+    .from("user_settings")
+    .delete()
+    .eq("uuid", userId);
+
+  if (error) throw new Error(error.message);
 };

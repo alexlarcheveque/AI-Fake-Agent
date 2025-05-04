@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import {
   createNotification,
   getNotificationsByUserId,
@@ -9,13 +9,18 @@ import {
   markAsUnread,
 } from "../controllers/notificationController.ts";
 import asyncHandler from "express-async-handler";
+import protect from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
+
+router.use(protect);
 
 // Get all notifications for current user
 router.get(
   "/",
-  asyncHandler((req, res) => getNotificationsByUserId(req, res))
+  asyncHandler((req, res) => {
+    return getNotificationsByUserId(req, res);
+  })
 );
 
 // Create new notification

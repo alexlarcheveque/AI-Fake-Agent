@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -10,12 +10,21 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already logged in
-  useEffect(() => {
+  // Memoize the redirect check to avoid unnecessary re-renders
+  const authRedirect = useMemo(() => {
     if (user) {
       navigate("/");
+      return true;
     }
+    return false;
   }, [user, navigate]);
+
+  // Only run the effect when auth state changes
+  useEffect(() => {
+    if (authRedirect) {
+      navigate("/");
+    }
+  }, [authRedirect, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

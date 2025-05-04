@@ -4,15 +4,19 @@ import {
   useNotifications,
   Notification,
 } from "../contexts/NotificationContext";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth, AuthContextType } from "../contexts/AuthContext";
 import { format } from "date-fns";
 
-interface NavbarProps {}
+interface NavbarProps {
+  auth?: AuthContextType; // Make auth optional to maintain compatibility
+}
 
-const Navbar: React.FC<NavbarProps> = () => {
+const Navbar: React.FC<NavbarProps> = ({ auth }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  // Use passed auth from props or useAuth() as fallback
+  const authContext = auth || useAuth();
+  const { user, logout } = authContext;
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const { notifications, unreadCount, markAsRead, markAsUnread } =
