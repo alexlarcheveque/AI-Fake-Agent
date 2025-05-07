@@ -1,16 +1,30 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
-interface LoginProps {
-  onLogin: (email: string, password: string) => Promise<void>;
-}
-
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
+const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Memoize the redirect check to avoid unnecessary re-renders
+  const authRedirect = useMemo(() => {
+    if (user) {
+      navigate("/");
+      return true;
+    }
+    return false;
+  }, [user, navigate]);
+
+  // Only run the effect when auth state changes
+  useEffect(() => {
+    if (authRedirect) {
+      navigate("/");
+    }
+  }, [authRedirect, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,11 +32,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      await onLogin(email, password);
+      await login(email, password);
       navigate("/");
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.response?.data?.error || err.message || "Failed to sign in");
+      setError(err.message || "Failed to sign in");
     } finally {
       setIsLoading(false);
     }

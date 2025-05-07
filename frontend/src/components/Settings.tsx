@@ -1,23 +1,17 @@
 import React, { useState, useEffect } from "react";
 import settingsApi from "../api/settingsApi";
 import { UserSettings } from "../types/userSettings";
-import GoogleCalendarConnect from "./GoogleCalendarConnect";
 
 const Settings: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>({
     agentName: "",
     companyName: "",
     agentState: "",
-    agentCity: "",
-    aiAssistantEnabled: true,
-    // Default follow-up intervals
-    followUpIntervalNew: 2,
-    followUpIntervalInConversation: 3,
-    followUpIntervalQualified: 5,
-    followUpIntervalAppointmentSet: 1,
-    followUpIntervalConverted: 14,
-    followUpIntervalInactive: 30,
+    followUpIntervalNew: undefined,
+    followUpIntervalInConversation: undefined,
+    followUpIntervalInactive: undefined,
   });
+
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +26,7 @@ const Settings: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await settingsApi.getSettings();
+      const data = await settingsApi.getUserSettings();
 
       console.log("data", data);
 
@@ -50,11 +44,9 @@ const Settings: React.FC = () => {
   ) => {
     const { name, value, type } = e.target as HTMLInputElement;
 
-    setSettings((prev: UserSettings) => {
-      if (!prev) return prev;
-
+    setSettings((prev) => {
       // Handle number inputs for follow-up intervals
-      if (name.startsWith('followUpInterval')) {
+      if (name.startsWith("followUpInterval")) {
         return {
           ...prev,
           [name]: type === "number" ? parseInt(value) || 0 : value,
@@ -71,15 +63,19 @@ const Settings: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!settings) return;
 
     try {
       setIsSaving(true);
       setError(null);
       setSuccess(false);
 
-      const updatedSettings = await settingsApi.updateSettings(settings);
+      // Pass empty string as userId - the backend will get the actual userId from the auth context
+      const updatedSettings = await settingsApi.updateUserSettings(
+        "",
+        settings
+      );
       setSettings(updatedSettings);
+
       setSuccess(true);
 
       setTimeout(() => setSuccess(false), 3000);
@@ -115,196 +111,126 @@ const Settings: React.FC = () => {
         </div>
       )}
 
-      {settings && (
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white rounded-lg shadow-md p-6 mb-8"
-        >
-          {/* Agent Information Section */}
-          <h2 className="text-xl font-bold mb-4">Agent Information</h2>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Agent Name
-              </label>
-              <input
-                type="text"
-                name="agentName"
-                value={settings.agentName}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Company Name
-              </label>
-              <input
-                type="text"
-                name="companyName"
-                value={settings.companyName}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                State
-              </label>
-              <input
-                type="text"
-                name="agentState"
-                value={settings.agentState}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="mt-6">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                name="aiAssistantEnabled"
-                checked={settings.aiAssistantEnabled}
-                onChange={handleChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="ml-2 text-sm text-gray-700">
-                Enable AI Assistant for new leads
-              </span>
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-lg shadow-md p-6 mb-8"
+      >
+        {/* Agent Information Section */}
+        <h2 className="text-xl font-bold mb-4">Agent Information</h2>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Agent Name
             </label>
+            <input
+              type="text"
+              name="agentName"
+              value={settings.agentName}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
           </div>
 
-          {/* Follow-up Intervals Section */}
-          <div className="mt-8">
-            <h2 className="text-xl font-bold mb-4">Follow-up Intervals</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Customize how many days to wait before sending follow-up messages to leads based on their status.
-            </p>
-            
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  New Lead <span className="text-gray-500">(days)</span>
-                </label>
-                <input
-                  type="number"
-                  name="followUpIntervalNew"
-                  value={settings.followUpIntervalNew}
-                  onChange={handleChange}
-                  min="1"
-                  max="90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 2 days</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  In Conversation <span className="text-gray-500">(days)</span>
-                </label>
-                <input
-                  type="number"
-                  name="followUpIntervalInConversation"
-                  value={settings.followUpIntervalInConversation}
-                  onChange={handleChange}
-                  min="1"
-                  max="90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 3 days</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Qualified <span className="text-gray-500">(days)</span>
-                </label>
-                <input
-                  type="number"
-                  name="followUpIntervalQualified"
-                  value={settings.followUpIntervalQualified}
-                  onChange={handleChange}
-                  min="1"
-                  max="90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 5 days</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Appointment Set <span className="text-gray-500">(days)</span>
-                </label>
-                <input
-                  type="number"
-                  name="followUpIntervalAppointmentSet"
-                  value={settings.followUpIntervalAppointmentSet}
-                  onChange={handleChange}
-                  min="1"
-                  max="90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 1 day</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Converted <span className="text-gray-500">(days)</span>
-                </label>
-                <input
-                  type="number"
-                  name="followUpIntervalConverted"
-                  value={settings.followUpIntervalConverted}
-                  onChange={handleChange}
-                  min="1"
-                  max="90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 14 days</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Inactive <span className="text-gray-500">(days)</span>
-                </label>
-                <input
-                  type="number"
-                  name="followUpIntervalInactive"
-                  value={settings.followUpIntervalInactive}
-                  onChange={handleChange}
-                  min="1"
-                  max="90"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">Default: 30 days</p>
-              </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Company Name
+            </label>
+            <input
+              type="text"
+              name="companyName"
+              value={settings.companyName}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              State
+            </label>
+            <input
+              type="text"
+              name="agentState"
+              value={settings.agentState}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Follow-up Intervals Section */}
+        <div className="mt-8">
+          <h2 className="text-xl font-bold mb-4">Follow-up Intervals</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Customize how many days to wait before sending follow-up messages to
+            leads based on their status.
+          </p>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                New Lead <span className="text-gray-500">(days)</span>
+              </label>
+              <input
+                type="number"
+                name="followUpIntervalNew"
+                value={settings.followUpIntervalNew || ""}
+                onChange={handleChange}
+                min="1"
+                max="90"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default: 2 days</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                In Conversation <span className="text-gray-500">(days)</span>
+              </label>
+              <input
+                type="number"
+                name="followUpIntervalInConversation"
+                value={settings.followUpIntervalInConversation || ""}
+                onChange={handleChange}
+                min="1"
+                max="90"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default: 5 days</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Inactive <span className="text-gray-500">(days)</span>
+              </label>
+              <input
+                type="number"
+                name="followUpIntervalInactive"
+                value={settings.followUpIntervalInactive || ""}
+                onChange={handleChange}
+                min="1"
+                max="90"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default: 30 days</p>
             </div>
           </div>
+        </div>
 
-          <div className="mt-6 flex justify-end">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors 
-                ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              {isSaving ? "Saving..." : "Save Settings"}
-            </button>
-          </div>
-        </form>
-      )}
-      
-      {/* Google Calendar Integration Section */}
-      <div className="mt-8">
-        <h2 className="text-xl font-bold mb-4">Calendar Integration</h2>
-        <GoogleCalendarConnect />
-      </div>
+        <div className="mt-6 flex justify-end">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors 
+              ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            {isSaving ? "Saving..." : "Save Settings"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

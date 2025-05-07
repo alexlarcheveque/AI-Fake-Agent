@@ -14,12 +14,14 @@ interface LeadListProps {
 }
 
 const LeadList: React.FC<LeadListProps> = ({
-  leads,
+  leads = [],
   isLoading,
   error,
   onLeadsChange,
   onError,
 }) => {
+  console.log("leads", leads);
+
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [updateLoading, setUpdateLoading] = useState<number | null>(null);
   const navigate = useNavigate();
@@ -34,10 +36,10 @@ const LeadList: React.FC<LeadListProps> = ({
 
     try {
       onError(null);
-      setUpdateLoading(editingLead.id);
+      setUpdateLoading(Number(editingLead.id));
 
       // Get the original lead to compare AI assistant status
-      const originalLead = leads.find(lead => lead.id === editingLead.id);
+      const originalLead = leads.find((lead) => lead.id === editingLead.id);
       const wasAiEnabled = originalLead?.aiAssistantEnabled;
       const isTogglingOn = !wasAiEnabled && editingLead.aiAssistantEnabled;
 
@@ -55,35 +57,14 @@ const LeadList: React.FC<LeadListProps> = ({
         Object.assign(updateData, { nextScheduledMessage: null });
       }
 
-      const updatedLead = await leadApi.updateLead(editingLead.id, updateData);
-
-      // If we're turning ON AI Assistant, schedule a new follow-up message
-      if (isTogglingOn) {
-        try {
-          // Call the schedule-followup endpoint
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/leads/schedule-followup/${editingLead.id}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            }
-          });
-          
-          if (response.ok) {
-            // Refresh lead data to get the updated scheduled message
-            const refreshedLead = await leadApi.getLead(editingLead.id);
-            updatedLead.nextScheduledMessage = refreshedLead.nextScheduledMessage;
-          }
-        } catch (err) {
-          console.error("Error scheduling follow-up:", err);
-          // We'll still continue even if scheduling fails
-        }
-      }
+      const updatedLead = await leadApi.updateLead(
+        Number(editingLead.id),
+        updateData
+      );
 
       // Update the local state using the server response to ensure we have the complete updated lead
       onLeadsChange(
-        leads.map((lead) =>
-          lead.id === editingLead.id ? updatedLead : lead
-        )
+        leads.map((lead) => (lead.id === editingLead.id ? updatedLead : lead))
       );
 
       setEditingLead(null);
@@ -127,8 +108,6 @@ const LeadList: React.FC<LeadListProps> = ({
   if (isLoading && leads?.length === 0) {
     return <div className="text-center py-4">Loading...</div>;
   }
-
-  console.log(leads[0]);
 
   return (
     <div className="overflow-x-auto">
@@ -201,7 +180,7 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2">
                             <select
-                              value={editingLead.status}
+                              value={editingLead?.status}
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,
@@ -412,7 +391,7 @@ const LeadList: React.FC<LeadListProps> = ({
                                   nextScheduledMessage={
                                     lead.nextScheduledMessage
                                   }
-                                  messageCount={lead.messageCount + 1}
+                                  messageCount={(lead.messageCount || 0) + 1}
                                   className="text-blue-600"
                                 />
                               )}

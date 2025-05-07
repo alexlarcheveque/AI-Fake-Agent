@@ -1,31 +1,38 @@
-import axios from "axios";
+import apiClient from "./apiClient";
 import { UserSettings } from "../types/userSettings";
-
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const settingsApi = {
   // Get user settings
-  async getSettings(): Promise<UserSettings> {
-    console.log("fetching settings");
+  async getUserSettings(): Promise<UserSettings> {
+    console.log("Fetching settings for user:");
+    return await apiClient.get(`/api/user-settings`);
+  },
 
-    const token = localStorage.getItem("token");
-    const response = await axios.get(`${BASE_URL}/api/user-settings`, {
-      headers: {
-        Authorization: token ? `Bearer ${token}` : "",
-      },
+  // Create user settings
+  async createUserSettings(
+    userId: string,
+    settings: Partial<UserSettings>
+  ): Promise<UserSettings> {
+    return await apiClient.post(`/api/user-settings`, {
+      userId,
+      settings,
     });
-    return response.data;
   },
 
   // Update user settings
-  async updateSettings(settings: UserSettings): Promise<UserSettings> {
-    const token = localStorage.getItem("token");
-    const response = await axios.put(`${BASE_URL}/api/user-settings`, settings, {
-      headers: {
-        Authorization: token ? `Bearer ${token}` : "",
-      },
+  async updateUserSettings(
+    userId: string,
+    settings: Partial<UserSettings>
+  ): Promise<UserSettings> {
+    return await apiClient.put(`/api/user-settings`, {
+      userId,
+      settings,
     });
-    return response.data;
+  },
+
+  // Delete user settings
+  async deleteUserSettings(userId: string): Promise<void> {
+    await apiClient.delete(`/api/user-settings/${userId}`);
   },
 };
 

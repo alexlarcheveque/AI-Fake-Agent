@@ -96,14 +96,6 @@ const Dashboard: React.FC = () => {
                   <p className="text-2xl font-bold">{stats.totalLeads}</p>
                 </div>
               </div>
-              <div className="mt-4">
-                <Link
-                  to="/leads"
-                  className="text-blue-500 hover:text-blue-700 text-sm font-medium"
-                >
-                  View all leads →
-                </Link>
-              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow p-6">
@@ -131,14 +123,6 @@ const Dashboard: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <div className="mt-4">
-                <Link
-                  to="/messages"
-                  className="text-green-500 hover:text-green-700 text-sm font-medium"
-                >
-                  View conversations →
-                </Link>
-              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow p-6">
@@ -165,18 +149,6 @@ const Dashboard: React.FC = () => {
                     {stats.scheduledMessages}
                   </p>
                 </div>
-              </div>
-              <div className="mt-4">
-                <button
-                  onClick={() =>
-                    document
-                      .getElementById("calendar-section")
-                      ?.scrollIntoView({ behavior: "smooth" })
-                  }
-                  className="text-purple-500 hover:text-purple-700 text-sm font-medium"
-                >
-                  View calendar →
-                </button>
               </div>
             </div>
 
@@ -212,14 +184,6 @@ const Dashboard: React.FC = () => {
                     )}
                   </div>
                 </div>
-              </div>
-              <div className="mt-4">
-                <Link
-                  to="/playground"
-                  className="text-yellow-500 hover:text-yellow-700 text-sm font-medium"
-                >
-                  Try AI assistant →
-                </Link>
               </div>
             </div>
           </div>

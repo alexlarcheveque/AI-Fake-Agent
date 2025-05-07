@@ -1,8 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Appointment } from '../api/appointmentApi';
-import appointmentApi from '../api/appointmentApi';
-import notificationApi, { Notification as ApiNotification } from '../api/notificationApi';
-import { format, isToday, isTomorrow, addDays } from 'date-fns';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
+import notificationApi from "../api/notificationApi";
+import { useAuth } from "./AuthContext";
 
 export interface Notification {
   id: string;
@@ -36,36 +40,40 @@ const NotificationContext = createContext<NotificationContextType>({
   deleteNotification: async () => {},
 });
 
-export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   // Fetch notifications on component mount
   useEffect(() => {
     getNotifications();
-    
+
     // Set up polling for new notifications every 30 seconds
     const intervalId = setInterval(() => {
       getNotifications();
     }, 30000);
-    
+
     // Clean up interval on component unmount
     return () => clearInterval(intervalId);
   }, []);
 
   // Update unread count whenever notifications change
   useEffect(() => {
-    const count = notifications.filter(notification => !notification.isRead).length;
+    const count = notifications.filter(
+      (notification) => !notification.isRead
+    ).length;
     setUnreadCount(count);
   }, [notifications]);
 
   // Fetch all notifications
   const getNotifications = useCallback(async () => {
     try {
-      const result = await notificationApi.getNotifications();
+      const result = await notificationApi.getNotificationsByUserId();
       setNotifications(result);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error("Error fetching notifications:", error);
     }
   }, []);
 
@@ -73,16 +81,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const markAsRead = useCallback(async (id: string) => {
     try {
       const updatedNotification = await notificationApi.markAsRead(id);
-      
-      setNotifications(prev => 
-        prev.map(notification => 
-          notification.id === id 
-            ? {...notification, isRead: true } 
+
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === id
+            ? { ...notification, isRead: true }
             : notification
         )
       );
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      console.error("Error marking notification as read:", error);
     }
   }, []);
 
@@ -90,16 +98,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const markAsUnread = useCallback(async (id: string) => {
     try {
       const updatedNotification = await notificationApi.markAsUnread(id);
-      
-      setNotifications(prev => 
-        prev.map(notification => 
-          notification.id === id 
-            ? {...notification, isRead: false } 
+
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === id
+            ? { ...notification, isRead: false }
             : notification
         )
       );
     } catch (error) {
-      console.error('Error marking notification as unread:', error);
+      console.error("Error marking notification as unread:", error);
     }
   }, []);
 
@@ -107,12 +115,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const markAllAsRead = useCallback(async () => {
     try {
       await notificationApi.markAllAsRead();
-      
-      setNotifications(prev => 
-        prev.map(notification => ({ ...notification, isRead: true }))
+
+      setNotifications((prev) =>
+        prev.map((notification) => ({ ...notification, isRead: true }))
       );
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error("Error marking all notifications as read:", error);
     }
   }, []);
 
@@ -120,19 +128,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const createNotification = useCallback(async (data: any) => {
     try {
       const newNotification = await notificationApi.createNotification(data);
-      setNotifications(prev => [...prev, newNotification]);
+      setNotifications((prev) => [...prev, newNotification]);
     } catch (error) {
-      console.error('Error creating notification:', error);
+      console.error("Error creating notification:", error);
     }
   }, []);
-  
+
   // Delete a notification
   const deleteNotification = useCallback(async (id: string) => {
     try {
       await notificationApi.deleteNotification(id);
-      setNotifications(prev => prev.filter(notification => notification.id !== id));
+      setNotifications((prev) =>
+        prev.filter((notification) => notification.id !== id)
+      );
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      console.error("Error deleting notification:", error);
     }
   }, []);
 
@@ -144,7 +154,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     markAsUnread,
     markAllAsRead,
     createNotification,
-    deleteNotification
+    deleteNotification,
   };
 
   return (
@@ -154,4 +164,4 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   );
 };
 
-export const useNotifications = () => useContext(NotificationContext); 
+export const useNotifications = () => useContext(NotificationContext);

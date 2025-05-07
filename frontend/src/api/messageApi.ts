@@ -1,27 +1,46 @@
-import axios from "axios";
+import apiClient from "./apiClient";
 import { Message } from "../types/message";
 import settingsApi from "./settingsApi";
+
+// Fix TypeScript error by declaring type for import.meta.env
+declare global {
+  interface ImportMeta {
+    env: Record<string, string>;
+  }
+}
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const messageApi = {
-  // Get messages for a lead
-  async getMessages(leadId: string): Promise<Message[]> {
+  // Get messages for a lead ordered by descending timestamp
+  async getMessagesByLeadIdDescending(leadId: number): Promise<Message[]> {
     try {
       console.log(`Fetching messages for lead ${leadId}`);
-      const response = await axios.get(
-        `${BASE_URL}/api/messages/lead/${leadId}`
-      );
-      console.log(`Received ${response.data.length} messages`);
-      return response.data;
+      const messages = await apiClient.get(`/api/messages/lead/${leadId}`);
+      console.log(`Received ${messages.length} messages`);
+      return messages;
     } catch (error) {
       console.error("Error fetching messages:", error);
+      // Log more detailed error information
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error("Error response data:", error.response.data);
+        console.error("Error response status:", error.response.status);
+        console.error("Error response headers:", error.response.headers);
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error("Error request:", error.request);
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("Error message:", error.message);
+      }
       throw error;
     }
   },
 
-  // Send a message
-  async sendMessage(
+  // Create an outgoing message
+  async createOutgoingMessage(
     leadId: number,
     text: string,
     isAiGenerated = false
@@ -36,67 +55,82 @@ const messageApi = {
         throw new Error("Message text is required");
       }
 
-      // Get user settings to include with the message
-      let userSettings = null;
+      let userSettings = {};
       try {
         userSettings = await settingsApi.getSettings();
         console.log("Including user settings with message:", userSettings);
       } catch (settingsError) {
-        console.warn("Failed to get user settings, continuing without them:", settingsError);
+        console.warn(
+          "Failed to get user settings, continuing without them:",
+          settingsError
+        );
       }
 
-      const response = await axios.post(`${BASE_URL}/api/messages/send`, {
-        leadId,
+      return await apiClient.post(`/api/messages`, {
+        lead_id: leadId,
         text,
-        isAiGenerated,
-        userSettings // Include user settings with the message
+        is_ai_generated: isAiGenerated,
+        user_settings: userSettings, // Include user settings with the message
       });
-
-      return response.data.message;
     } catch (error) {
-      console.error("Error in sendMessage API call:", error);
+      console.error("Error in createOutgoingMessage API call:", error);
       throw error;
     }
   },
 
-  // Send a local test message (playground)
-  async sendLocalMessage(
-    text: string,
-    previousMessages: Message[],
-    leadContext?: string
-  ): Promise<{ message: Message }> {
-    const response = await axios.post(`${BASE_URL}/api/messages/send-local`, {
-      text,
-      previousMessages,
-      leadContext,
-    });
-    return response.data;
+  // Update a message
+  async updateMessage(
+    messageId: string,
+    data: Partial<Message>
+  ): Promise<Message> {
+    try {
+      return await apiClient.put(`/api/messages/${messageId}`, {
+        message_id: messageId,
+        data,
+      });
+    } catch (error) {
+      console.error("Error updating message:", error);
+      throw error;
+    }
   },
 
-  // Test Twilio
+  // Delete a message
+  async deleteMessage(messageId: string): Promise<Message> {
+    try {
+      return await apiClient.delete(`/api/messages/${messageId}`, {
+        data: { message_id: messageId },
+      });
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      throw error;
+    }
+  },
+
+  // Get messages that are overdue
+  async getMessagesThatAreOverdue(): Promise<Message[]> {
+    try {
+      return await apiClient.get(`/api/messages/overdue`);
+    } catch (error) {
+      console.error("Error fetching overdue messages:", error);
+      throw error;
+    }
+  },
+
+  // Mark a message as read
+  async markAsRead(messageId: string): Promise<void> {
+    try {
+      await apiClient.put(`/api/messages/${messageId}/read`);
+    } catch (error) {
+      console.error("Error marking message as read:", error);
+      throw error;
+    }
+  },
+
+  // Test Twilio (keeping this as it might be useful)
   async testTwilio(text: string): Promise<{ message: Message }> {
-    const response = await axios.post(`${BASE_URL}/api/messages/test-twilio`, {
+    return await apiClient.post(`/api/messages/test-twilio`, {
       text,
     });
-    return response.data;
-  },
-
-  // Add this method to your existing messageApi.ts file
-  async getMessageStats(): Promise<{
-    totalMessages: number;
-    deliveredMessages: number;
-    failedMessages: number;
-    activeConversations: number;
-  }> {
-    const response = await axios.get(`${BASE_URL}/api/messages/stats`);
-    return response.data;
-  },
-
-  // Add this method to your messageApi.ts
-  async getAllMessages(statusFilter = "all"): Promise<Message[]> {
-    const params = statusFilter !== "all" ? { status: statusFilter } : {};
-    const response = await axios.get(`${BASE_URL}/api/messages`, { params });
-    return response.data;
   },
 
   // Add this new method to fetch scheduled messages for the calendar
@@ -104,92 +138,9 @@ const messageApi = {
     startDate: string,
     endDate: string
   ): Promise<any[]> {
-    const response = await axios.get(`${BASE_URL}/api/messages/scheduled`, {
+    return await apiClient.get(`/api/messages/scheduled`, {
       params: { startDate, endDate },
     });
-    return response.data;
-  },
-
-  // Add a utility method to test socket message delivery
-  async testSocketMessage(leadId: number, text?: string): Promise<any> {
-    try {
-      console.log(`🧪 Testing socket message for lead ${leadId} with text: "${text}"`);
-      
-      // Ensure leadId is a number
-      const numericLeadId = typeof leadId === 'string' ? parseInt(leadId, 10) : leadId;
-      
-      // Log request details
-      console.log('🧪 Test socket message request:', {
-        url: `${BASE_URL}/api/messages/test-socket`,
-        method: 'POST',
-        data: { leadId: numericLeadId, text }
-      });
-      
-      const response = await axios.post(`${BASE_URL}/api/messages/test-socket`, {
-        leadId: numericLeadId,
-        text,
-      });
-      
-      console.log("🧪 Socket test response:", response.data);
-      console.log("🧪 Emitted message should match this format:", {
-        leadId: numericLeadId,
-        message: {
-          id: "any-number",
-          leadId: numericLeadId,
-          text: text || "This is a test message from the server",
-          sender: "lead",
-          direction: "inbound",
-          isAiGenerated: false,
-          deliveryStatus: "delivered"
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error("❌ Error testing socket message:", error);
-      throw error;
-    }
-  },
-
-  // Add a method to test AI response simulation
-  async simulateAiResponse(leadId: number, text?: string): Promise<any> {
-    try {
-      console.log(`🤖 Simulating AI response for lead ${leadId} with text: "${text}"`);
-      
-      // Ensure leadId is a number
-      const numericLeadId = typeof leadId === 'string' ? parseInt(leadId, 10) : leadId;
-      
-      // Log request details
-      console.log('🤖 Simulate AI response request:', {
-        url: `${BASE_URL}/api/messages/simulate-ai-response`,
-        method: 'POST',
-        data: { leadId: numericLeadId, text }
-      });
-      
-      const response = await axios.post(`${BASE_URL}/api/messages/simulate-ai-response`, {
-        leadId: numericLeadId,
-        text,
-      });
-      
-      console.log("🤖 Simulated AI response data:", response.data);
-      console.log("🤖 Emitted message should match this format:", {
-        leadId: numericLeadId,
-        message: {
-          id: "any-number",
-          leadId: numericLeadId,
-          text: text || "This is a simulated AI response message.",
-          sender: "agent",
-          direction: "outbound",
-          isAiGenerated: true,
-          deliveryStatus: "delivered"
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error("❌ Error simulating AI response:", error);
-      throw error;
-    }
   },
 };
 
