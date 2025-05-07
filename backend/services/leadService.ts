@@ -10,7 +10,7 @@ import {
 export const createLead = async (
   user,
   settings: LeadModel
-): Promise<LeadModel[]> => {
+): Promise<LeadModel> => {
   const {
     name,
     email,
@@ -21,7 +21,9 @@ export const createLead = async (
     context,
   } = settings;
 
-  console.log("user", user);
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   const { data, error } = await supabase
     .from("leads")
@@ -34,15 +36,18 @@ export const createLead = async (
         lead_type: leadType,
         is_ai_enabled: aiAssistantEnabled,
         is_archived: false,
-        user_uuid: user.id,
+        user_uuid: user?.id,
         context,
       },
     ])
-    .select();
+    .select()
+    .single();
 
-  console.log("data", data);
+  if (error) {
+    throw new Error(error.message);
+  }
 
-  return data.map((lead) => LeadUtils.toModel(lead));
+  return LeadUtils.toModel(data);
 };
 
 export const getLeadsByUserId = async (

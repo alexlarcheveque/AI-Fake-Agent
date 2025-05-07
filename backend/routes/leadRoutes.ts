@@ -1,7 +1,7 @@
 import express from "express";
 import {
   getLeadById,
-  createLead,
+  createLeadAndScheduleMessage,
   updateLead,
   deleteLead,
   getLeadsByUserId,
@@ -29,7 +29,7 @@ router.get(
 // Create a new lead
 router.post(
   "/",
-  asyncHandler((req, res) => createLead(req, res))
+  asyncHandler((req, res) => createLeadAndScheduleMessage(req, res))
 );
 
 // Update a lead

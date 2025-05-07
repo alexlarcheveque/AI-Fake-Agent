@@ -12,12 +12,12 @@ export const createAppointment = async (req, res) => {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  const appointment = await createAppointmentService(
+  const appointment = await createAppointmentService({
     lead_id,
     title,
     timestamp,
     description
-  );
+  });
 
   res.status(201).json({
     appointment,

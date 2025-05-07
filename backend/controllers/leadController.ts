@@ -1,3 +1,4 @@
+import { LeadModel } from "../models/Lead.ts";
 import {
   createLead as createLeadService,
   getLeadById as getLeadByIdService,
@@ -5,7 +6,23 @@ import {
   deleteLead as deleteLeadService,
   getLeadsByUserId as getLeadsByUserIdService,
 } from "../services/leadService.ts";
+import { createMessage as createMessageService } from "../services/messageService.ts";
 import logger from "../utils/logger.ts";
+
+const getFirstMessageTiming = (firstMessageTiming: string) => {
+  switch (firstMessageTiming) {
+    case "immediately":
+      return new Date(Date.now());
+    case "next_day":
+      return new Date(Date.now() + 1000 * 60 * 60 * 24);
+    case "one_week":
+      return new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
+    case "two_weeks":
+      return new Date(Date.now() + 1000 * 60 * 60 * 24 * 14);
+    default:
+      return new Date(Date.now() + 1000 * 60 * 60 * 24);
+  }
+};
 
 export const getLeadsByUserId = async (req, res) => {
   try {
@@ -31,9 +48,22 @@ export const getLeadById = async (req, res) => {
   }
 };
 
-export const createLead = async (req, res) => {
+export const createLeadAndScheduleMessage = async (req, res) => {
   try {
-    const lead = await createLeadService(req.user, req.body);
+    const lead: LeadModel = await createLeadService(req.user, req.body);
+
+    const firstMessage = await createMessageService({
+      lead_id: lead.id,
+      text: "", // hit openai api to get first message
+      delivery_status: "scheduled",
+      error_code: null,
+      error_message: null,
+      is_ai_generated: true,
+      created_at: new Date(Date.now()),
+      scheduled_at: getFirstMessageTiming(req.body.firstMessageTiming),
+      sender: "agent",
+    });
+
     res.status(201).json(lead);
   } catch (error) {
     logger.error("Error creating lead:", error);

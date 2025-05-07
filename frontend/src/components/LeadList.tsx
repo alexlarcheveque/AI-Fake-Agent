@@ -180,7 +180,7 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2">
                             <select
-                              value={editingLead.status}
+                              value={editingLead?.status}
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,

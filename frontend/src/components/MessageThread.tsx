@@ -163,16 +163,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         console.log("fetchedMessages", fetchedMessages);
 
         setMessages(fetchedMessages);
-
-        // Get user settings using the updated settingsApi that doesn't rely on localStorage
-        let userSettings;
-        try {
-          userSettings = await settingsApi.getSettings();
-        } catch (settingsError) {
-          console.warn("Could not fetch user settings:", settingsError);
-          // If we can't get settings, default to the lead settings
-          userSettings = { aiAssistantEnabled: lead.aiAssistantEnabled };
-        }
       } catch (err) {
         setError("Failed to load messages");
         console.error("Error fetching data:", err);
@@ -240,7 +230,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
     try {
       const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
-        leadId.toString()
+        leadId
       );
       setMessages(fetchedMessages);
 

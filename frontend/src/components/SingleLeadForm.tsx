@@ -23,11 +23,18 @@ const VALIDATION_RULES = {
       "Phone number can only contain numbers, spaces, +, -, and parentheses",
   },
   STATUS: {
-    VALID_VALUES: ["New", "In Conversation", "Qualified", "Appointment Set", "Converted", "Inactive"] as LeadStatus[],
+    VALID_VALUES: [
+      "New",
+      "In Conversation",
+      "Qualified",
+      "Appointment Set",
+      "Converted",
+      "Inactive",
+    ] as LeadStatus[],
   },
   LEAD_TYPE: {
     VALID_VALUES: ["buyer", "seller"] as LeadType[],
-  }
+  },
 } as const;
 
 // First message timing options
@@ -51,13 +58,15 @@ interface LeadFormProps {
   onLeadCreated: (lead: Lead) => void;
 }
 
-interface FormData extends Omit<LeadFormData, 'phoneNumber'> {
+interface FormData extends Omit<LeadFormData, "phoneNumber"> {
   phoneNumber: string;
   messageTime: string;
   aiAssistantEnabled: boolean;
   firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
   messageCount: number;
   context: string;
+  isArchived: boolean;
+  formattedPhone?: string;
 }
 
 const initialFormData: FormData = {
@@ -68,20 +77,26 @@ const initialFormData: FormData = {
   aiAssistantEnabled: true,
   messageTime: "now",
   leadType: "buyer",
-  enableFollowUps: false,
   firstMessageTiming: "immediate",
   messageCount: 0,
-  context: ""
+  context: "",
+  isArchived: false,
 };
 
 // Validation functions
 const validateName = (name: string): ValidationError | undefined => {
   if (!name.trim()) return { field: "name", message: "Name is required" };
   if (name.trim().length < VALIDATION_RULES.NAME.MIN_LENGTH) {
-    return { field: "name", message: `Name must be at least ${VALIDATION_RULES.NAME.MIN_LENGTH} characters` };
+    return {
+      field: "name",
+      message: `Name must be at least ${VALIDATION_RULES.NAME.MIN_LENGTH} characters`,
+    };
   }
   if (name.trim().length > VALIDATION_RULES.NAME.MAX_LENGTH) {
-    return { field: "name", message: `Name must be less than ${VALIDATION_RULES.NAME.MAX_LENGTH} characters` };
+    return {
+      field: "name",
+      message: `Name must be less than ${VALIDATION_RULES.NAME.MAX_LENGTH} characters`,
+    };
   }
   if (!VALIDATION_RULES.NAME.PATTERN.test(name.trim())) {
     return { field: "name", message: VALIDATION_RULES.NAME.PATTERN_MESSAGE };
@@ -94,21 +109,31 @@ const validateEmail = (email: string): ValidationError | undefined => {
     return { field: "email", message: "Please enter a valid email address" };
   }
   if (email.length > VALIDATION_RULES.EMAIL.MAX_LENGTH) {
-    return { field: "email", message: `Email must be less than ${VALIDATION_RULES.EMAIL.MAX_LENGTH} characters` };
+    return {
+      field: "email",
+      message: `Email must be less than ${VALIDATION_RULES.EMAIL.MAX_LENGTH} characters`,
+    };
   }
 };
 
 const validatePhone = (phone: string): ValidationError | undefined => {
-  if (!phone) return { field: "phoneNumber", message: "Phone number is required" };
+  if (!phone)
+    return { field: "phoneNumber", message: "Phone number is required" };
   const cleanPhone = phone.replace(/\D/g, "");
   if (
     cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
     cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
   ) {
-    return { field: "phoneNumber", message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits` };
+    return {
+      field: "phoneNumber",
+      message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits`,
+    };
   }
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
-    return { field: "phoneNumber", message: VALIDATION_RULES.PHONE.PATTERN_MESSAGE };
+    return {
+      field: "phoneNumber",
+      message: VALIDATION_RULES.PHONE.PATTERN_MESSAGE,
+    };
   }
 };
 
@@ -120,12 +145,18 @@ const validateStatus = (status: string): ValidationError | undefined => {
 
 const validateLeadType = (leadType: string): ValidationError | undefined => {
   if (!VALIDATION_RULES.LEAD_TYPE.VALID_VALUES.includes(leadType as LeadType)) {
-    return { field: "leadType", message: "Lead type must be 'buyer' or 'seller'" };
+    return {
+      field: "leadType",
+      message: "Lead type must be 'buyer' or 'seller'",
+    };
   }
   return undefined;
 };
 
-const validateField = (name: keyof FormData, value: string): ValidationError | undefined => {
+const validateField = (
+  name: keyof FormData,
+  value: string
+): ValidationError | undefined => {
   switch (name) {
     case "name":
       return validateName(value);
@@ -151,7 +182,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     Object.keys(formData).forEach((key) => {
-      if (key === "aiAssistantEnabled" || key === "enableFollowUps") return;
+      if (key === "aiAssistantEnabled") return;
       const value = formData[key as keyof typeof formData];
       if (typeof value === "string") {
         const error = validateField(key as keyof FormData, value);
@@ -165,7 +196,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   };
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
   ) => {
     const { name, value } = e.target;
 
@@ -185,7 +218,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   };
 
   const handleBlur = (
-    e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
   ) => {
     const { name, value } = e.target;
 
@@ -205,7 +240,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
 
     // Mark all fields as touched
     const allFields = Object.keys(formData).filter(
-      (key) => key !== "aiAssistantEnabled" && key !== "enableFollowUps"
+      (key) => key !== "aiAssistantEnabled"
     );
     setTouchedFields(new Set(allFields));
 
@@ -216,7 +251,13 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     setIsLoading(true);
 
     try {
-      const newLead = await leadApi.createLead(formData);
+      // Format the phone number for submission - formattedPhone is derived from phoneNumber
+      const leadData = {
+        ...formData,
+        formattedPhone: formData.phoneNumber.replace(/\D/g, ""),
+      };
+
+      const newLead = await leadApi.createLead(leadData);
       onLeadCreated(newLead);
       setFormData(initialFormData);
       setErrors({});
@@ -245,7 +286,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     <form onSubmit={handleSubmit} className="space-y-6">
       {errors.submit && (
         <div className="p-4 bg-red-50 border-l-4 border-red-400 text-red-700">
-          {typeof errors.submit === 'string' ? errors.submit : errors.submit?.message}
+          {typeof errors.submit === "string"
+            ? errors.submit
+            : errors.submit?.message}
         </div>
       )}
 
@@ -271,7 +314,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         />
         {errors.name && touchedFields.has("name") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.name === 'string' ? errors.name : errors.name.message}
+            {typeof errors.name === "string"
+              ? errors.name
+              : errors.name.message}
           </p>
         )}
       </div>
@@ -298,7 +343,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         />
         {errors.email && touchedFields.has("email") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.email === 'string' ? errors.email : errors.email.message}
+            {typeof errors.email === "string"
+              ? errors.email
+              : errors.email.message}
           </p>
         )}
       </div>
@@ -319,13 +366,17 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.phoneNumber ? "border-red-500 ring-red-100" : "border-gray-300"
+            errors.phoneNumber
+              ? "border-red-500 ring-red-100"
+              : "border-gray-300"
           }`}
           disabled={isLoading}
         />
         {errors.phoneNumber && touchedFields.has("phoneNumber") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.phoneNumber === 'string' ? errors.phoneNumber : errors.phoneNumber.message}
+            {typeof errors.phoneNumber === "string"
+              ? errors.phoneNumber
+              : errors.phoneNumber.message}
           </p>
         )}
       </div>
@@ -356,7 +407,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         </select>
         {errors.status && touchedFields.has("status") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.status === 'string' ? errors.status : errors.status.message}
+            {typeof errors.status === "string"
+              ? errors.status
+              : errors.status.message}
           </p>
         )}
       </div>
@@ -387,7 +440,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         </select>
         {errors.leadType && touchedFields.has("leadType") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.leadType === 'string' ? errors.leadType : errors.leadType.message}
+            {typeof errors.leadType === "string"
+              ? errors.leadType
+              : errors.leadType.message}
           </p>
         )}
       </div>
@@ -420,7 +475,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           <div>
             <h3 className="text-sm font-medium text-gray-900">AI Assistant</h3>
             <p className="text-sm text-gray-500">
-              Enable AI to automatically respond to lead messages
+              Enable AI to automatically respond and follow up with leads
             </p>
           </div>
           <button
@@ -443,42 +498,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
             />
           </button>
         </div>
-      </div>
-
-      {/* Automated Follow-ups Toggle */}
-      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-gray-900">
-              Automated Follow-ups
-            </h3>
-            <p className="text-sm text-gray-500">
-              Enable AI to automatically follow up with leads who don't respond
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              setFormData((prev) => ({
-                ...prev,
-                enableFollowUps: !prev.enableFollowUps,
-              }))
-            }
-            className={`${
-              formData.enableFollowUps ? "bg-blue-600" : "bg-gray-200"
-            } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
-            disabled={isLoading}
-          >
-            <span
-              className={`${
-                formData.enableFollowUps ? "translate-x-5" : "translate-x-0"
-              } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-            />
-          </button>
-        </div>
 
         {/* First message timing options */}
-        {formData.enableFollowUps && (
+        {formData.aiAssistantEnabled && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               When to send first message

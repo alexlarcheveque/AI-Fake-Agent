@@ -18,14 +18,14 @@ logger.info(
 // Create the Twilio client
 const client = twilio(accountSid, authToken);
 
-export const sendMessage = async (to: string, body: string): Promise<any> => {
+export const sendMessage = async (to: number, body: string): Promise<any> => {
   try {
     // Make sure the callback URL is correct and includes the full path
     const statusCallbackUrl = `${process.env.BASE_URL}/api/messages/status-callback`;
 
     const message = await client.messages.create({
       from: twilioPhoneNumber,
-      to,
+      to: to.toString(),
       body,
       statusCallback: statusCallbackUrl,
     });

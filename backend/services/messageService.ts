@@ -39,6 +39,17 @@ export const createMessage = async (
   return data.map((msg) => MessageUtils.toModel(msg));
 };
 
+export const getMessageById = async (messageId: number): Promise<Message> => {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("id", messageId)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return MessageUtils.toModel(data);
+};
+
 export const getMessagesByLeadId = async (
   leadId: number
 ): Promise<Message[]> => {
@@ -106,7 +117,7 @@ export const getMessagesThatAreOverdue = async (): Promise<Message[]> => {
     .from("messages")
     .select("*")
     .lte("scheduled_at", now)
-    .eq("delivery_status", "queued");
+    .eq("delivery_status", "scheduled");
 
   if (error) throw new Error(error.message);
   return data.map((msg) => MessageUtils.toModel(msg));
