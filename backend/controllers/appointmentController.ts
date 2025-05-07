@@ -5,18 +5,23 @@ import {
 } from "../services/appointmentService.ts";
 
 export const createAppointment = async (req, res) => {
-  const { lead_id, title, timestamp, description } = req.body;
+  const { leadId, title, startTime, endTime, location, description } = req.body;
 
   // Validate required fields
-  if (!lead_id || !title || !timestamp) {
+  if (!leadId || !title || !startTime || !endTime) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
+  console.log("body of request", req.body);
+
   const appointment = await createAppointmentService({
-    lead_id,
+    leadId,
+    description,
+    status: "scheduled",
     title,
-    timestamp,
-    description
+    startTime,
+    endTime,
+    location,
   });
 
   res.status(201).json({
@@ -25,9 +30,9 @@ export const createAppointment = async (req, res) => {
 };
 
 export const getAppointmentsByLeadId = async (req, res) => {
-  const { lead_id } = req.params;
+  const { leadId } = req.params;
 
-  const appointments = await getAppointmentsByLeadIdService(lead_id);
+  const appointments = await getAppointmentsByLeadIdService(leadId);
 
   res.json(appointments);
 };

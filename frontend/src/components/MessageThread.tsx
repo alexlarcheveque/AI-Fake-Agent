@@ -11,6 +11,51 @@ import { useNotifications } from "../contexts/NotificationContext";
 import settingsApi from "../api/settingsApi";
 import "../styles/MessageThread.css";
 
+// Custom hook for message fetching
+const useMessageFetching = (leadId: number) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchMessages = useCallback(async () => {
+    if (!leadId) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
+        leadId
+      );
+      setMessages(fetchedMessages);
+    } catch (err) {
+      console.error("Error fetching messages:", err);
+      setError("Failed to load messages");
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchMessages();
+  }, [fetchMessages]);
+
+  // Set up periodic refresh
+  useEffect(() => {
+    const intervalId = setInterval(fetchMessages, 30000);
+    return () => clearInterval(intervalId);
+  }, [fetchMessages]);
+
+  return {
+    messages,
+    setMessages,
+    loading,
+    error,
+    refreshMessages: fetchMessages,
+  } as const;
+};
+
 interface MessageThreadProps {
   leadId: number;
   leadName: string;
@@ -35,19 +80,17 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   leadEmail,
   leadPhone,
   leadType,
-  leadSource,
   nextScheduledMessage: propNextScheduledMessage,
-  messageCount,
-  onClose,
-  onLeadUpdate,
-  onAppointmentCreated,
-  onAppointmentUpdated,
-  onAppointmentDeleted,
   initialMessages = [],
   isOpen = false,
 }) => {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [loading, setLoading] = useState(false);
+  const {
+    messages,
+    setMessages,
+    loading,
+    error: messageError,
+    refreshMessages,
+  } = useMessageFetching(leadId);
   const [error, setError] = useState<string | null>(null);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -73,174 +116,21 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     setNextScheduledMessage(propNextScheduledMessage);
   }, [propNextScheduledMessage]);
 
-  // Helper function to validate and normalize messages
-  const validateAndNormalizeMessage = (message: any): Message | null => {
-    if (!message) return null;
-
-    // Check required fields
-    if (!message.id || !message.text || !message.sender) {
-      console.error("Message missing required fields");
-      return null;
-    }
-
-    // Ensure all required fields are present
-    const normalizedMessage: Message = {
-      id: Number(message.id),
-      leadId: Number(message.leadId || leadId), // Use leadId from props if not in message
-      text: String(message.text),
-      sender: message.sender === "lead" ? "lead" : "agent", // Normalize sender
-      direction:
-        message.direction ||
-        (message.sender === "lead" ? "inbound" : "outbound"),
-      isAiGenerated: Boolean(message.isAiGenerated),
-      createdAt: message.createdAt || new Date().toISOString(),
-      twilioSid: message.twilioSid || undefined,
-      deliveryStatus: message.deliveryStatus || "delivered",
-      metadata: message.metadata || null,
-    };
-
-    return normalizedMessage;
-  };
-
-  // Format next scheduled message date and time
-  const formatScheduledDate = (dateString?: string) => {
-    if (!dateString) return null;
-
-    try {
-      const date = new Date(dateString);
-
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        console.warn(
-          "Invalid date format for nextScheduledMessage:",
-          dateString
-        );
-        return null;
-      }
-
-      // Calculate days until scheduled message
-      const now = new Date();
-      const diffTime = date.getTime() - now.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      // Format with day of week, month date, and time
-      return {
-        date: date.toLocaleDateString(undefined, {
-          weekday: "long",
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
-        time: date.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        daysUntil: diffDays,
-      };
-    } catch (error) {
-      console.error("Error formatting scheduled date:", error);
-      return null;
-    }
-  };
-
-  // Get formatted scheduled message date and time
-  const scheduledDateTime = formatScheduledDate(nextScheduledMessage);
-
-  // Fetch messages and lead settings on component mount and when leadId changes
+  // Fetch lead data on component mount and when leadId changes
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchLeadData = async () => {
       try {
         setError(null);
-
-        console.log("leadId", leadId);
-
         const lead = await leadApi.getLead(leadId);
         console.log("lead", lead);
-
-        const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
-          leadId
-        );
-        console.log("fetchedMessages", fetchedMessages);
-
-        setMessages(fetchedMessages);
       } catch (err) {
-        setError("Failed to load messages");
-        console.error("Error fetching data:", err);
+        setError("Failed to load lead data");
+        console.error("Error fetching lead data:", err);
       }
     };
 
     if (leadId) {
-      fetchData();
-    }
-  }, [leadId]);
-
-  // Listen for lead-updated events to update the nextScheduledMessage without requiring a refresh
-  useEffect(() => {
-    const handleLeadUpdated = (
-      event: CustomEvent<{
-        leadId: number;
-        nextScheduledMessage: string | null;
-      }>
-    ) => {
-      const { leadId: updatedLeadId, nextScheduledMessage: updatedSchedule } =
-        event.detail;
-
-      // Only update if this event is for our lead
-      if (updatedLeadId === leadId) {
-        console.log(
-          "Received lead-updated event, updating nextScheduledMessage:",
-          updatedSchedule
-        );
-
-        // Update our local state for immediate UI refresh
-        setNextScheduledMessage(updatedSchedule || undefined);
-
-        // Update the parent component's props through the window event
-        // This is just to maintain consistent data state, the actual UI update comes from
-        // the nextScheduledMessage prop which will be updated by the parent component
-        window.dispatchEvent(
-          new CustomEvent("lead-updated", {
-            detail: {
-              leadId: leadId,
-              nextScheduledMessage: updatedSchedule,
-            },
-          })
-        );
-      }
-    };
-
-    // Add the event listener
-    window.addEventListener("lead-updated", handleLeadUpdated as EventListener);
-
-    // Clean up
-    return () => {
-      window.removeEventListener(
-        "lead-updated",
-        handleLeadUpdated as EventListener
-      );
-    };
-  }, [leadId]);
-
-  // Force refresh messages function with improved error handling
-  const refreshMessages = useCallback(async () => {
-    if (!leadId) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
-        leadId
-      );
-      setMessages(fetchedMessages);
-
-      // Scroll to bottom after messages load
-      scrollToBottom();
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-      setError("Failed to load messages");
-    } finally {
-      setLoading(false);
+      fetchLeadData();
     }
   }, [leadId]);
 
@@ -253,94 +143,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   // Toggle AI Assistant
   const handleToggleAiAssistant = async () => {
-    try {
-      const isTogglingOn = !aiAssistantEnabled;
-
-      // Prepare updated fields
-      const updatedFields = {
-        aiAssistantEnabled: isTogglingOn,
-      };
-
-      // Update lead with new AI Assistant setting
-      const updatedLead = await leadApi.updateLead(leadId, updatedFields);
-      setAiAssistantEnabled(updatedLead.aiAssistantEnabled);
-
-      if (isTogglingOn) {
-        try {
-          // First, get the full lead to have access to the current status
-          const lead = await leadApi.getLead(leadId);
-
-          // Schedule a new follow-up message based on the lead's status
-          const response = await fetch(
-            `/api/leads/schedule-followup/${leadId}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-            }
-          );
-
-          if (response.ok) {
-            const result = await response.json();
-
-            // Refresh the lead data to get the new nextScheduledMessage
-            const refreshedLead = await leadApi.getLead(leadId);
-
-            // Update parent component with new scheduled message
-            if (refreshedLead.nextScheduledMessage) {
-              window.dispatchEvent(
-                new CustomEvent("lead-updated", {
-                  detail: {
-                    leadId: leadId,
-                    nextScheduledMessage: refreshedLead.nextScheduledMessage,
-                  },
-                })
-              );
-
-              // Show success message
-              setAppointmentSuccess(
-                `AI Assistant is enabled. Next follow-up scheduled based on ${lead.status} status.`
-              );
-              setTimeout(() => setAppointmentSuccess(null), 5000);
-            }
-          } else {
-            const errorData = await response.json();
-            setError(
-              `Failed to schedule follow-up: ${
-                errorData.error || "Unknown error"
-              }`
-            );
-            setTimeout(() => setError(null), 5000);
-          }
-        } catch (err) {
-          console.error("Error scheduling follow-up:", err);
-          setError("Failed to schedule follow-up message");
-          setTimeout(() => setError(null), 5000);
-        }
-      } else {
-        // If we just disabled AI Assistant, we need to update local state to clear the nextScheduledMessage UI
-        if (scheduledDateTime) {
-          // Force refresh to get the latest lead data including the cleared scheduled message
-          const refreshedLead = await leadApi.getLead(leadId);
-
-          // Update parent component by simulating navigation (this will re-render with updated data)
-          if (!refreshedLead.nextScheduledMessage) {
-            window.dispatchEvent(
-              new CustomEvent("lead-updated", {
-                detail: {
-                  leadId: leadId,
-                  nextScheduledMessage: null,
-                },
-              })
-            );
-          }
-        }
-      }
-    } catch (err) {
-      setError("Failed to update AI Assistant setting");
-      console.error("Error updating lead:", err);
-    }
+    setAiAssistantEnabled(!aiAssistantEnabled);
   };
 
   // Handle sending a new message
@@ -413,28 +216,96 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     }
   };
 
-  // Listen for new messages (removed socket functionality)
-  useEffect(() => {
-    // This effect would previously set up socket listeners
-    // Now that socket is removed, we will use refreshMessages to update messages periodically
+  // Format next scheduled message date and time
+  const formatScheduledDate = (dateString?: string) => {
+    if (!dateString) return null;
 
-    // Initial messages load
-    if (leadId) {
-      refreshMessages();
-    }
+    try {
+      const date = new Date(dateString);
 
-    // Set up periodic refresh every 30 seconds
-    const intervalId = setInterval(() => {
-      if (leadId) {
-        refreshMessages();
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn(
+          "Invalid date format for nextScheduledMessage:",
+          dateString
+        );
+        return null;
       }
-    }, 30000);
 
-    // Cleanup on unmount
-    return () => {
-      clearInterval(intervalId);
+      // Calculate days until scheduled message
+      const now = new Date();
+      const diffTime = date.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // Format with day of week, month date, and time
+      return {
+        date: date.toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+        time: date.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        daysUntil: diffDays,
+      };
+    } catch (error) {
+      console.error("Error formatting scheduled date:", error);
+      return null;
+    }
+  };
+
+  // Get formatted scheduled message date and time
+  const scheduledDateTime = formatScheduledDate(nextScheduledMessage);
+
+  // Listen for lead-updated events to update the nextScheduledMessage without requiring a refresh
+  useEffect(() => {
+    const handleLeadUpdated = (
+      event: CustomEvent<{
+        leadId: number;
+        nextScheduledMessage: string | null;
+      }>
+    ) => {
+      const { leadId: updatedLeadId, nextScheduledMessage: updatedSchedule } =
+        event.detail;
+
+      // Only update if this event is for our lead
+      if (updatedLeadId === leadId) {
+        console.log(
+          "Received lead-updated event, updating nextScheduledMessage:",
+          updatedSchedule
+        );
+
+        // Update our local state for immediate UI refresh
+        setNextScheduledMessage(updatedSchedule || undefined);
+
+        // Update the parent component's props through the window event
+        // This is just to maintain consistent data state, the actual UI update comes from
+        // the nextScheduledMessage prop which will be updated by the parent component
+        window.dispatchEvent(
+          new CustomEvent("lead-updated", {
+            detail: {
+              leadId: leadId,
+              nextScheduledMessage: updatedSchedule,
+            },
+          })
+        );
+      }
     };
-  }, [leadId, refreshMessages]);
+
+    // Add the event listener
+    window.addEventListener("lead-updated", handleLeadUpdated as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener(
+        "lead-updated",
+        handleLeadUpdated as EventListener
+      );
+    };
+  }, [leadId]);
 
   useEffect(() => {
     console.log("MessageThread mounted with leadId:", leadId);
@@ -449,19 +320,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   }, [messages]);
 
   const handleAppointmentSuccess = (calendlyLink: string | null) => {
-    if (calendlyLink) {
-      // For Calendly direct link
-      setAppointmentSuccess(
-        "Calendly scheduling link created successfully! The client can now choose from your available time slots."
-      );
-    } else {
-      // For manual appointments
-      setAppointmentSuccess("Appointment scheduled successfully!");
-    }
-
-    setTimeout(() => {
-      setAppointmentSuccess(null);
-    }, 8000); // Show for a longer time so the user has time to read it
+    setAppointmentSuccess("Appointment scheduled successfully!");
 
     // Refresh latest message to clear the appointment form
     setLatestMessage(null);

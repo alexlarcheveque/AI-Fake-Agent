@@ -11,6 +11,10 @@ export type Database = {
     Tables: {
       appointments: {
         Row: {
+          start_time_at: string
+          location: string
+          title: string
+          end_time_at: string
           created_at: string
           description: string | null
           id: number

@@ -10,7 +10,7 @@ const router = express.Router();
 
 // Get upcoming appointments
 router.get(
-  "/upcoming",
+  "/lead/:leadId",
   asyncHandler((req, res) => getAppointmentsByLeadId(req, res))
 );
 

@@ -2,25 +2,18 @@ import supabase from "../config/supabase.ts";
 import {
   Appointment,
   AppointmentInsert,
+  AppointmentModel,
   AppointmentUtils,
 } from "../models/Appointment.ts";
 
-interface CreateAppointmentParams {
-  lead_id?: number | null;
-  user_id?: number;
-  appointment_timestamp?: Date | string | null;
-  description?: string | null;
-  status?: string | null;
-}
-
 export const createAppointment = async (
-  settings: CreateAppointmentParams
+  settings: AppointmentModel
 ): Promise<Appointment[]> => {
-  const appointmentData = AppointmentUtils.toInsert(settings);
+  const appointmentToInsert = AppointmentUtils.toInsert(settings);
 
   const { data, error } = await supabase
     .from("appointments")
-    .insert([appointmentData])
+    .insert([appointmentToInsert])
     .select();
 
   if (error) throw new Error(error.message);
@@ -29,7 +22,7 @@ export const createAppointment = async (
 
 export const getAppointmentsByLeadId = async (
   leadId: number
-): Promise<Appointment[]> => {
+): Promise<AppointmentModel[]> => {
   const { data, error } = await supabase
     .from("appointments")
     .select("*")

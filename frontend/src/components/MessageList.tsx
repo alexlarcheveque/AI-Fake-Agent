@@ -115,8 +115,8 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     const groups: { date: Date; displayDate: Date; messages: Message[] }[] = [];
 
     messages.forEach((message) => {
-      // Skip messages without createdAt
-      if (!message.createdAt) {
+      // Skip messages without createdAt 
+      if (!message.createdAt || message.deliveryStatus === "scheduled") {
         console.warn("Message missing createdAt:", message);
         return;
       }

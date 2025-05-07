@@ -17,40 +17,41 @@ export interface Appointment
   user_id?: number; // For compatibility with old code that might use user_id
 }
 
-// Utility functions for working with Appointments
+export interface AppointmentModel {
+  description: string;
+  endTime: string;
+  leadId: number;
+  location: string;
+  startTime: string;
+  title: string;
+  status: string;
+}
+
 export const AppointmentUtils = {
-  // Convert database date strings to JavaScript Date objects
-  toModel(data: AppointmentRow): Appointment {
+  toModel(data: AppointmentRow): AppointmentModel {
     return {
       ...data,
-      // Convert date strings to Date objects
-      created_at: data.created_at
-        ? new Date(data.created_at)
-        : new Date().toISOString(),
-      timestamp: data.timestamp ? new Date(data.timestamp) : null,
-      appointment_timestamp: data.timestamp ? new Date(data.timestamp) : null,
+      leadId: data.lead_id,
+      startTime: data.start_time_at,
+      endTime: data.end_time_at,
+      location: data.location,
+      description: data.description,
+      title: data.title,
+      status: data.status,
     };
   },
 
   // Convert JavaScript model to database format for inserts
-  toInsert(appointment: Partial<Appointment>): AppointmentInsert {
-    const { appointment_timestamp, user_id, ...dbAppointment } =
-      appointment as any;
-
-    // Map appointment_timestamp to timestamp if provided
-    if (appointment_timestamp !== undefined) {
-      // Convert Date objects to strings
-      if (appointment_timestamp instanceof Date) {
-        dbAppointment.timestamp = appointment_timestamp.toISOString();
-      } else {
-        dbAppointment.timestamp = appointment_timestamp;
-      }
-    }
-
-    // Convert created_at Date to string if needed
-    if (appointment.created_at && appointment.created_at instanceof Date) {
-      dbAppointment.created_at = appointment.created_at.toISOString();
-    }
+  toInsert(appointment: AppointmentModel): AppointmentInsert {
+    const dbAppointment = {
+      lead_id: appointment.leadId,
+      start_time_at: appointment.startTime,
+      end_time_at: appointment.endTime,
+      location: appointment.location,
+      description: appointment.description,
+      title: appointment.title,
+      status: appointment.status,
+    };
 
     return dbAppointment as AppointmentInsert;
   },

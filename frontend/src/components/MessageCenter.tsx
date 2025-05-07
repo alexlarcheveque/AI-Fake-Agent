@@ -9,98 +9,61 @@ const MessagesCenter: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [searchParams] = useSearchParams();
 
-  // First effect: Check URL params on component mount and load specific lead if provided
+  // Single effect to handle all data loading
   useEffect(() => {
-    const loadInitialData = async () => {
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+
       const leadIdParam = searchParams.get("leadId");
+      const targetLeadId = leadIdParam ? parseInt(leadIdParam, 10) : null;
 
-      if (leadIdParam) {
-        const leadId = parseInt(leadIdParam, 10);
-        if (!isNaN(leadId)) {
-          setSelectedLeadId(leadId);
+      try {
+        if (targetLeadId && !isNaN(targetLeadId)) {
+          const specificLead = await leadApi.getLead(targetLeadId);
+          if (specificLead) {
+            setSelectedLeadId(targetLeadId);
+            setLeads([specificLead]);
+          }
+        }
 
-          // Immediately fetch this specific lead before anything else
-          try {
-            const leadData = await leadApi.getLead(leadId);
-            if (leadData) {
-              // Add this specific lead to our state
-              setLeads([leadData]);
+        // Always fetch the full list of leads
+        const allLeads = await leadApi.getLeads();
 
-              // Then continue with regular lead loading
-              fetchLeads();
+        if (targetLeadId && !isNaN(targetLeadId)) {
+          // If we have a specific lead, make sure it's in the list
+          const specificLeadExists = allLeads.some(
+            (l) => Number(l.id) === targetLeadId
+          );
+          if (!specificLeadExists) {
+            const specificLead = await leadApi.getLead(targetLeadId);
+            if (specificLead) {
+              setLeads([...allLeads, specificLead]);
+            } else {
+              setLeads(allLeads);
             }
-          } catch (err) {
-            console.error("Error fetching specific lead:", err);
-            setError("Failed to load lead details");
-            // Continue with regular lead loading even if specific lead fails
-            fetchLeads();
+          } else {
+            setLeads(allLeads);
           }
         } else {
-          // No valid leadId, just load regular leads
-          fetchLeads();
+          setLeads(allLeads);
+          // If no specific lead is selected, select the first one
+          if (allLeads.length > 0 && !selectedLeadId) {
+            setSelectedLeadId(Number(allLeads[0].id));
+          }
         }
-      } else {
-        // No leadId param, just load regular leads
-        fetchLeads();
+      } catch (err) {
+        console.error("Error loading leads:", err);
+        setError("Failed to load leads");
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    loadInitialData();
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on component mount
-
-  // Update leads when page changes
-  useEffect(() => {
-    // Skip on initial mount as it's handled by the first effect
-    if (!isLoading) {
-      fetchLeads();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
-
-  // Helper function to fetch leads
-  const fetchLeads = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await leadApi.getLeads();
-
-      // Preserve the specific lead if it exists
-      if (selectedLeadId) {
-        const existingSpecificLead = leads.find(
-          (l) => Number(l.id) === selectedLeadId
-        );
-        if (
-          existingSpecificLead &&
-          !response.some((l) => Number(l.id) === selectedLeadId)
-        ) {
-          // Make sure we don't lose our selected lead when changing pages
-          setLeads([...response, existingSpecificLead]);
-        } else {
-          setLeads(response);
-        }
-      } else {
-        setLeads(response);
-        // If no lead is selected and we have leads, select the first one
-        if (response.length > 0 && !selectedLeadId) {
-          setSelectedLeadId(Number(response[0].id));
-        }
-      }
-
-      // Pagination is no longer needed as we're getting all leads
-      setTotalPages(1);
-    } catch (err) {
-      setError("Failed to load leads");
-      console.error("Error fetching leads:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    loadData();
+  }, [searchParams]);
 
   // Listen for lead-updated custom events
   useEffect(() => {
@@ -129,7 +92,6 @@ const MessagesCenter: React.FC = () => {
     };
   }, []);
 
-  // Find the selected lead once to avoid repeated lookups
   const selectedLead = selectedLeadId
     ? leads.find((l) => Number(l.id) === selectedLeadId)
     : undefined;
@@ -199,8 +161,6 @@ const MessagesCenter: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* Main Content - Message Thread */}
           <div className="flex-1 h-full">
             {selectedLeadId ? (
               <MessageThread
