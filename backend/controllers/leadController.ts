@@ -11,7 +11,7 @@ import logger from "../utils/logger.ts";
 
 const getFirstMessageTiming = (firstMessageTiming: string) => {
   switch (firstMessageTiming) {
-    case "immediately":
+    case "immediate":
       return new Date(Date.now());
     case "next_day":
       return new Date(Date.now() + 1000 * 60 * 60 * 24);
@@ -52,7 +52,9 @@ export const createLeadAndScheduleMessage = async (req, res) => {
   try {
     const lead: LeadModel = await createLeadService(req.user, req.body);
 
-    const firstMessage = await createMessageService({
+    console.log("req.body", req.body);
+
+    await createMessageService({
       lead_id: lead.id,
       text: "", // hit openai api to get first message
       delivery_status: "scheduled",

@@ -8,7 +8,6 @@ import MessageInput from "./MessageInput";
 import AppointmentCreator from "./AppointmentCreator";
 import AppointmentsList from "./AppointmentsList";
 import { useNotifications } from "../contexts/NotificationContext";
-import settingsApi from "../api/settingsApi";
 import "../styles/MessageThread.css";
 
 // Custom hook for message fetching
@@ -484,9 +483,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         </div>
       </div>
 
-      {/* Info rows for next message and search criteria */}
       <div>
-        {/* Next scheduled message */}
         {scheduledDateTime && (
           <div className="px-4 py-2 flex items-center border-b border-gray-100">
             <div className="mr-3 text-blue-500">

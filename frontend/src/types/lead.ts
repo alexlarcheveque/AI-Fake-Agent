@@ -20,7 +20,6 @@ export interface Lead {
   isArchived: boolean;
   context: string;
   leadType: string;
-  formattedPhone: string;
   nextScheduledMessage?: string;
   messageCount?: number;
 }

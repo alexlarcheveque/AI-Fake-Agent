@@ -19,26 +19,37 @@ export interface Message
   twilioSid?: string; // Twilio message SID
 }
 
+export interface MessageModel {
+  id: number;
+  leadId: number;
+  text: string;
+  sender: "agent" | "lead";
+  direction?: "inbound" | "outbound";
+  isAiGenerated: boolean;
+  twilioSid?: string;
+  createdAt: string;
+  updatedAt?: string;
+  deliveryStatus?: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}
+
 // Utility functions for working with Messages
 export const MessageUtils = {
   // Convert database date strings to JavaScript Date objects
-  toModel(data: MessageRow): Message {
-    const model: Message = {
+  toModel(data: MessageRow): MessageModel {
+    const model: MessageModel = {
       ...data,
+      leadId: data?.lead_id,
+      sender: data?.sender as "agent" | "lead",
+      isAiGenerated: data?.is_ai_generated,
+      twilioSid: data?.twilio_sid,
+      createdAt: data?.created_at,
+      updatedAt: data?.updated_at,
+      deliveryStatus: data?.delivery_status,
+      errorCode: data?.error_code,
+      errorMessage: data?.error_message,
     };
-
-    // Convert dates if they exist
-    if (data.created_at) {
-      model.created_at = new Date(data.created_at);
-    }
-
-    if (data.scheduled_at) {
-      model.scheduled_at = new Date(data.scheduled_at);
-    }
-
-    if (data.updated_at) {
-      model.updated_at = new Date(data.updated_at);
-    }
 
     return model;
   },

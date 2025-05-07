@@ -238,12 +238,6 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Mark all fields as touched
-    const allFields = Object.keys(formData).filter(
-      (key) => key !== "aiAssistantEnabled"
-    );
-    setTouchedFields(new Set(allFields));
-
     if (!validateForm()) {
       return;
     }
@@ -251,13 +245,12 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     setIsLoading(true);
 
     try {
-      // Format the phone number for submission - formattedPhone is derived from phoneNumber
-      const leadData = {
-        ...formData,
-        formattedPhone: formData.phoneNumber.replace(/\D/g, ""),
-      };
+      console.log("formData", formData);
 
-      const newLead = await leadApi.createLead(leadData);
+      const newLead = await leadApi.createLead(formData);
+
+      console.log("newLead", newLead);
+
       onLeadCreated(newLead);
       setFormData(initialFormData);
       setErrors({});

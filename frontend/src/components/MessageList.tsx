@@ -115,16 +115,16 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     const groups: { date: Date; displayDate: Date; messages: Message[] }[] = [];
 
     messages.forEach((message) => {
-      // Skip messages without createdAt 
-      if (!message.createdAt || message.deliveryStatus === "scheduled") {
+      // Skip messages without createdAt
+      if (!message?.createdAt || message?.deliveryStatus === "scheduled") {
         console.warn("Message missing createdAt:", message);
         return;
       }
 
       const messageDate =
-        typeof message.createdAt === "string"
-          ? new Date(message.createdAt)
-          : message.createdAt;
+        typeof message?.createdAt === "string"
+          ? new Date(message?.createdAt)
+          : message?.createdAt;
 
       // Skip invalid dates
       if (isNaN(messageDate.getTime())) {

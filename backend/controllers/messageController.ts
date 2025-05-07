@@ -9,6 +9,7 @@ import {
 } from "../services/messageService.ts";
 import logger from "../utils/logger.ts";
 import supabase from "../config/supabase.ts";
+import { MessageUtils } from "../models/Message.ts";
 
 export const createOutgoingMessage = async (req, res) => {
   try {
@@ -85,7 +86,7 @@ export const getMessagesByLeadIdDescending = async (req, res) => {
 
     logger.info(`Returning ${messages.length} messages for lead ${leadIdNum}`);
 
-    return res.json(messages);
+    return res.json(messages.map((message) => MessageUtils.toModel(message)));
   } catch (error) {
     logger.error(`Error in getMessagesByLeadIdDescending: ${error.message}`);
     return res.status(500).json({

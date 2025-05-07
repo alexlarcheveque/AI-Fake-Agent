@@ -21,6 +21,8 @@ export const createLead = async (
     context,
   } = settings;
 
+  console.log("create lead settings", settings);
+
   if (!user) {
     throw new Error("User not found");
   }
