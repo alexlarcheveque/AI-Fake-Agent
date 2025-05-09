@@ -13,16 +13,15 @@ import { MessageUtils } from "../models/Message.ts";
 
 export const createOutgoingMessage = async (req, res) => {
   try {
-    const { lead_id, text, is_ai_generated, user_settings } = req.body;
-    const user_id = req.user?.id;
+    const { lead_id, text, is_ai_generated } = req.body;
 
-    // Create a message with proper parameters
     const messageData = {
       lead_id,
       text,
       is_ai_generated,
-      user_id,
     };
+
+    console.log("messageData", messageData);
 
     const message = await createMessageService(messageData);
     res.status(201).json(message);
@@ -138,6 +137,8 @@ export const statusCallback = async (req, res) => {
     logger.info(
       `Twilio message ${MessageSid} status updated to ${MessageStatus}`
     );
+
+    console.log("statusCallback", req.body);
 
     // Find the message by twilioSid and then update it
     const { data: messageToUpdate, error } = await supabase
