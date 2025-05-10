@@ -32,6 +32,13 @@ const MessageInput: React.FC<MessageInputProps> = ({
     e.preventDefault();
     if (message.trim() && !isLoading && !isDisabled) {
       handleSendMessage();
+
+      // Dispatch a custom event that MessageThread can listen for to trigger a refresh
+      window.dispatchEvent(
+        new CustomEvent("message-sent", {
+          detail: { leadId },
+        })
+      );
     }
   };
 
@@ -40,6 +47,13 @@ const MessageInput: React.FC<MessageInputProps> = ({
       e.preventDefault();
       if (message.trim() && !isLoading && !isDisabled) {
         handleSendMessage();
+
+        // Dispatch a custom event that MessageThread can listen for to trigger a refresh
+        window.dispatchEvent(
+          new CustomEvent("message-sent", {
+            detail: { leadId },
+          })
+        );
       }
     }
   };
@@ -56,9 +70,18 @@ const MessageInput: React.FC<MessageInputProps> = ({
         false
       );
 
+      // Call onSendMessage with the new message object
       onSendMessage(newMessage);
 
+      // Clear the input
       setMessage("");
+
+      // Dispatch a custom event that MessageThread can listen for to trigger a refresh
+      window.dispatchEvent(
+        new CustomEvent("message-sent", {
+          detail: { leadId },
+        })
+      );
     } catch (error: any) {
       // Type error as any for now to access properties
       console.error("Error sending message:", error);

@@ -1,45 +1,42 @@
 import supabase from "../config/supabase.ts";
-import { Message, MessageInsert, MessageUtils } from "../models/Message.ts";
+import { MessageInsert, MessageRow } from "../models/Message.ts";
 
-interface CreateMessageParams {
-  lead_id: number;
-  text: string;
-  sender?: string;
-  scheduled_at?: Date | string | null;
-  is_ai_generated?: boolean | null;
-  delivery_status?: string | null;
-  error_code?: string | null;
-  error_message?: string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  is_incoming?: boolean;
-  twilioSid?: string;
-}
+// Utility function to clean phone numbers
+const cleanPhoneNumber = (phoneNumber: string): string => {
+  // Remove all non-digit characters
+  const digitsOnly = phoneNumber.replace(/\D/g, "");
 
-interface IncomingMessageData {
-  from: string;
-  to: string;
-  text: string;
-  twilioSid?: string;
-  status?: string;
-}
+  // If the number starts with '1' and is 11 digits, remove the '1'
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+    return digitsOnly.slice(1);
+  }
 
-export const createMessage = async (
-  settings: CreateMessageParams
-): Promise<Message[]> => {
-  // Convert to database format if needed
-  const insertData = MessageUtils.toInsert(settings);
+  // If it's already 10 digits, return as is
+  if (digitsOnly.length === 10) {
+    return digitsOnly;
+  }
 
-  const { data, error } = await supabase
-    .from("messages")
-    .insert([insertData])
-    .select();
-
-  if (error) throw new Error(error.message);
-  return data.map((msg) => MessageUtils.toModel(msg));
+  // If we can't clean it properly, return the original digits
+  return digitsOnly;
 };
 
-export const getMessageById = async (messageId: number): Promise<Message> => {
+export const createMessage = async (
+  settings: MessageInsert
+): Promise<MessageRow[]> => {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert([settings])
+    .select();
+
+  console.log("created message", data);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const getMessageById = async (
+  messageId: number
+): Promise<MessageRow> => {
   const { data, error } = await supabase
     .from("messages")
     .select("*")
@@ -47,25 +44,25 @@ export const getMessageById = async (messageId: number): Promise<Message> => {
     .single();
 
   if (error) throw new Error(error.message);
-  return MessageUtils.toModel(data);
+  return data;
 };
 
 export const getMessagesByLeadId = async (
   leadId: number
-): Promise<Message[]> => {
+): Promise<MessageRow[]> => {
   const { data, error } = await supabase
     .from("messages")
     .select("*")
     .eq("lead_id", leadId);
 
   if (error) throw new Error(error.message);
-  return data.map((msg) => MessageUtils.toModel(msg));
+  return data;
 };
 
 export const getMessagesByLeadIdDescending = async (
   leadId: number,
   userId: number
-): Promise<Message[]> => {
+): Promise<MessageRow[]> => {
   try {
     // Debugging information
     console.log(`Getting messages for leadId: ${leadId}, userId: ${userId}`);
@@ -95,7 +92,7 @@ export const getMessagesByLeadIdDescending = async (
       .from("messages")
       .select("*")
       .eq("lead_id", leadId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
 
     if (error) {
       console.error(`Supabase messages query error: ${error.message}`);
@@ -103,14 +100,29 @@ export const getMessagesByLeadIdDescending = async (
     }
 
     console.log(`Found ${data.length} messages for lead ${leadId}`);
-    return data.map((msg) => MessageUtils.toModel(msg));
+    return data;
   } catch (error) {
     console.error(`Error in getMessagesByLeadIdDescending: ${error.message}`);
     throw error;
   }
 };
 
-export const getMessagesThatAreOverdue = async (): Promise<Message[]> => {
+export const getNextScheduledMessageForLead = async (
+  leadId: number
+): Promise<MessageRow> => {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("scheduled_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const getMessagesThatAreOverdue = async (): Promise<MessageRow[]> => {
   const now = new Date().toISOString();
 
   const { data, error } = await supabase
@@ -120,15 +132,15 @@ export const getMessagesThatAreOverdue = async (): Promise<Message[]> => {
     .eq("delivery_status", "scheduled");
 
   if (error) throw new Error(error.message);
-  return data.map((msg) => MessageUtils.toModel(msg));
+  return data;
 };
 
 export const updateMessage = async (
   messageId: number,
-  settings: Partial<Message>
-): Promise<Message> => {
+  settings: Partial<MessageRow>
+): Promise<MessageRow> => {
   // Convert to database format if needed
-  const updateData = MessageUtils.toInsert(settings);
+  const updateData = settings;
 
   const { data, error } = await supabase
     .from("messages")
@@ -138,7 +150,7 @@ export const updateMessage = async (
     .single();
 
   if (error) throw new Error(error.message);
-  return MessageUtils.toModel(data);
+  return data;
 };
 
 export const deleteMessage = async (messageId: number): Promise<void> => {
@@ -151,9 +163,12 @@ export const deleteMessage = async (messageId: number): Promise<void> => {
 };
 
 export const receiveIncomingMessage = async (
-  messageData: IncomingMessageData
-): Promise<Message[]> => {
-  const { from, to, text, twilioSid, status } = messageData;
+  messageData
+): Promise<MessageRow[]> => {
+  const to = cleanPhoneNumber(messageData.To);
+  const from = cleanPhoneNumber(messageData.From);
+  const text = messageData.Body;
+  const twilio_sid = messageData.MessageSid;
 
   // Find the lead associated with this phone number
   const { data: lead, error: leadError } = await supabase
@@ -175,16 +190,17 @@ export const receiveIncomingMessage = async (
     throw new Error(`No lead found with phone number ${from}`);
   }
 
+  console.log("lead", lead);
+
   // Create the message
   return await createMessage({
     lead_id: lead.id,
     text,
     sender: "lead",
-    is_incoming: true,
-    twilioSid,
-    delivery_status: status || "delivered",
-    created_at: new Date(),
-    updated_at: new Date(),
+    twilio_sid,
+    delivery_status: "delivered",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   });
 };
 

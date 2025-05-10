@@ -5,6 +5,7 @@ import {
   updateLead,
   deleteLead,
   getLeadsByUserId,
+  getLeadLimitInfo,
 } from "../controllers/leadController.ts";
 import asyncHandler from "express-async-handler";
 import protect from "../middleware/authMiddleware.ts";
@@ -14,10 +15,16 @@ const router = express.Router();
 // Apply protect middleware to all lead routes
 router.use(protect);
 
-// Get all leads
+// Get all leads by user id
 router.get(
-  "/",
+  "/user",
   asyncHandler((req, res) => getLeadsByUserId(req, res))
+);
+
+// Get lead limit info for the current user
+router.get(
+  "/limit",
+  asyncHandler((req, res) => getLeadLimitInfo(req, res))
 );
 
 // Get a single lead by id - Place parametrized routes AFTER specific routes

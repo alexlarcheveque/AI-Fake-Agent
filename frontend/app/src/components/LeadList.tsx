@@ -1,15 +1,15 @@
 import { useState } from "react";
 import leadApi from "../api/leadApi";
-import { Lead } from "../types/lead";
 import React from "react";
 import FollowUpIndicator from "./FollowUpIndicator";
 import { useNavigate } from "react-router-dom";
+import { LeadRow } from "../../../../backend/models/Lead";
 
 interface LeadListProps {
-  leads: Lead[];
+  leads: LeadRow[];
   isLoading: boolean;
   error: string | null;
-  onLeadsChange: (leads: Lead[]) => void;
+  onLeadsChange: (leads: LeadRow[]) => void;
   onError: (error: string | null) => void;
 }
 
@@ -22,11 +22,11 @@ const LeadList: React.FC<LeadListProps> = ({
 }) => {
   console.log("leads", leads);
 
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editingLead, setEditingLead] = useState<LeadRow | null>(null);
   const [updateLoading, setUpdateLoading] = useState<number | null>(null);
   const navigate = useNavigate();
 
-  const handleEdit = (lead: Lead) => {
+  const handleEdit = (lead: LeadRow) => {
     onError(null);
     setEditingLead({ ...lead });
   };
@@ -40,21 +40,21 @@ const LeadList: React.FC<LeadListProps> = ({
 
       // Get the original lead to compare AI assistant status
       const originalLead = leads.find((lead) => lead.id === editingLead.id);
-      const wasAiEnabled = originalLead?.aiAssistantEnabled;
-      const isTogglingOn = !wasAiEnabled && editingLead.aiAssistantEnabled;
+      const wasAiEnabled = originalLead?.is_ai_enabled;
+      const isTogglingOn = !wasAiEnabled && editingLead.is_ai_enabled;
 
       // Only send the fields that can be updated
       const updateData = {
         name: editingLead.name,
         email: editingLead.email,
-        phoneNumber: editingLead.phoneNumber,
+        phone_number: editingLead.phone_number,
         status: editingLead.status,
-        aiAssistantEnabled: editingLead.aiAssistantEnabled,
+        is_ai_enabled: editingLead.is_ai_enabled,
       };
 
       // If we're turning off AI assistant, clear the next scheduled message
-      if (wasAiEnabled && !editingLead.aiAssistantEnabled) {
-        Object.assign(updateData, { nextScheduledMessage: null });
+      if (wasAiEnabled && !editingLead.is_ai_enabled) {
+        Object.assign(updateData, { next_scheduled_message: null });
       }
 
       const updatedLead = await leadApi.updateLead(
@@ -180,7 +180,7 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2">
                             <select
-                              value={editingLead?.status}
+                              value={editingLead?.status || ""}
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,
@@ -217,7 +217,7 @@ const LeadList: React.FC<LeadListProps> = ({
                           <div className="py-2">
                             <input
                               type="email"
-                              value={editingLead.email}
+                              value={editingLead.email || ""}
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,
@@ -233,11 +233,11 @@ const LeadList: React.FC<LeadListProps> = ({
                           <div className="py-2">
                             <input
                               type="tel"
-                              value={editingLead.phoneNumber}
+                              value={editingLead.phone_number || ""}
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,
-                                  phoneNumber: e.target.value,
+                                  phone_number: e.target.value,
                                 })
                               }
                               className="w-full h-8 px-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
@@ -253,12 +253,11 @@ const LeadList: React.FC<LeadListProps> = ({
                                 e.stopPropagation();
                                 setEditingLead({
                                   ...editingLead,
-                                  aiAssistantEnabled:
-                                    !editingLead.aiAssistantEnabled,
+                                  is_ai_enabled: !editingLead.is_ai_enabled,
                                 });
                               }}
                               className={`${
-                                editingLead.aiAssistantEnabled
+                                editingLead.is_ai_enabled
                                   ? "bg-blue-600"
                                   : "bg-gray-200"
                               } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
@@ -266,7 +265,7 @@ const LeadList: React.FC<LeadListProps> = ({
                             >
                               <span
                                 className={`${
-                                  editingLead.aiAssistantEnabled
+                                  editingLead.is_ai_enabled
                                     ? "translate-x-5"
                                     : "translate-x-0"
                                 } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
@@ -330,7 +329,6 @@ const LeadList: React.FC<LeadListProps> = ({
                         </td>
                       </>
                     ) : (
-                      // View mode
                       <>
                         <td className="px-6 h-[52px]">
                           <div className="py-2">
@@ -345,8 +343,8 @@ const LeadList: React.FC<LeadListProps> = ({
                                   : "bg-red-100 text-red-800"
                               }`}
                             >
-                              {lead.status.charAt(0).toUpperCase() +
-                                lead.status.slice(1)}
+                              {lead.status?.charAt(0).toUpperCase() +
+                                lead.status?.slice(1)}
                             </span>
                           </div>
                         </td>
@@ -367,7 +365,7 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2">
                             <div className="text-sm text-gray-900 leading-8">
-                              {lead.phoneNumber}
+                              {lead.phone_number}
                             </div>
                           </div>
                         </td>
@@ -376,25 +374,14 @@ const LeadList: React.FC<LeadListProps> = ({
                             <div className="flex flex-col space-y-1">
                               <span
                                 className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  lead.aiAssistantEnabled
+                                  lead.is_ai_enabled
                                     ? "bg-purple-100 text-purple-800"
                                     : "bg-gray-100 text-gray-600"
                                 }`}
                               >
                                 AI:{" "}
-                                {lead.aiAssistantEnabled
-                                  ? "Enabled"
-                                  : "Disabled"}
+                                {lead.is_ai_enabled ? "Enabled" : "Disabled"}
                               </span>
-                              {lead.nextScheduledMessage && (
-                                <FollowUpIndicator
-                                  nextScheduledMessage={
-                                    lead.nextScheduledMessage
-                                  }
-                                  messageCount={(lead.messageCount || 0) + 1}
-                                  className="text-blue-600"
-                                />
-                              )}
                             </div>
                           </div>
                         </td>

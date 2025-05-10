@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import MessageThread from "./MessageThread";
 import leadApi from "../api/leadApi";
-import { Lead } from "../types/lead";
 import { useSearchParams } from "react-router-dom";
+import { LeadRow } from "../../../../backend/models/Lead";
 
 const MessagesCenter: React.FC = () => {
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -30,7 +30,7 @@ const MessagesCenter: React.FC = () => {
         }
 
         // Always fetch the full list of leads
-        const allLeads = await leadApi.getLeads();
+        const allLeads = await leadApi.getLeadsByUserId();
 
         if (targetLeadId && !isNaN(targetLeadId)) {
           // If we have a specific lead, make sure it's in the list
@@ -146,12 +146,12 @@ const MessagesCenter: React.FC = () => {
                         {lead.name}
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            lead.aiAssistantEnabled
+                            lead.is_ai_enabled
                               ? "bg-purple-100 text-purple-800 border border-purple-200"
                               : "bg-gray-100 text-gray-600 border border-gray-200"
                           }`}
                         >
-                          {lead.aiAssistantEnabled ? "AI Enabled" : "Manual"}
+                          {lead.is_ai_enabled ? "AI Enabled" : "Manual"}
                         </span>
                       </div>
                       <div className="text-sm text-gray-500">{lead.status}</div>
@@ -166,12 +166,10 @@ const MessagesCenter: React.FC = () => {
               <MessageThread
                 leadId={selectedLeadId}
                 leadName={selectedLead?.name || "Unknown Lead"}
-                leadEmail={selectedLead?.email}
-                leadPhone={selectedLead?.phoneNumber}
-                leadType={selectedLead?.leadType}
-                leadSource={selectedLead?.status}
-                nextScheduledMessage={selectedLead?.nextScheduledMessage}
-                messageCount={selectedLead?.messageCount}
+                leadEmail={selectedLead?.email || undefined}
+                leadPhone={selectedLead?.phone_number?.toString() || undefined}
+                leadType={selectedLead?.lead_type || undefined}
+                leadSource={selectedLead?.status || undefined}
                 onClose={() => {}}
                 onLeadUpdate={() => {}}
                 onAppointmentCreated={() => {}}

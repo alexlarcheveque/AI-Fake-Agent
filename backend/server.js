@@ -4,11 +4,11 @@ import http from "http";
 import cookieParser from "cookie-parser";
 
 // Routes
-import leadRoutes from "./routes/leadRoutes";
-import messageRoutes from "./routes/messageRoutes";
-import userSettingsRoutes from "./routes/userSettingsRoutes";
-import appointmentRoutes from "./routes/appointmentRoutes";
-import notificationRoutes from "./routes/notificationRoutes";
+import leadRoutes from "./routes/leadRoutes.ts";
+import messageRoutes from "./routes/messageRoutes.ts";
+import userSettingsRoutes from "./routes/userSettingsRoutes.ts";
+import appointmentRoutes from "./routes/appointmentRoutes.ts";
+import notificationRoutes from "./routes/notificationRoutes.ts";
 
 // Services
 import "./services/cronService";

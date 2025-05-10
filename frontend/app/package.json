@@ -11,9 +11,16 @@
     "test:coverage": "jest --coverage",
     "start:dev": "npm run dev",
     "dev": "vite",
-    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend"
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "build": "vite build",
+    "vercel-build": "vite build"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "axios": "^1.9.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.6.0",
     "supabase": "^2.22.6"
   },
   "devDependencies": {
@@ -24,6 +31,7 @@
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^15.0.0",
     "@testing-library/user-event": "^14.5.2",
+    "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.17",
     "babel-jest": "^29.7.0",
     "camelcase": "^8.0.0",
@@ -33,6 +41,6 @@
     "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
-    "vite": "^5.1.4"
+    "vite": "^5.4.19"
   }
 }

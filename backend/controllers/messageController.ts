@@ -3,13 +3,12 @@ import {
   deleteMessage as deleteMessageService,
   getMessagesByLeadIdDescending as getMessagesByLeadIdDescendingService,
   getMessagesThatAreOverdue as getMessagesThatAreOverdueService,
-  getMessagesByLeadId as getMessageByLeadIdService,
   createMessage as createMessageService,
   receiveIncomingMessage as receiveIncomingMessageService,
+  getNextScheduledMessageForLead as getNextScheduledMessageForLeadService,
 } from "../services/messageService.ts";
 import logger from "../utils/logger.ts";
 import supabase from "../config/supabase.ts";
-import { MessageUtils } from "../models/Message.ts";
 
 export const createOutgoingMessage = async (req, res) => {
   try {
@@ -23,7 +22,21 @@ export const createOutgoingMessage = async (req, res) => {
 
     console.log("messageData", messageData);
 
-    const message = await createMessageService(messageData);
+    const message = await createMessageService({
+      lead_id,
+      text,
+      delivery_status: "scheduled",
+      error_code: null,
+      error_message: null,
+      is_ai_generated: false,
+      created_at: new Date().toISOString(),
+      scheduled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sender: "agent",
+    });
+
+    console.log("message to send", message);
+
     res.status(201).json(message);
   } catch (error) {
     logger.error(`Error in createOutgoingMessage: ${error.message}`);
@@ -59,6 +72,23 @@ export const deleteMessage = async (req, res) => {
   }
 };
 
+export const getNextScheduledMessageForLead = async (req, res) => {
+  try {
+    const { leadId } = req.params;
+
+    const nextScheduledMessage = await getNextScheduledMessageForLeadService(
+      leadId
+    );
+
+    res.json(nextScheduledMessage);
+  } catch (error) {
+    res.status(500).json({
+      message: "Error fetching next scheduled message",
+      error: error.message,
+    });
+  }
+};
+
 export const getMessagesByLeadIdDescending = async (req, res) => {
   try {
     const { leadId } = req.params;
@@ -85,7 +115,7 @@ export const getMessagesByLeadIdDescending = async (req, res) => {
 
     logger.info(`Returning ${messages.length} messages for lead ${leadIdNum}`);
 
-    return res.json(messages.map((message) => MessageUtils.toModel(message)));
+    return res.json(messages);
   } catch (error) {
     logger.error(`Error in getMessagesByLeadIdDescending: ${error.message}`);
     return res.status(500).json({
@@ -110,6 +140,8 @@ export const getMessagesThatAreOverdue = async (req, res) => {
 
 export const receiveIncomingMessage = async (req, res) => {
   try {
+    console.log("receiveIncomingMessage", req.body);
+
     // Process the incoming webhook data
     const message = await receiveIncomingMessageService(req.body);
     res.status(200).send();
@@ -133,6 +165,8 @@ export const markAsRead = async (req, res) => {
 
 export const statusCallback = async (req, res) => {
   try {
+    console.log("statusCallback", req.body);
+
     const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
     logger.info(
       `Twilio message ${MessageSid} status updated to ${MessageStatus}`

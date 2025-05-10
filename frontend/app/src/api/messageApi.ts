@@ -1,5 +1,5 @@
 import apiClient from "./apiClient";
-import { Message } from "../types/message";
+import { MessageRow } from "../../../../backend/models/Message";
 import settingsApi from "./settingsApi";
 
 // Fix TypeScript error by declaring type for import.meta.env
@@ -9,16 +9,9 @@ declare global {
   }
 }
 
-interface MessageStats {
-  total: number;
-  sent: number;
-  received: number;
-  scheduled: number;
-}
-
 const messageApi = {
   // Get messages for a lead ordered by descending timestamp
-  async getMessagesByLeadIdDescending(leadId: number): Promise<Message[]> {
+  async getMessagesByLeadIdDescending(leadId: number): Promise<MessageRow[]> {
     try {
       console.log(`Fetching messages for lead ${leadId}`);
       const messages = await apiClient.get(`/messages/lead/${leadId}`);
@@ -39,12 +32,22 @@ const messageApi = {
     }
   },
 
+  async getNextScheduledMessageForLead(leadId: number): Promise<MessageRow> {
+    try {
+      const message = await apiClient.get(`/messages/next-scheduled/${leadId}`);
+      return message;
+    } catch (error: any) {
+      console.error("Error fetching next scheduled message:", error);
+      throw error;
+    }
+  },
+
   // Create an outgoing message
   async createOutgoingMessage(
     leadId: number,
     text: string,
     isAiGenerated = false
-  ): Promise<Message> {
+  ): Promise<MessageRow> {
     try {
       if (!leadId || isNaN(leadId)) {
         throw new Error(`Invalid leadId: ${leadId}`);
@@ -80,8 +83,8 @@ const messageApi = {
   // Update a message
   async updateMessage(
     messageId: string,
-    data: Partial<Message>
-  ): Promise<Message> {
+    data: Partial<MessageRow>
+  ): Promise<MessageRow> {
     try {
       return await apiClient.put(`/messages/${messageId}`, {
         message_id: messageId,
@@ -94,7 +97,7 @@ const messageApi = {
   },
 
   // Delete a message
-  async deleteMessage(messageId: string): Promise<Message> {
+  async deleteMessage(messageId: string): Promise<MessageRow> {
     try {
       return await apiClient.delete(`/messages/${messageId}`, {
         data: { message_id: messageId },
@@ -106,7 +109,7 @@ const messageApi = {
   },
 
   // Get messages that are overdue
-  async getMessagesThatAreOverdue(): Promise<Message[]> {
+  async getMessagesThatAreOverdue(): Promise<MessageRow[]> {
     try {
       return await apiClient.get(`/messages/overdue`);
     } catch (error) {
@@ -126,7 +129,7 @@ const messageApi = {
   },
 
   // Test Twilio
-  async testTwilio(text: string): Promise<{ message: Message }> {
+  async testTwilio(text: string): Promise<{ message: MessageRow }> {
     return await apiClient.post(`/messages/test-twilio`, {
       text,
     });
@@ -136,15 +139,10 @@ const messageApi = {
   async getScheduledMessages(
     startDate: string,
     endDate: string
-  ): Promise<Message[]> {
+  ): Promise<MessageRow[]> {
     return await apiClient.get(`/messages/scheduled`, {
       params: { startDate, endDate },
     });
-  },
-
-  // Get message statistics
-  async getMessageStats(): Promise<MessageStats> {
-    return await apiClient.get(`/messages/stats`);
   },
 
   // Send a message (alias for createOutgoingMessage)
@@ -152,7 +150,7 @@ const messageApi = {
     leadId: number,
     text: string,
     isAiGenerated = false
-  ): Promise<Message> {
+  ): Promise<MessageRow> {
     return await apiClient.post(`/messages/send`, {
       lead_id: leadId,
       text,
@@ -164,10 +162,9 @@ const messageApi = {
   async getAllMessages(filter?: {
     status?: string;
     type?: string;
-  }): Promise<Message[]> {
+  }): Promise<MessageRow[]> {
     return await apiClient.get(`/messages`, { params: filter });
   },
 };
 
 export default messageApi;
-export type { Message, MessageStats };

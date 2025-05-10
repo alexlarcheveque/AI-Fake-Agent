@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import messageApi from "../api/messageApi";
 import leadApi from "../api/leadApi";
-import appointmentApi, { ApiError } from "../api/appointmentApi";
-import { Message } from "../types/message";
+import { MessageRow } from "../../../../backend/models/Message";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import AppointmentCreator from "./AppointmentCreator";
@@ -10,9 +9,18 @@ import AppointmentsList from "./AppointmentsList";
 import { useNotifications } from "../contexts/NotificationContext";
 import "../styles/MessageThread.css";
 
+// Define ApiError interface
+interface ApiError {
+  code?: number;
+  message: string;
+  isAuthError?: boolean;
+}
+
 // Custom hook for message fetching
 const useMessageFetching = (leadId: number) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [nextScheduledMessage, setNextScheduledMessage] =
+    useState<MessageRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +34,9 @@ const useMessageFetching = (leadId: number) => {
       const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
         leadId
       );
+      const nextScheduledMessage =
+        await messageApi.getNextScheduledMessageForLead(leadId);
+      setNextScheduledMessage(nextScheduledMessage);
       setMessages(fetchedMessages);
     } catch (err) {
       console.error("Error fetching messages:", err);
@@ -69,7 +80,7 @@ interface MessageThreadProps {
   onAppointmentCreated: (appointment: any) => void;
   onAppointmentUpdated: (appointment: any) => void;
   onAppointmentDeleted: (appointmentId: number) => void;
-  initialMessages?: Message[];
+  initialMessages?: MessageRow[];
   isOpen?: boolean;
 }
 
@@ -91,7 +102,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     refreshMessages,
   } = useMessageFetching(leadId);
   const [error, setError] = useState<string | null>(null);
-  const [aiAssistantEnabled, setAiAssistantEnabled] = useState(true);
+  const [aiAssistantEnabled, setAiAssistantEnabled] = useState<boolean | null>(
+    null
+  );
   const [isSending, setIsSending] = useState(false);
   const [showAppointments, setShowAppointments] = useState(false);
   const [latestMessage, setLatestMessage] = useState<string | null>(null);
@@ -115,13 +128,51 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     setNextScheduledMessage(propNextScheduledMessage);
   }, [propNextScheduledMessage]);
 
-  // Fetch lead data on component mount and when leadId changes
+  // Listen for message-sent events
   useEffect(() => {
+    const handleMessageSent = (event: CustomEvent<{ leadId: number }>) => {
+      // Only refresh if this event is for the current lead
+      if (event.detail.leadId === leadId) {
+        console.log("Message sent event received, refreshing messages");
+
+        // Force a full refresh of the messages
+        setTimeout(() => {
+          refreshMessages();
+
+          // Scroll to bottom after refresh
+          setTimeout(() => {
+            if (messagesEndRef.current) {
+              messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+            }
+          }, 300);
+        }, 500);
+      }
+    };
+
+    // Add event listener
+    window.addEventListener("message-sent", handleMessageSent as EventListener);
+
+    // Clean up
+    return () => {
+      window.removeEventListener(
+        "message-sent",
+        handleMessageSent as EventListener
+      );
+    };
+  }, [leadId, refreshMessages]);
+
+  // Reset AI Assistant state when leadId changes and fetch lead data
+  useEffect(() => {
+    // Reset AI assistant state when lead changes
+    setAiAssistantEnabled(null);
+
     const fetchLeadData = async () => {
       try {
         setError(null);
         const lead = await leadApi.getLead(leadId);
         console.log("lead", lead);
+
+        setAiAssistantEnabled(lead.is_ai_enabled);
       } catch (err) {
         setError("Failed to load lead data");
         console.error("Error fetching lead data:", err);
@@ -142,7 +193,28 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   // Toggle AI Assistant
   const handleToggleAiAssistant = async () => {
-    setAiAssistantEnabled(!aiAssistantEnabled);
+    const newAiState = !aiAssistantEnabled;
+    setAiAssistantEnabled(newAiState);
+
+    try {
+      await leadApi.updateLead(leadId, {
+        id: leadId,
+        is_ai_enabled: newAiState,
+      } as any);
+
+      console.log("Successfully updated lead AI Assistant status:", newAiState);
+    } catch (error) {
+      console.error("Error updating lead with AI Assistant status:", error);
+      setError("Failed to update AI Assistant setting. Please try again.");
+
+      // Revert UI state back if the API call fails
+      setAiAssistantEnabled(!newAiState);
+
+      // Clear error message after a few seconds
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
+    }
   };
 
   // Handle sending a new message
@@ -169,8 +241,18 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
       setIsSending(false);
 
-      // Instead of fetching all messages again, just add the new one to state
+      // Ensure the message has createdAt timestamp
+      if (!sentMessage.created_at) {
+        sentMessage.created_at = new Date().toISOString();
+      }
+
+      // Add the new message to state
       setMessages((prev) => [...prev, sentMessage]);
+
+      // Force a full refresh after a short delay to ensure message is visible
+      setTimeout(() => {
+        refreshMessages();
+      }, 1000);
 
       // If AI is enabled, refresh lead data after a short delay to get the updated nextScheduledMessage
       if (aiAssistantEnabled) {
@@ -181,26 +263,24 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             );
             const refreshedLead = await leadApi.getLead(leadId);
 
-            // If the next scheduled message has changed, update it in the UI
-            if (refreshedLead.nextScheduledMessage !== nextScheduledMessage) {
-              console.log(
-                "Next scheduled message updated:",
-                refreshedLead.nextScheduledMessage
-              );
+            // check messages for "scheduled" delivery_status and set nextScheduledMessage to the first one
+            const scheduledMessage = messages.find(
+              (message) => message.delivery_status === "scheduled"
+            );
 
-              // Update our local state for immediate UI refresh
-              setNextScheduledMessage(refreshedLead.nextScheduledMessage);
-
-              // Dispatch an event to update any parent components
-              window.dispatchEvent(
-                new CustomEvent("lead-updated", {
-                  detail: {
-                    leadId: leadId,
-                    nextScheduledMessage: refreshedLead.nextScheduledMessage,
-                  },
-                })
-              );
+            if (scheduledMessage) {
+              setNextScheduledMessage(scheduledMessage.text || undefined);
             }
+
+            // Dispatch an event to update any parent components
+            window.dispatchEvent(
+              new CustomEvent("lead-updated", {
+                detail: {
+                  leadId: leadId,
+                  nextScheduledMessage: scheduledMessage?.text || undefined,
+                },
+              })
+            );
           } catch (err) {
             console.error(
               "Error refreshing lead data after sending message:",
@@ -318,7 +398,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     console.log("Current messages state:", messages);
   }, [messages]);
 
-  const handleAppointmentSuccess = (calendlyLink: string | null) => {
+  const handleAppointmentSuccess = () => {
     setAppointmentSuccess("Appointment scheduled successfully!");
 
     // Refresh latest message to clear the appointment form
@@ -465,24 +545,36 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <button
                 onClick={() => {
                   console.log("AI Assistant toggle button clicked");
-                  handleToggleAiAssistant();
+                  // Only toggle if we've loaded the value
+                  if (aiAssistantEnabled !== null) {
+                    handleToggleAiAssistant();
+                  }
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                  aiAssistantEnabled ? "bg-blue-500" : "bg-gray-300"
+                  aiAssistantEnabled === null
+                    ? "bg-gray-200" // Loading state
+                    : aiAssistantEnabled
+                    ? "bg-blue-500"
+                    : "bg-gray-300"
                 }`}
                 type="button"
+                disabled={aiAssistantEnabled === null} // Disable while loading
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    aiAssistantEnabled ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
+                {aiAssistantEnabled === null ? (
+                  // Loading indicator
+                  <span className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-3 animate-pulse"></span>
+                ) : (
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      aiAssistantEnabled ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                )}
               </button>
             </div>
           </div>
         </div>
       </div>
-
       <div>
         {scheduledDateTime && (
           <div className="px-4 py-2 flex items-center border-b border-gray-100">
@@ -649,7 +741,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <div className="mt-4 pt-4 border-t">
                 <AppointmentCreator
                   leadId={leadId}
-                  messageText={latestMessage || undefined}
                   onSuccess={handleAppointmentSuccess}
                   onError={handleAppointmentError}
                 />
