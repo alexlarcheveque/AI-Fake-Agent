@@ -2,7 +2,9 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
 import supabase from "../config/supabase";
 
 // Use Vite's environment variable syntax
-const BASE_URL = "/api";
+const BASE_URL = import.meta.env.DEV
+  ? import.meta.env.VITE_API_URL_DEV
+  : import.meta.env.VITE_API_URL;
 
 class ApiClient {
   private api: AxiosInstance;

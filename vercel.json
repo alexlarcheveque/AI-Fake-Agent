@@ -1,0 +1,27 @@
+{
+  "rewrites": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "https://app.realnurture.ai"
+        }
+      ],
+      "destination": "/frontend/app/dist/:path*"
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "https://realnurture.ai"
+        }
+      ],
+      "destination": "/frontend/landing/build/:path*"
+    }
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": ".",
+  "installCommand": "npm install"
+}

@@ -3,13 +3,13 @@ import { format, parseISO } from "date-fns";
 import appointmentApi, { Appointment } from "../api/appointmentApi";
 
 interface AppointmentsListProps {
-  leadId?: number;
+  lead_id?: number;
   limit?: number;
   showLeadName?: boolean;
 }
 
 const AppointmentsList: React.FC<AppointmentsListProps> = ({
-  leadId,
+  lead_id,
   showLeadName = false,
 }) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -25,8 +25,8 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
         setLoading(true);
         let data: Appointment[];
 
-        if (leadId) {
-          data = await appointmentApi.getAppointmentsByLeadId(leadId);
+        if (lead_id) {
+          data = await appointmentApi.getAppointmentsByLeadId(lead_id);
         } else {
           data = [];
         }
@@ -55,7 +55,7 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
     };
 
     fetchAppointments();
-  }, [leadId]);
+  }, [lead_id]);
 
   const handleCancelAppointment = async (id: number) => {
     try {

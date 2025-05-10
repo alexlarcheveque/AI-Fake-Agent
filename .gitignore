@@ -11,3 +11,4 @@ backend/logs
 # Frontend
 frontend/.env
 frontend/node_modules
+.vercel

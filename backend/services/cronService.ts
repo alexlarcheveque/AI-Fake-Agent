@@ -1,7 +1,10 @@
 import cron from "node-cron";
 import logger from "../utils/logger.ts";
 import { getMessagesThatAreOverdue } from "./messageService.ts";
-import { craftAndSendMessage } from "./orchestrator/messagingOrchestrator.ts";
+import {
+  craftAndSendMessage,
+  sendTwilioMessage,
+} from "./orchestrator/messagingOrchestrator.ts";
 
 // Runs every minute
 cron.schedule("* * * * *", async () => {
@@ -17,8 +20,12 @@ cron.schedule("* * * * *", async () => {
         logger.info(
           `Processing message ${message.id} for lead ${message.lead_id}`
         );
-        const newMessage = await craftAndSendMessage(message.id, message.lead_id);
 
+        if (message.is_ai_generated === false) {
+          await sendTwilioMessage(message.id, message.lead_id);
+        } else {
+          await craftAndSendMessage(message.id, message.lead_id);
+        }
       } catch (error) {
         // This only catches errors for this specific message
         logger.error(`Error processing message ${message.id}:`, error);

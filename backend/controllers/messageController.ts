@@ -13,15 +13,18 @@ import { MessageUtils } from "../models/Message.ts";
 
 export const createOutgoingMessage = async (req, res) => {
   try {
-    const { lead_id, text, is_ai_generated } = req.body;
+    const { lead_id, text, is_ai_generated, scheduled_at } = req.body;
 
     const messageData = {
       lead_id,
       text,
       is_ai_generated,
+      scheduled_at,
+      delivery_status: "scheduled",
+      sender: "agent",
     };
 
-    console.log("messageData", messageData);
+    console.log("messageData to send out", messageData);
 
     const message = await createMessageService(messageData);
     res.status(201).json(message);

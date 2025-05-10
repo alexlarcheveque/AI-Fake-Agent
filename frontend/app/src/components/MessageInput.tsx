@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import messageApi from "../api/messageApi"; // Import the API service
 
 interface MessageInputProps {
-  leadId: number; // Add leadId to props
+  lead_id: number; // Use snake_case
   onSendMessage: (message: any) => void; // Update type to match what you're using
   isLoading?: boolean;
   isDisabled?: boolean;
@@ -10,7 +10,7 @@ interface MessageInputProps {
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
-  leadId,
+  lead_id,
   onSendMessage,
   isLoading = false,
   isDisabled = false,
@@ -50,12 +50,22 @@ const MessageInput: React.FC<MessageInputProps> = ({
     try {
       setIsSending(true);
 
-      const newMessage = await messageApi.sendMessage(
-        leadId,
+      // Call the API to send the message
+      const response = await messageApi.sendMessage(
+        lead_id,
         message.trim(),
         false
       );
 
+      // Handle case where response is an array
+      const newMessage = Array.isArray(response) ? response[0] : response;
+
+      // Make sure we have a complete message with id before passing to parent
+      if (!newMessage?.id) {
+        console.error("Received incomplete message from API:", response);
+      }
+
+      // Pass the complete message to the parent component
       onSendMessage(newMessage);
 
       setMessage("");

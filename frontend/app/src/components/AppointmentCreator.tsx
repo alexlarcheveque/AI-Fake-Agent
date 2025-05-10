@@ -6,13 +6,15 @@ import appointmentApi, {
 import { useNotifications } from "../contexts/NotificationContext";
 
 interface AppointmentCreatorProps {
-  leadId: number;
-  onSuccess?: () => void;
+  lead_id: number;
+  messageText?: string;
+  onSuccess?: (calendlyLink: string | null) => void;
   onError?: (error: string) => void;
 }
 
 const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
-  leadId,
+  lead_id,
+  messageText,
   onSuccess,
   onError,
 }) => {
@@ -52,7 +54,7 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
       endDate.setHours(endDate.getHours() + 1);
 
       const appointmentData: CreateAppointmentRequest = {
-        leadId,
+        lead_id,
         title,
         startTime: startDate.toISOString(),
         endTime: endDate.toISOString(),
@@ -72,12 +74,12 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
         )}`,
         data: {
           ...result,
-          leadId,
+          lead_id,
         },
       });
 
       if (onSuccess) {
-        onSuccess();
+        onSuccess(null);
       }
 
       // Reset form

@@ -1,0 +1,19 @@
+{
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/app/assets/(.*)",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "src": "/app/[^.]+",
+      "dest": "/frontend/app/index.html"
+    },
+    {
+      "src": "/app/*",
+      "dest": "/frontend/app/$1"
+    }
+  ]
+}
