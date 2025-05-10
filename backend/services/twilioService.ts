@@ -20,8 +20,9 @@ const client = twilio(accountSid, authToken);
 
 export const sendMessage = async (to: number, body: string): Promise<any> => {
   try {
-    // Make sure the callback URL is correct and includes the full path
-    const statusCallbackUrl = `${process.env.BASE_URL}/api/messages/status-callback`;
+    const statusCallbackUrl = `${process.env.SUPABASE_URL}/api/messages/status-callback`;
+
+    console.log("statusCallbackUrl", statusCallbackUrl);
 
     const message = await client.messages.create({
       from: twilioPhoneNumber,
@@ -77,4 +78,8 @@ export const updateMessageStatus = async (
     logger.error(`Error updating message status for SID ${twilioSid}:`, error);
     return false;
   }
+};
+
+export const getStatusCallbackUrl = () => {
+  return `${process.env.SUPABASE_URL}/api/messages/status-callback`;
 };

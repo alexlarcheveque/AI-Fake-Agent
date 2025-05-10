@@ -17,9 +17,8 @@ cron.schedule("* * * * *", async () => {
         logger.info(
           `Processing message ${message.id} for lead ${message.lead_id}`
         );
-        await craftAndSendMessage(message.id, message.lead_id);
-      
-        logger.info(`Successfully processed message ${message.id}`);
+        const newMessage = await craftAndSendMessage(message.id, message.lead_id);
+
       } catch (error) {
         // This only catches errors for this specific message
         logger.error(`Error processing message ${message.id}:`, error);
