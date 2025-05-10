@@ -1,10 +1,16 @@
 export default {
-  transform: {},
+  preset: "ts-jest",
+  testEnvironment: "node",
+  extensionsToTreatAsEsm: [".ts"],
   moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1',
+    "^(\\.{1,2}/.*)\\.js$": "$1",
   },
-  testEnvironment: 'node',
-  testMatch: ['**/__tests__/**/*.test.js'],
-  testPathIgnorePatterns: ['/node_modules/'],
-  verbose: true
-}; 
+  transform: {
+    "^.+\\.tsx?$": [
+      "ts-jest",
+      {
+        useESM: true,
+      },
+    ],
+  },
+};

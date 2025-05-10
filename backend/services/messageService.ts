@@ -13,7 +13,7 @@ interface CreateMessageParams {
   created_at?: Date | string | null;
   updated_at?: Date | string | null;
   is_incoming?: boolean;
-  twilioSid?: string;
+  twilio_sid?: string;
 }
 
 interface IncomingMessageData {
@@ -26,17 +26,20 @@ interface IncomingMessageData {
 
 export const createMessage = async (
   settings: CreateMessageParams
-): Promise<Message[]> => {
+): Promise<Message> => {
   // Convert to database format if needed
   const insertData = MessageUtils.toInsert(settings);
+
+  console.log("create new message", insertData);
 
   const { data, error } = await supabase
     .from("messages")
     .insert([insertData])
-    .select();
+    .select()
+    .single();
 
   if (error) throw new Error(error.message);
-  return data.map((msg) => MessageUtils.toModel(msg));
+  return MessageUtils.toModel(data);
 };
 
 export const getMessageById = async (messageId: number): Promise<Message> => {
@@ -95,7 +98,7 @@ export const getMessagesByLeadIdDescending = async (
       .from("messages")
       .select("*")
       .eq("lead_id", leadId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
 
     if (error) {
       console.error(`Supabase messages query error: ${error.message}`);
@@ -113,6 +116,8 @@ export const getMessagesByLeadIdDescending = async (
 export const getMessagesThatAreOverdue = async (): Promise<Message[]> => {
   const now = new Date().toISOString();
 
+  console.log("find overdue messages before the time", now);
+
   const { data, error } = await supabase
     .from("messages")
     .select("*")
@@ -129,6 +134,8 @@ export const updateMessage = async (
 ): Promise<Message> => {
   // Convert to database format if needed
   const updateData = MessageUtils.toInsert(settings);
+
+  console.log("update message", updateData);
 
   const { data, error } = await supabase
     .from("messages")
@@ -152,7 +159,7 @@ export const deleteMessage = async (messageId: number): Promise<void> => {
 
 export const receiveIncomingMessage = async (
   messageData: IncomingMessageData
-): Promise<Message[]> => {
+): Promise<Message> => {
   const { from, to, text, twilioSid, status } = messageData;
 
   // Find the lead associated with this phone number
@@ -181,7 +188,7 @@ export const receiveIncomingMessage = async (
     text,
     sender: "lead",
     is_incoming: true,
-    twilioSid,
+    twilio_sid: twilioSid,
     delivery_status: status || "delivered",
     created_at: new Date(),
     updated_at: new Date(),

@@ -2,16 +2,16 @@ import apiClient from "./apiClient";
 
 export interface Appointment {
   id: number;
-  leadId: number;
-  userId: string;
+  lead_id: number;
+  user_id: string;
   title: string;
   startTime: string;
   endTime: string;
   location?: string;
   description?: string;
   status: string;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
   Lead?: {
     id: number;
     name: string;
@@ -31,13 +31,23 @@ export interface EventType {
 }
 
 export interface CreateAppointmentRequest {
-  leadId: number;
+  lead_id: number;
   title: string;
   startTime: string;
   endTime: string;
   location?: string;
   description?: string;
   status?: string;
+}
+
+export class ApiError extends Error {
+  code: number;
+
+  constructor(message: string, code: number) {
+    super(message);
+    this.code = code;
+    this.name = "ApiError";
+  }
 }
 
 const appointmentApi = {
@@ -55,9 +65,9 @@ const appointmentApi = {
     }
   },
 
-  getAppointmentsByLeadId: async (leadId: number): Promise<Appointment[]> => {
+  getAppointmentsByLeadId: async (lead_id: number): Promise<Appointment[]> => {
     try {
-      return await apiClient.get(`/appointments/lead/${leadId}`);
+      return await apiClient.get(`/appointments/lead/${lead_id}`);
     } catch (error) {
       console.error("Error fetching appointments by lead ID:", error);
       throw error;

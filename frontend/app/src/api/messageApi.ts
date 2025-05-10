@@ -1,5 +1,5 @@
 import apiClient from "./apiClient";
-import { Message } from "../types/message";
+import { Message } from "../../../../backend/models/Message";
 import settingsApi from "./settingsApi";
 
 // Fix TypeScript error by declaring type for import.meta.env
@@ -18,10 +18,10 @@ interface MessageStats {
 
 const messageApi = {
   // Get messages for a lead ordered by descending timestamp
-  async getMessagesByLeadIdDescending(leadId: number): Promise<Message[]> {
+  async getMessagesByLeadIdDescending(lead_id: number): Promise<Message[]> {
     try {
-      console.log(`Fetching messages for lead ${leadId}`);
-      const messages = await apiClient.get(`/messages/lead/${leadId}`);
+      console.log(`Fetching messages for lead ${lead_id}`);
+      const messages = await apiClient.get(`/messages/lead/${lead_id}`);
       console.log(`Received ${messages.length} messages`);
       return messages;
     } catch (error: any) {
@@ -41,13 +41,13 @@ const messageApi = {
 
   // Create an outgoing message
   async createOutgoingMessage(
-    leadId: number,
+    lead_id: number,
     text: string,
-    isAiGenerated = false
+    is_ai_generated = false
   ): Promise<Message> {
     try {
-      if (!leadId || isNaN(leadId)) {
-        throw new Error(`Invalid leadId: ${leadId}`);
+      if (!lead_id || isNaN(lead_id)) {
+        throw new Error(`Invalid lead_id: ${lead_id}`);
       }
 
       if (!text || typeof text !== "string") {
@@ -65,11 +65,13 @@ const messageApi = {
         );
       }
 
-      return await apiClient.post(`/messages`, {
-        lead_id: leadId,
+      // Use the send endpoint instead of posting directly to /messages
+      return await apiClient.post(`/messages/send`, {
+        lead_id,
         text,
-        is_ai_generated: isAiGenerated,
+        is_ai_generated,
         user_settings: userSettings,
+        scheduled_at: new Date().toISOString(),
       });
     } catch (error) {
       console.error("Error in createOutgoingMessage API call:", error);
@@ -79,12 +81,12 @@ const messageApi = {
 
   // Update a message
   async updateMessage(
-    messageId: string,
+    message_id: string,
     data: Partial<Message>
   ): Promise<Message> {
     try {
-      return await apiClient.put(`/messages/${messageId}`, {
-        message_id: messageId,
+      return await apiClient.put(`/messages/${message_id}`, {
+        message_id,
         data,
       });
     } catch (error) {
@@ -94,10 +96,10 @@ const messageApi = {
   },
 
   // Delete a message
-  async deleteMessage(messageId: string): Promise<Message> {
+  async deleteMessage(message_id: string): Promise<Message> {
     try {
-      return await apiClient.delete(`/messages/${messageId}`, {
-        data: { message_id: messageId },
+      return await apiClient.delete(`/messages/${message_id}`, {
+        data: { message_id },
       });
     } catch (error) {
       console.error("Error deleting message:", error);
@@ -116,9 +118,9 @@ const messageApi = {
   },
 
   // Mark a message as read
-  async markAsRead(messageId: string): Promise<void> {
+  async markAsRead(message_id: string): Promise<void> {
     try {
-      await apiClient.put(`/messages/${messageId}/read`);
+      await apiClient.put(`/messages/${message_id}/read`);
     } catch (error) {
       console.error("Error marking message as read:", error);
       throw error;
@@ -149,15 +151,11 @@ const messageApi = {
 
   // Send a message (alias for createOutgoingMessage)
   async sendMessage(
-    leadId: number,
+    lead_id: number,
     text: string,
-    isAiGenerated = false
+    is_ai_generated = false
   ): Promise<Message> {
-    return await apiClient.post(`/messages/send`, {
-      lead_id: leadId,
-      text,
-      is_ai_generated: isAiGenerated,
-    });
+    return this.createOutgoingMessage(lead_id, text, is_ai_generated);
   },
 
   // Get all messages with optional filter

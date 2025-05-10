@@ -11,6 +11,8 @@ const MessagesCenter: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
 
+  console.log("leads", leads);
+
   // Single effect to handle all data loading
   useEffect(() => {
     const loadData = async () => {
@@ -164,7 +166,7 @@ const MessagesCenter: React.FC = () => {
           <div className="flex-1 h-full">
             {selectedLeadId ? (
               <MessageThread
-                leadId={selectedLeadId}
+                lead_id={selectedLeadId}
                 leadName={selectedLead?.name || "Unknown Lead"}
                 leadEmail={selectedLead?.email}
                 leadPhone={selectedLead?.phoneNumber}
