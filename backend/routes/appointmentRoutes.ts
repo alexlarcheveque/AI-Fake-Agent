@@ -4,9 +4,20 @@ import {
   getAppointmentsByLeadId,
   createAppointment,
   deleteAppointment,
+  getAppointmentsByUserId,
 } from "../controllers/appointmentController.ts";
+import protect from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
+
+// Apply protect middleware to all appointment routes
+router.use(protect);
+
+// get all appointments for a user
+router.get(
+  "/user",
+  asyncHandler((req, res) => getAppointmentsByUserId(req, res))
+);
 
 // Get upcoming appointments
 router.get(

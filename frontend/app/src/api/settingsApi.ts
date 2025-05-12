@@ -1,23 +1,26 @@
 import apiClient from "./apiClient";
-import { UserSettings } from "../types/userSettings";
+import {
+  UserSettingsInsert,
+  UserSettingsRow,
+} from "../../../../backend/models/UserSettings";
 
 const settingsApi = {
   // Get user settings
-  async getUserSettings(): Promise<UserSettings> {
+  async getUserSettings(): Promise<UserSettingsRow> {
     console.log("Fetching settings for user:");
     return await apiClient.get(`/user-settings`);
   },
 
   // Alias for getUserSettings for backward compatibility
-  async getSettings(): Promise<UserSettings> {
+  async getSettings(): Promise<UserSettingsRow> {
     return this.getUserSettings();
   },
 
   // Create user settings
   async createUserSettings(
     userId: string,
-    settings: Partial<UserSettings>
-  ): Promise<UserSettings> {
+    settings: UserSettingsInsert
+  ): Promise<UserSettingsRow> {
     return await apiClient.post(`/user-settings`, {
       userId,
       settings,
@@ -27,8 +30,8 @@ const settingsApi = {
   // Update user settings
   async updateUserSettings(
     userId: string,
-    settings: Partial<UserSettings>
-  ): Promise<UserSettings> {
+    settings: UserSettingsInsert
+  ): Promise<UserSettingsRow> {
     return await apiClient.put(`/user-settings`, {
       userId,
       settings,
@@ -42,4 +45,3 @@ const settingsApi = {
 };
 
 export default settingsApi;
-export type { UserSettings };

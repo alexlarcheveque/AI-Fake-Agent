@@ -4,15 +4,14 @@ import http from "http";
 import cookieParser from "cookie-parser";
 
 // Routes
-import leadRoutes from "./routes/leadRoutes";
-import messageRoutes from "./routes/messageRoutes";
-import userSettingsRoutes from "./routes/userSettingsRoutes";
-import appointmentRoutes from "./routes/appointmentRoutes";
-import notificationRoutes from "./routes/notificationRoutes";
+import leadRoutes from "./routes/leadRoutes.ts";
+import messageRoutes from "./routes/messageRoutes.ts";
+import userSettingsRoutes from "./routes/userSettingsRoutes.ts";
+import appointmentRoutes from "./routes/appointmentRoutes.ts";
+import notificationRoutes from "./routes/notificationRoutes.ts";
 
 // Services
 import "./services/cronService";
-import { getStatusCallbackUrl } from "./services/twilioService.ts";
 
 // Initialize Express app
 const app = express();
@@ -21,10 +20,7 @@ const PORT = process.env.PORT || 3000;
 // ===== Middleware =====
 app.use(
   cors({
-    origin:
-      process.env.NODE_ENV === "production"
-        ? process.env.FRONTEND_URL
-        : "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
     credentials: true,
   })
 );
@@ -38,7 +34,6 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/twilio", twilioRoutes);
 
 // ===== Server Initialization =====
 const server = http.createServer(app);
@@ -49,7 +44,6 @@ const initializeApp = async () => {
     // Start the server
     server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
-      console.log(`Twilio status callback URL: ${getStatusCallbackUrl()}`);
     });
   } catch (error) {
     console.error("Error initializing application:", error);

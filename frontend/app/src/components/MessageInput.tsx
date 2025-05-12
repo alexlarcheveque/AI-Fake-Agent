@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import messageApi from "../api/messageApi"; // Import the API service
 
 interface MessageInputProps {
-  lead_id: number; // Use snake_case
+  leadId: number; // Add leadId to props
   onSendMessage: (message: any) => void; // Update type to match what you're using
   isLoading?: boolean;
   isDisabled?: boolean;
@@ -10,7 +10,7 @@ interface MessageInputProps {
 }
 
 const MessageInput: React.FC<MessageInputProps> = ({
-  lead_id,
+  leadId,
   onSendMessage,
   isLoading = false,
   isDisabled = false,
@@ -32,6 +32,13 @@ const MessageInput: React.FC<MessageInputProps> = ({
     e.preventDefault();
     if (message.trim() && !isLoading && !isDisabled) {
       handleSendMessage();
+
+      // Dispatch a custom event that MessageThread can listen for to trigger a refresh
+      window.dispatchEvent(
+        new CustomEvent("message-sent", {
+          detail: { leadId },
+        })
+      );
     }
   };
 
@@ -40,6 +47,13 @@ const MessageInput: React.FC<MessageInputProps> = ({
       e.preventDefault();
       if (message.trim() && !isLoading && !isDisabled) {
         handleSendMessage();
+
+        // Dispatch a custom event that MessageThread can listen for to trigger a refresh
+        window.dispatchEvent(
+          new CustomEvent("message-sent", {
+            detail: { leadId },
+          })
+        );
       }
     }
   };
@@ -50,25 +64,24 @@ const MessageInput: React.FC<MessageInputProps> = ({
     try {
       setIsSending(true);
 
-      // Call the API to send the message
-      const response = await messageApi.sendMessage(
-        lead_id,
+      const newMessage = await messageApi.sendMessage(
+        leadId,
         message.trim(),
         false
       );
 
-      // Handle case where response is an array
-      const newMessage = Array.isArray(response) ? response[0] : response;
-
-      // Make sure we have a complete message with id before passing to parent
-      if (!newMessage?.id) {
-        console.error("Received incomplete message from API:", response);
-      }
-
-      // Pass the complete message to the parent component
+      // Call onSendMessage with the new message object
       onSendMessage(newMessage);
 
+      // Clear the input
       setMessage("");
+
+      // Dispatch a custom event that MessageThread can listen for to trigger a refresh
+      window.dispatchEvent(
+        new CustomEvent("message-sent", {
+          detail: { leadId },
+        })
+      );
     } catch (error: any) {
       // Type error as any for now to access properties
       console.error("Error sending message:", error);

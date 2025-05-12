@@ -1,5 +1,5 @@
 import apiClient from "./apiClient";
-import { Message } from "../../../../backend/models/Message";
+import { MessageRow } from "../../../../backend/models/Message";
 import settingsApi from "./settingsApi";
 
 // Fix TypeScript error by declaring type for import.meta.env
@@ -9,19 +9,12 @@ declare global {
   }
 }
 
-interface MessageStats {
-  total: number;
-  sent: number;
-  received: number;
-  scheduled: number;
-}
-
 const messageApi = {
   // Get messages for a lead ordered by descending timestamp
-  async getMessagesByLeadIdDescending(lead_id: number): Promise<Message[]> {
+  async getMessagesByLeadIdDescending(leadId: number): Promise<MessageRow[]> {
     try {
-      console.log(`Fetching messages for lead ${lead_id}`);
-      const messages = await apiClient.get(`/messages/lead/${lead_id}`);
+      console.log(`Fetching messages for lead ${leadId}`);
+      const messages = await apiClient.get(`/messages/lead/${leadId}`);
       console.log(`Received ${messages.length} messages`);
       return messages;
     } catch (error: any) {
@@ -39,15 +32,25 @@ const messageApi = {
     }
   },
 
+  async getNextScheduledMessageForLead(leadId: number): Promise<MessageRow> {
+    try {
+      const message = await apiClient.get(`/messages/next-scheduled/${leadId}`);
+      return message;
+    } catch (error: any) {
+      console.error("Error fetching next scheduled message:", error);
+      throw error;
+    }
+  },
+
   // Create an outgoing message
   async createOutgoingMessage(
-    lead_id: number,
+    leadId: number,
     text: string,
-    is_ai_generated = false
-  ): Promise<Message> {
+    isAiGenerated = false
+  ): Promise<MessageRow> {
     try {
-      if (!lead_id || isNaN(lead_id)) {
-        throw new Error(`Invalid lead_id: ${lead_id}`);
+      if (!leadId || isNaN(leadId)) {
+        throw new Error(`Invalid leadId: ${leadId}`);
       }
 
       if (!text || typeof text !== "string") {
@@ -65,13 +68,11 @@ const messageApi = {
         );
       }
 
-      // Use the send endpoint instead of posting directly to /messages
-      return await apiClient.post(`/messages/send`, {
-        lead_id,
+      return await apiClient.post(`/messages`, {
+        lead_id: leadId,
         text,
-        is_ai_generated,
+        is_ai_generated: isAiGenerated,
         user_settings: userSettings,
-        scheduled_at: new Date().toISOString(),
       });
     } catch (error) {
       console.error("Error in createOutgoingMessage API call:", error);
@@ -81,12 +82,12 @@ const messageApi = {
 
   // Update a message
   async updateMessage(
-    message_id: string,
-    data: Partial<Message>
-  ): Promise<Message> {
+    messageId: string,
+    data: Partial<MessageRow>
+  ): Promise<MessageRow> {
     try {
-      return await apiClient.put(`/messages/${message_id}`, {
-        message_id,
+      return await apiClient.put(`/messages/${messageId}`, {
+        message_id: messageId,
         data,
       });
     } catch (error) {
@@ -96,10 +97,10 @@ const messageApi = {
   },
 
   // Delete a message
-  async deleteMessage(message_id: string): Promise<Message> {
+  async deleteMessage(messageId: string): Promise<MessageRow> {
     try {
-      return await apiClient.delete(`/messages/${message_id}`, {
-        data: { message_id },
+      return await apiClient.delete(`/messages/${messageId}`, {
+        data: { message_id: messageId },
       });
     } catch (error) {
       console.error("Error deleting message:", error);
@@ -108,7 +109,7 @@ const messageApi = {
   },
 
   // Get messages that are overdue
-  async getMessagesThatAreOverdue(): Promise<Message[]> {
+  async getMessagesThatAreOverdue(): Promise<MessageRow[]> {
     try {
       return await apiClient.get(`/messages/overdue`);
     } catch (error) {
@@ -118,9 +119,9 @@ const messageApi = {
   },
 
   // Mark a message as read
-  async markAsRead(message_id: string): Promise<void> {
+  async markAsRead(messageId: string): Promise<void> {
     try {
-      await apiClient.put(`/messages/${message_id}/read`);
+      await apiClient.put(`/messages/${messageId}/read`);
     } catch (error) {
       console.error("Error marking message as read:", error);
       throw error;
@@ -128,7 +129,7 @@ const messageApi = {
   },
 
   // Test Twilio
-  async testTwilio(text: string): Promise<{ message: Message }> {
+  async testTwilio(text: string): Promise<{ message: MessageRow }> {
     return await apiClient.post(`/messages/test-twilio`, {
       text,
     });
@@ -138,34 +139,32 @@ const messageApi = {
   async getScheduledMessages(
     startDate: string,
     endDate: string
-  ): Promise<Message[]> {
+  ): Promise<MessageRow[]> {
     return await apiClient.get(`/messages/scheduled`, {
       params: { startDate, endDate },
     });
   },
 
-  // Get message statistics
-  async getMessageStats(): Promise<MessageStats> {
-    return await apiClient.get(`/messages/stats`);
-  },
-
   // Send a message (alias for createOutgoingMessage)
   async sendMessage(
-    lead_id: number,
+    leadId: number,
     text: string,
-    is_ai_generated = false
-  ): Promise<Message> {
-    return this.createOutgoingMessage(lead_id, text, is_ai_generated);
+    isAiGenerated = false
+  ): Promise<MessageRow> {
+    return await apiClient.post(`/messages/send`, {
+      lead_id: leadId,
+      text,
+      is_ai_generated: isAiGenerated,
+    });
   },
 
   // Get all messages with optional filter
   async getAllMessages(filter?: {
     status?: string;
     type?: string;
-  }): Promise<Message[]> {
+  }): Promise<MessageRow[]> {
     return await apiClient.get(`/messages`, { params: filter });
   },
 };
 
 export default messageApi;
-export type { Message, MessageStats };
