@@ -1,14 +1,72 @@
+# Dependencies
+node_modules/
+**/node_modules/
+/.pnp
+.pnp.js
+yarn.lock
+package-lock.json
+
 # Environment variables
 .env
 .env.local
-.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
 
-# Backend
-backend/.env
-backend/node_modules
-backend/logs
+# Build outputs
+/build
+/dist
+**/.next/
+**/out/
+**/.nuxt
+**/build/
+**/dist/
 
-# Frontend
-frontend/.env
-frontend/node_modules
+# Testing
+/coverage
+.nyc_output
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Deployment
 .vercel
+.netlify
+.serverless/
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Debug
+.debug/
+debug.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
