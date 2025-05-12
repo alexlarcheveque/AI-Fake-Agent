@@ -2,14 +2,19 @@ import React, { useState, useCallback, useEffect, useRef } from "react";
 import SingleLeadForm from "./SingleLeadForm";
 import LeadList from "./LeadList";
 import leadApi from "../api/leadApi";
-import { Lead } from "../types/lead";
+import { LeadRow } from "../../../../backend/models/Lead";
 
 const LeadManagement = () => {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCreateSingleLeadModalOpen, setIsCreateSingleLeadModalOpen] =
     useState(false);
+  const [leadLimitInfo, setLeadLimitInfo] = useState<{
+    currentCount: number;
+    limit: number;
+    subscriptionPlan: string;
+  } | null>(null);
 
   console.log("leads -- lead management", leads);
 
@@ -19,8 +24,12 @@ const LeadManagement = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await leadApi.getLeads();
+      const data = await leadApi.getLeadsByUserId();
       setLeads(data);
+
+      // Fetch lead limit info
+      const limitInfo = await leadApi.getLeadLimitInfo();
+      setLeadLimitInfo(limitInfo);
     } catch (err) {
       setError("Failed to fetch leads");
       console.error(err);
@@ -54,24 +63,78 @@ const LeadManagement = () => {
     };
   }, [isCreateSingleLeadModalOpen]);
 
-  const handleLeadCreated = useCallback(async (newLead: Lead) => {
+  const handleLeadCreated = useCallback(async (newLead: LeadRow) => {
     console.log("newLead", newLead);
 
     setLeads((prevLeads) => [newLead, ...prevLeads]);
     setIsCreateSingleLeadModalOpen(false); // Close modal after successful creation
+
+    // Refresh lead limit info after creating a new lead
+    try {
+      const limitInfo = await leadApi.getLeadLimitInfo();
+      setLeadLimitInfo(limitInfo);
+    } catch (err) {
+      console.error("Failed to update lead limit info:", err);
+    }
   }, []);
+
+  const handleAddLeadClick = () => {
+    // Check if user has reached their lead limit
+    if (leadLimitInfo && leadLimitInfo.currentCount >= leadLimitInfo.limit) {
+      setError(
+        `You've reached your lead limit (${leadLimitInfo.limit}). Please upgrade your plan to add more leads.`
+      );
+      return;
+    }
+
+    setIsCreateSingleLeadModalOpen(true);
+  };
 
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Lead Management</h1>
-        <button
-          onClick={() => setIsCreateSingleLeadModalOpen(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          + Add New Lead
-        </button>
+        <div className="flex items-center gap-4">
+          {leadLimitInfo && (
+            <div className="text-sm">
+              <span
+                className={
+                  leadLimitInfo.currentCount >= leadLimitInfo.limit
+                    ? "text-red-600 font-bold"
+                    : "text-gray-600"
+                }
+              >
+                {leadLimitInfo.currentCount}/{leadLimitInfo.limit} leads
+              </span>
+              <span className="ml-1 text-xs text-gray-500">
+                ({leadLimitInfo.subscriptionPlan.toLowerCase()} plan)
+              </span>
+            </div>
+          )}
+          <button
+            onClick={handleAddLeadClick}
+            className={`px-4 py-2 ${
+              leadLimitInfo && leadLimitInfo.currentCount >= leadLimitInfo.limit
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+            } text-white rounded-lg transition-colors`}
+            disabled={
+              leadLimitInfo && leadLimitInfo.currentCount >= leadLimitInfo.limit
+            }
+          >
+            + Add New Lead
+          </button>
+        </div>
       </div>
+
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-700">
+            &times;
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-6">
         {/* Lead List Section */}

@@ -1,14 +1,10 @@
 import supabase from "../config/supabase.ts";
-import {
-  UserSettingsInsert,
-  UserSettingsModel,
-  UserSettingsUtils,
-} from "../models/UserSettings.ts";
+import { UserSettingsInsert, UserSettingsRow } from "../models/UserSettings.ts";
 import logger from "../utils/logger.ts";
 
 export const getUserSettings = async (
   userId: string
-): Promise<UserSettingsModel> => {
+): Promise<UserSettingsRow> => {
   try {
     logger.info(`Fetching user settings for userId: ${userId}`);
 
@@ -39,7 +35,7 @@ export const getUserSettings = async (
     }
 
     logger.info(`Found settings for userId: ${userId}`);
-    return UserSettingsUtils.toModel(data);
+    return data;
   } catch (error) {
     logger.error(`Error in getUserSettings: ${error.message}`);
     throw error;
@@ -48,21 +44,21 @@ export const getUserSettings = async (
 
 export const createUserSettings = async (
   userId: string,
-  settings?: UserSettingsModel
-): Promise<UserSettingsModel> => {
+  settings?: UserSettingsInsert
+): Promise<UserSettingsRow> => {
   try {
     logger.info(`Creating user settings for userId: ${userId}`);
     logger.info(`Settings: ${JSON.stringify(settings)}`);
 
     const userSettingsData: UserSettingsInsert = {
       uuid: userId,
-      agent_name: settings?.agentName || "",
-      company_name: settings?.companyName || "",
-      agent_state: settings?.agentState || "",
-      follow_up_interval_new: settings?.followUpIntervalNew || 2,
+      agent_name: settings?.agent_name || "",
+      company_name: settings?.company_name || "",
+      agent_state: settings?.agent_state || "",
+      follow_up_interval_new: settings?.follow_up_interval_new || 2,
       follow_up_interval_in_converesation:
-        settings?.followUpIntervalInConversation || 5,
-      follow_up_interval_inactive: settings?.followUpIntervalInactive || 30,
+        settings?.follow_up_interval_in_converesation || 5,
+      follow_up_interval_inactive: settings?.follow_up_interval_inactive || 30,
     };
 
     logger.info(`Inserting settings data: ${JSON.stringify(userSettingsData)}`);
@@ -84,7 +80,7 @@ export const createUserSettings = async (
     }
 
     logger.info(`Successfully created user settings for userId: ${userId}`);
-    return UserSettingsUtils.toModel(data);
+    return data;
   } catch (error) {
     logger.error(`Error in createUserSettings: ${error.message}`);
     throw error;
@@ -93,8 +89,8 @@ export const createUserSettings = async (
 
 export const updateUserSettings = async (
   userId: string,
-  settings: Partial<UserSettingsModel>
-): Promise<UserSettingsModel> => {
+  settings: Partial<UserSettingsRow>
+): Promise<UserSettingsRow> => {
   try {
     logger.info(`Updating user settings for userId: ${userId}`);
     logger.info(`Settings: ${JSON.stringify(settings)}`);
@@ -110,13 +106,13 @@ export const updateUserSettings = async (
 
     const settingsToInsert: UserSettingsInsert = {
       uuid: userId,
-      agent_name: updatedSettings.agentName,
-      company_name: updatedSettings.companyName,
-      agent_state: updatedSettings.agentState,
-      follow_up_interval_new: updatedSettings.followUpIntervalNew,
+      agent_name: updatedSettings.agent_name,
+      company_name: updatedSettings.company_name,
+      agent_state: updatedSettings.agent_state,
+      follow_up_interval_new: updatedSettings.follow_up_interval_new,
       follow_up_interval_in_converesation:
-        updatedSettings.followUpIntervalInConversation,
-      follow_up_interval_inactive: updatedSettings.followUpIntervalInactive,
+        updatedSettings.follow_up_interval_in_converesation,
+      follow_up_interval_inactive: updatedSettings.follow_up_interval_inactive,
     };
     logger.info(`Settings to update: ${JSON.stringify(settingsToInsert)}`);
 
@@ -138,7 +134,7 @@ export const updateUserSettings = async (
     }
 
     logger.info(`Successfully updated user settings for userId: ${userId}`);
-    return UserSettingsUtils.toModel(data);
+    return data;
   } catch (error) {
     logger.error(`Error in updateUserSettings: ${error.message}`);
     throw error;

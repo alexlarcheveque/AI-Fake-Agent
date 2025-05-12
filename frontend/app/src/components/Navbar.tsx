@@ -4,24 +4,19 @@ import {
   useNotifications,
   Notification,
 } from "../contexts/NotificationContext";
-import { useAuth, AuthContextType } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/AuthContext";
+import { useUserSettings } from "../hooks/useUserSettings";
 import { format } from "date-fns";
 
-interface NavbarProps {
-  auth?: AuthContextType; // Make auth optional to maintain compatibility
-}
-
-const Navbar: React.FC<NavbarProps> = ({ auth }) => {
+const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  // Use passed auth from props or useAuth() as fallback
-  const authContext = auth || useAuth();
-  const { user, logout } = authContext;
+  const { logout } = useAuth();
+  const { userSettings, loading } = useUserSettings();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const { notifications, unreadCount, markAsRead, markAsUnread } =
     useNotifications();
-
   const profileRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
@@ -234,7 +229,7 @@ const Navbar: React.FC<NavbarProps> = ({ auth }) => {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-xl font-bold text-blue-600">
-                RealLeads
+                RealNurture
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
@@ -414,17 +409,9 @@ const Navbar: React.FC<NavbarProps> = ({ auth }) => {
               >
                 <span className="sr-only">Open user menu</span>
                 <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border border-gray-300">
-                  {user?.avatar ? (
-                    <img
-                      src={user.avatar}
-                      alt={user.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-gray-700 font-medium">
-                      {user?.name?.charAt(0).toUpperCase() || "U"}
-                    </span>
-                  )}
+                  <span className="text-gray-700 font-medium">
+                    {userSettings?.agent_name?.charAt(0).toUpperCase() || "U"}
+                  </span>
                 </div>
               </button>
 
@@ -433,10 +420,10 @@ const Navbar: React.FC<NavbarProps> = ({ auth }) => {
                 <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none">
                   <div className="px-4 py-2 border-b border-gray-200">
                     <p className="text-sm font-medium text-gray-900">
-                      {user?.name || "User"}
+                      {userSettings?.agent_name || "User"}
                     </p>
                     <p className="text-sm text-gray-500 truncate">
-                      {user?.email || ""}
+                      {userSettings?.company_name || ""}
                     </p>
                   </div>
                   <Link

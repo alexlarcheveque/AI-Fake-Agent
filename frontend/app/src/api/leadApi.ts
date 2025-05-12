@@ -1,4 +1,4 @@
-import { Lead } from "../types/lead";
+import { LeadInsert, LeadRow } from "../../../../backend/models/Lead";
 import apiClient from "./apiClient";
 
 // Fix TypeScript error by declaring type for import.meta.env
@@ -8,16 +8,17 @@ declare global {
   }
 }
 
-interface GetLeadsResponse {
-  leads: Lead[];
-  currentPage: number;
-  totalPages: number;
-  totalLeads: number;
+// Define lead limit info type
+export interface LeadLimitInfo {
+  currentCount: number;
+  limit: number;
+  subscriptionPlan: string;
+  canCreateLead: boolean;
 }
 
 const leadApi = {
   // Get leads by user ID
-  async getLeadsByUserId(): Promise<Lead[]> {
+  async getLeadsByUserId(): Promise<LeadRow[]> {
     try {
       return await apiClient.get("/leads/user");
     } catch (error) {
@@ -26,28 +27,30 @@ const leadApi = {
     }
   },
 
-  // Get all leads with pagination and search
-  async getLeads(page?: number, limit?: number): Promise<GetLeadsResponse> {
-    const params = new URLSearchParams();
-    if (page) params.append("page", page.toString());
-    if (limit) params.append("limit", limit.toString());
-    return await apiClient.get(`/leads?${params.toString()}`);
+  // Get lead limit info for the current user
+  async getLeadLimitInfo(): Promise<LeadLimitInfo> {
+    try {
+      return await apiClient.get("/leads/limit");
+    } catch (error) {
+      console.error("Error fetching lead limit info:", error);
+      throw error;
+    }
   },
 
   // Get a single lead by ID
-  async getLead(id: number): Promise<Lead> {
+  async getLead(id: number): Promise<LeadRow> {
     return await apiClient.get(`/leads/${id}`);
   },
 
   // Create a new lead
   async createLead(
-    lead: Omit<Lead, "id" | "createdAt" | "updatedAt" | "archived">
-  ): Promise<Lead> {
+    lead: Omit<LeadRow, "id" | "created_at" | "updated_at" | "archived">
+  ): Promise<LeadRow> {
     return await apiClient.post("/leads", lead);
   },
 
   // Update a lead
-  async updateLead(id: number, lead: Partial<Lead>): Promise<Lead> {
+  async updateLead(id: number, lead: LeadInsert): Promise<LeadRow> {
     return await apiClient.put(`/leads/${id}`, lead);
   },
 
@@ -57,7 +60,10 @@ const leadApi = {
   },
 
   // Import leads from CSV
-  async importLeadsFromCSV(file: File, aiFeatures: boolean): Promise<Lead[]> {
+  async importLeadsFromCSV(
+    file: File,
+    aiFeatures: boolean
+  ): Promise<LeadRow[]> {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("aiFeatures", aiFeatures.toString());
@@ -84,4 +90,3 @@ const leadApi = {
 };
 
 export default leadApi;
-export type { Lead };

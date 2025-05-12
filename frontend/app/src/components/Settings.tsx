@@ -1,17 +1,9 @@
 import React, { useState, useEffect } from "react";
 import settingsApi from "../api/settingsApi";
-import { UserSettings } from "../types/userSettings";
+import { UserSettingsInsert } from "../../../../backend/models/UserSettings";
 
 const Settings: React.FC = () => {
-  const [settings, setSettings] = useState<UserSettings>({
-    agentName: "",
-    companyName: "",
-    agentState: "",
-    followUpIntervalNew: undefined,
-    followUpIntervalInConversation: undefined,
-    followUpIntervalInactive: undefined,
-  });
-
+  const [settings, setSettings] = useState<UserSettingsInsert | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +64,7 @@ const Settings: React.FC = () => {
       // Pass empty string as userId - the backend will get the actual userId from the auth context
       const updatedSettings = await settingsApi.updateUserSettings(
         "",
-        settings
+        settings as UserSettingsInsert
       );
       setSettings(updatedSettings);
 
@@ -125,7 +117,7 @@ const Settings: React.FC = () => {
             <input
               type="text"
               name="agentName"
-              value={settings.agentName}
+              value={settings?.agent_name || ""}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
@@ -139,7 +131,7 @@ const Settings: React.FC = () => {
             <input
               type="text"
               name="companyName"
-              value={settings.companyName}
+              value={settings?.company_name || ""}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
@@ -153,7 +145,7 @@ const Settings: React.FC = () => {
             <input
               type="text"
               name="agentState"
-              value={settings.agentState}
+              value={settings?.agent_state || ""}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               required
@@ -177,7 +169,7 @@ const Settings: React.FC = () => {
               <input
                 type="number"
                 name="followUpIntervalNew"
-                value={settings.followUpIntervalNew || ""}
+                value={settings?.follow_up_interval_new || ""}
                 onChange={handleChange}
                 min="1"
                 max="90"
@@ -193,7 +185,7 @@ const Settings: React.FC = () => {
               <input
                 type="number"
                 name="followUpIntervalInConversation"
-                value={settings.followUpIntervalInConversation || ""}
+                value={settings?.follow_up_interval_in_converesation || ""}
                 onChange={handleChange}
                 min="1"
                 max="90"
@@ -209,7 +201,7 @@ const Settings: React.FC = () => {
               <input
                 type="number"
                 name="followUpIntervalInactive"
-                value={settings.followUpIntervalInactive || ""}
+                value={settings?.follow_up_interval_inactive || ""}
                 onChange={handleChange}
                 min="1"
                 max="90"

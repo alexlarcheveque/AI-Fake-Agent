@@ -1,52 +1,54 @@
 import supabase from "../config/supabase.ts";
-import {
-  Appointment,
-  AppointmentInsert,
-  AppointmentModel,
-  AppointmentUtils,
-} from "../models/Appointment.ts";
+import { AppointmentInsert, AppointmentRow } from "../models/Appointment.ts";
+import { getLeadsByUserId } from "./leadService.ts";
 
 export const createAppointment = async (
-  settings: AppointmentModel
-): Promise<Appointment[]> => {
-  const appointmentToInsert = AppointmentUtils.toInsert(settings);
-
+  settings: AppointmentInsert
+): Promise<AppointmentRow[]> => {
   const { data, error } = await supabase
     .from("appointments")
-    .insert([appointmentToInsert])
+    .insert([settings])
     .select();
 
   if (error) throw new Error(error.message);
-  return data.map((appointment) => AppointmentUtils.toModel(appointment));
+  return data;
 };
 
 export const getAppointmentsByLeadId = async (
   leadId: number
-): Promise<AppointmentModel[]> => {
+): Promise<AppointmentRow[]> => {
   const { data, error } = await supabase
     .from("appointments")
     .select("*")
     .eq("lead_id", leadId);
 
   if (error) throw new Error(error.message);
-  return data.map((appointment) => AppointmentUtils.toModel(appointment));
+  return data;
 };
 
 export const getAppointmentsByUserId = async (
-  userId: number
-): Promise<Appointment[]> => {
-  const { data, error } = await supabase
+  userId: string
+): Promise<AppointmentRow[]> => {
+  const leads = await getLeadsByUserId(userId);
+
+  console.log("get appointments by userId -- leads", leads);
+
+  const leadIds = leads.map((lead) => lead.id);
+
+  const { data: allAppointments, error: appointmentsError } = await supabase
     .from("appointments")
     .select("*")
-    .eq("user_id", userId);
+    .in("lead_id", leadIds);
 
-  if (error) throw new Error(error.message);
-  return data.map((appointment) => AppointmentUtils.toModel(appointment));
+  console.log("get appointments by userId -- allAppointments", allAppointments);
+
+  if (appointmentsError) throw new Error(appointmentsError.message);
+  return allAppointments;
 };
 
 export const deleteAppointment = async (
   appointmentId: number
-): Promise<Appointment[]> => {
+): Promise<AppointmentRow[]> => {
   const { data, error } = await supabase
     .from("appointments")
     .delete()
@@ -54,5 +56,5 @@ export const deleteAppointment = async (
     .select();
 
   if (error) throw new Error(error.message);
-  return data.map((appointment) => AppointmentUtils.toModel(appointment));
+  return data;
 };

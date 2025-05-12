@@ -1,53 +1,57 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import MessageCalendar from "./MessageCalendar";
-import leadApi from "../api/leadApi";
+import leadApi, { LeadLimitInfo } from "../api/leadApi";
 import messageApi from "../api/messageApi";
-
-interface DashboardStats {
-  totalLeads: number;
-  activeConversations: number;
-  scheduledMessages: number;
-  messagesSent: number;
-  deliveredMessages: number;
-  failedMessages: number;
-}
+import appointmentApi from "../api/appointmentApi";
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalLeads: 0,
-    activeConversations: 0,
-    scheduledMessages: 0,
-    messagesSent: 0,
-    deliveredMessages: 0,
-    failedMessages: 0,
-  });
   const [isLoading, setIsLoading] = useState(true);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [scheduledMessages, setScheduledMessages] = useState(0);
+  const [failedMessages, setFailedMessages] = useState(0);
+  const [deliveredMessages, setDeliveredMessages] = useState(0);
+  const [appointmentsScheduled, setAppointmentsScheduled] = useState(0);
+  const [leadLimitInfo, setLeadLimitInfo] = useState<LeadLimitInfo | null>(
+    null
+  );
+
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       setIsLoading(true);
       try {
-        // Fetch leads data
-        const leadsResponse = await leadApi.getLeads();
+        // Get leads
+        const leadsResponse = await leadApi.getLeadsByUserId();
+        setTotalLeads(leadsResponse.length);
 
-        // Count leads with scheduled messages
-        const leadsWithScheduledMessages = leadsResponse.leads.filter(
-          (lead) => lead.nextScheduledMessage
-        ).length;
+        // Get lead limit info
+        const limitInfo = await leadApi.getLeadLimitInfo();
+        setLeadLimitInfo(limitInfo);
 
-        // Get message stats with enhanced data
-        const messageStats = await messageApi.getMessageStats();
+        // Get messages
+        const messageStats = await messageApi.getMessagesByLeadIdDescending(
+          leadsResponse[0].id
+        );
+        setScheduledMessages(
+          messageStats.filter(
+            (message) => message.delivery_status === "scheduled"
+          ).length
+        );
+        setDeliveredMessages(
+          messageStats.filter(
+            (message) => message.delivery_status === "delivered"
+          ).length
+        );
+        setFailedMessages(
+          messageStats.filter((message) => message.delivery_status === "failed")
+            .length
+        );
 
-        setStats({
-          totalLeads: leadsResponse.totalLeads,
-          activeConversations: messageStats.activeConversations || 0,
-          scheduledMessages: leadsWithScheduledMessages,
-          messagesSent: messageStats.totalMessages || 0,
-          deliveredMessages: messageStats.deliveredMessages || 0,
-          failedMessages: messageStats.failedMessages || 0,
-        });
+        // Get appointments
+        const appointments = await appointmentApi.getAppointmentsByUserId();
+        setAppointmentsScheduled(appointments.length);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
       } finally {
@@ -73,6 +77,7 @@ const Dashboard: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {/* Total Leads Card */}
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center">
                 <div className="p-3 rounded-full bg-blue-100 text-blue-500 mr-4">
@@ -92,39 +97,17 @@ const Dashboard: React.FC = () => {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-sm">Total Leads</p>
-                  <p className="text-2xl font-bold">{stats.totalLeads}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="p-3 rounded-full bg-green-100 text-green-500 mr-4">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-sm">Active Conversations</p>
+                  <p className="text-gray-500 text-sm">
+                    Total Leads (Free Tier)
+                  </p>
                   <p className="text-2xl font-bold">
-                    {stats.activeConversations}
+                    {totalLeads} / {leadLimitInfo?.limit || 10}
                   </p>
                 </div>
               </div>
             </div>
 
+            {/* Scheduled Messages Card */}
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center">
                 <div className="p-3 rounded-full bg-purple-100 text-purple-500 mr-4">
@@ -145,13 +128,12 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-gray-500 text-sm">Scheduled Messages</p>
-                  <p className="text-2xl font-bold">
-                    {stats.scheduledMessages}
-                  </p>
+                  <p className="text-2xl font-bold">{scheduledMessages}</p>
                 </div>
               </div>
             </div>
 
+            {/* Messages Sent Card */}
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center">
                 <div className="p-3 rounded-full bg-yellow-100 text-yellow-500 mr-4">
@@ -171,18 +153,43 @@ const Dashboard: React.FC = () => {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-sm">Messages Sent</p>
-                  <p className="text-2xl font-bold">{stats.messagesSent}</p>
+                  <p className="text-gray-500 text-sm">Messages Deliveryed</p>
+                  <p className="text-2xl font-bold">{deliveredMessages}</p>
                   <div className="flex text-xs mt-1">
-                    <span className="text-green-600 mr-2">
-                      {stats.deliveredMessages} delivered
-                    </span>
-                    {stats.failedMessages > 0 && (
+                    {failedMessages > 0 && (
                       <span className="text-red-600">
-                        {stats.failedMessages} failed
+                        {failedMessages} failed
                       </span>
                     )}
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Appointments Scheduled Card */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="p-3 rounded-full bg-green-100 text-green-500 mr-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-gray-500 text-sm">
+                    Appointments Scheduled
+                  </p>
+                  <p className="text-2xl font-bold">{appointmentsScheduled}</p>
                 </div>
               </div>
             </div>

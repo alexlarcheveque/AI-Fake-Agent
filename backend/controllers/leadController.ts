@@ -1,10 +1,11 @@
-import { LeadModel } from "../models/Lead.ts";
+import { LeadRow } from "../models/Lead.ts";
 import {
   createLead as createLeadService,
   getLeadById as getLeadByIdService,
   updateLead as updateLeadService,
   deleteLead as deleteLeadService,
   getLeadsByUserId as getLeadsByUserIdService,
+  checkLeadLimit as checkLeadLimitService,
 } from "../services/leadService.ts";
 import { createMessage as createMessageService } from "../services/messageService.ts";
 import logger from "../utils/logger.ts";
@@ -38,6 +39,20 @@ export const getLeadsByUserId = async (req, res) => {
   }
 };
 
+export const getLeadLimitInfo = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (!userId) {
+      return res.status(401).json({ message: "User ID not found in request" });
+    }
+    const limitInfo = await checkLeadLimitService(userId);
+    res.json(limitInfo);
+  } catch (error) {
+    logger.error("Error fetching lead limit info:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const getLeadById = async (req, res) => {
   try {
     const lead = await getLeadByIdService(req.params.id);
@@ -50,7 +65,7 @@ export const getLeadById = async (req, res) => {
 
 export const createLeadAndScheduleMessage = async (req, res) => {
   try {
-    const lead: LeadModel = await createLeadService(req.user, req.body);
+    const lead: LeadRow = await createLeadService(req.user, req.body);
 
     console.log("req.body", req.body);
 
@@ -61,8 +76,10 @@ export const createLeadAndScheduleMessage = async (req, res) => {
       error_code: null,
       error_message: null,
       is_ai_generated: true,
-      created_at: new Date(Date.now()),
-      scheduled_at: getFirstMessageTiming(req.body.firstMessageTiming),
+      created_at: new Date(Date.now()).toISOString(),
+      scheduled_at: getFirstMessageTiming(
+        req.body.firstMessageTiming
+      ).toISOString(),
       sender: "agent",
     });
 
@@ -86,6 +103,9 @@ export const updateLead = async (req, res) => {
 export const deleteLead = async (req, res) => {
   try {
     const lead = await deleteLeadService(req.params.id);
+
+    console.log("delete lead", lead);
+
     res.json(lead);
   } catch (error) {
     logger.error("Error deleting lead:", error);

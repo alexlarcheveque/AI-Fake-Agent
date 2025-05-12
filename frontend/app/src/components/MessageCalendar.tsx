@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Lead } from "../types/lead";
+import { LeadRow } from "../../../../backend/models/Lead";
+import { MessageRow } from "../../../../backend/models/Message";
 import leadApi from "../api/leadApi";
 import messageApi from "../api/messageApi";
 import {
@@ -18,29 +19,23 @@ interface MessageCalendarProps {
   onLeadSelect?: (leadId: number) => void;
 }
 
-interface CalendarLead extends Lead {
-  messageType: "first" | "followup";
-  messageStatus?: string;
-}
-
-interface ScheduledMessage {
+interface CalendarEvent {
   id: number;
   leadId: number;
-  scheduledFor: string;
-  status: string;
-  leadName: string;
+  name: string;
   messageType: "first" | "followup";
   messageCount: number;
+  scheduledAt: string;
+  isPast: boolean;
+  status: string;
 }
 
 const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [scheduledLeads, setScheduledLeads] = useState<CalendarLead[]>([]);
-  const [pastMessages, setPastMessages] = useState<ScheduledMessage[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
 
-  // Fetch leads with scheduled messages and past messages
+  // Fetch leads and their messages
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -48,45 +43,76 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
         // Get the month range
         const monthStart = startOfMonth(currentMonth);
         const monthEnd = endOfMonth(currentMonth);
+        const monthStartStr = format(monthStart, "yyyy-MM-dd");
+        const monthEndStr = format(monthEnd, "yyyy-MM-dd");
 
-        // Fetch leads with upcoming scheduled messages
-        const response = await leadApi.getLeads(1, 100);
+        // Fetch all leads owned by the user
+        const leads = await leadApi.getLeadsByUserId();
 
-        // Filter leads with scheduled messages in the current month range
-        const leadsWithScheduledMessages = response.leads
-          .filter((lead) => lead.nextScheduledMessage)
-          .map((lead) => {
-            const messageDate = new Date(lead.nextScheduledMessage!);
-            const isInRange =
-              messageDate >= monthStart && messageDate <= monthEnd;
-
-            if (isInRange) {
-              return {
-                ...lead,
-                messageType: lead.messageCount === 0 ? "first" : "followup",
-              };
-            }
-            return null;
-          })
-          .filter(Boolean) as CalendarLead[];
-
-        setScheduledLeads(leadsWithScheduledMessages);
-
-        try {
-          // Fetch past messages for the calendar
-          const pastMessagesResponse = await messageApi.getScheduledMessages(
-            format(monthStart, "yyyy-MM-dd"),
-            format(monthEnd, "yyyy-MM-dd")
-          );
-
-          setPastMessages(pastMessagesResponse || []);
-        } catch (msgError) {
-          console.error("Error fetching past messages:", msgError);
-          setPastMessages([]); // Set empty array on error
+        if (!leads || leads.length === 0) {
+          setCalendarEvents([]);
+          return;
         }
+
+        // Collect all messages for all leads
+        const allEvents: CalendarEvent[] = [];
+
+        // Process each lead
+        for (const lead of leads) {
+          try {
+            // Get all messages for this lead
+            const messages = await messageApi.getMessagesByLeadIdDescending(
+              lead.id
+            );
+
+            if (!messages || messages.length === 0) continue;
+
+            // Process messages to create calendar events
+            messages.forEach((message, index) => {
+              // Only include messages with scheduled_at date and that are in the current month
+              if (message.scheduled_at) {
+                const messageDate = new Date(message.scheduled_at);
+                const isInRange =
+                  messageDate >= monthStart && messageDate <= monthEnd;
+
+                if (isInRange) {
+                  // Determine if this is a first message or followup
+                  const messageType = index === 0 ? "first" : "followup";
+
+                  allEvents.push({
+                    id: message.id,
+                    leadId: lead.id,
+                    name: lead.name,
+                    messageType: messageType,
+                    messageCount: messages.length - index, // Count from the end
+                    scheduledAt: message.scheduled_at,
+                    isPast:
+                      new Date(message.scheduled_at) < new Date() &&
+                      message.delivery_status !== "scheduled",
+                    status: message.delivery_status || "scheduled",
+                  });
+                }
+              }
+            });
+          } catch (error) {
+            console.error(
+              `Error fetching messages for lead ${lead.id}:`,
+              error
+            );
+          }
+        }
+
+        // Sort all events by timestamp (ascending)
+        allEvents.sort((a, b) => {
+          const dateA = new Date(a.scheduledAt || 0);
+          const dateB = new Date(b.scheduledAt || 0);
+          return dateA.getTime() - dateB.getTime();
+        });
+
+        setCalendarEvents(allEvents);
       } catch (error) {
         console.error("Error fetching calendar data:", error);
-        setScheduledLeads([]);
+        setCalendarEvents([]);
       } finally {
         setIsLoading(false);
       }
@@ -94,41 +120,6 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
 
     fetchData();
   }, [currentMonth]);
-
-  useEffect(() => {
-    // Define upcomingEvents from scheduledLeads
-    const upcomingEvents = scheduledLeads.map((lead) => ({
-      id: lead.id,
-      name: lead.name,
-      messageType: lead.messageType,
-      nextScheduledMessage: lead.nextScheduledMessage,
-      isPast: false,
-      status: "upcoming",
-    }));
-
-    // Combine both types of events
-    const allEvents = [
-      ...upcomingEvents,
-      ...pastMessages.map((msg) => ({
-        id: msg.leadId,
-        name: msg.leadName,
-        messageType: msg.messageType,
-        messageCount: msg.messageCount,
-        nextScheduledMessage: msg.scheduledFor,
-        isPast: true,
-        status: msg.status,
-      })),
-    ];
-
-    // Sort all events by timestamp (ascending)
-    allEvents.sort((a, b) => {
-      const dateA = new Date(a.nextScheduledMessage || 0);
-      const dateB = new Date(b.nextScheduledMessage || 0);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-    setCalendarEvents(allEvents);
-  }, [scheduledLeads, pastMessages]);
 
   const nextMonth = () => {
     setCurrentMonth(addMonths(currentMonth, 1));
@@ -145,19 +136,19 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
 
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  // Get all events (scheduled and past) for a specific day
+  // Get all events for a specific day
   const getEventsForDay = (day: Date) => {
     // Filter events for this day
     const events = calendarEvents.filter((event) => {
-      if (!event.nextScheduledMessage) return false;
-      const eventDate = new Date(event.nextScheduledMessage);
+      if (!event.scheduledAt) return false;
+      const eventDate = new Date(event.scheduledAt);
       return isSameDay(eventDate, day);
     });
 
     // Sort events by time (ascending)
     return events.sort((a, b) => {
-      const dateA = new Date(a.nextScheduledMessage || 0);
-      const dateB = new Date(b.nextScheduledMessage || 0);
+      const dateA = new Date(a.scheduledAt || 0);
+      const dateB = new Date(b.scheduledAt || 0);
       return dateA.getTime() - dateB.getTime();
     });
   };
@@ -253,8 +244,8 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                 <div className="mt-1 space-y-1">
                   {dayEvents.map((event) => (
                     <div
-                      key={`${event.id}-${event.messageType}-${event.isPast}`}
-                      onClick={() => onLeadSelect && onLeadSelect(event.id)}
+                      key={`${event.id}-${event.messageType}`}
+                      onClick={() => onLeadSelect && onLeadSelect(event.leadId)}
                       className={`text-xs p-1 rounded truncate cursor-pointer ${
                         event.isPast
                           ? event.status === "sent" ||
@@ -268,23 +259,14 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                           : "bg-blue-100 text-blue-800 hover:bg-blue-200"
                       }`}
                       title={`${event.name} - ${
-                        event.isPast
-                          ? `${
-                              event.messageType === "first"
-                                ? "First message"
-                                : `Follow-up #${event.messageCount}`
-                            } (${event.status})`
-                          : event.messageType === "first"
+                        event.messageType === "first"
                           ? "First message"
                           : `Follow-up #${event.messageCount}`
-                      }`}
+                      } (${event.status})`}
                     >
                       <div className="font-medium">{event.name}</div>
                       <div>
-                        {format(
-                          new Date(event.nextScheduledMessage!),
-                          "h:mm a"
-                        )}
+                        {format(new Date(event.scheduledAt), "h:mm a")}
                         {event.isPast && (
                           <span className="ml-1 text-xs">({event.status})</span>
                         )}
