@@ -3,6 +3,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://backend-red-dust-1909.fly.dev/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
