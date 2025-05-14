@@ -11,11 +11,31 @@
       "destination": "/frontend/app/dist/:path*"
     },
     {
+      "source": "/api/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.realnurture.ai"
+        }
+      ],
+      "destination": "https://backend-red-dust-1909.fly.dev/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "app.realnurture.ai"
+        }
+      ],
+      "destination": "/frontend/app/dist/index.html"
+    },
+    {
       "source": "/:path*",
       "has": [
         {
           "type": "host",
-          "value": "https://realnurture.ai"
+          "value": "realnurture.ai"
         }
       ],
       "destination": "/frontend/landing/build/:path*"
