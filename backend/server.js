@@ -23,6 +23,7 @@ app.use(
     origin: function (origin, callback) {
       const allowedOrigins = [
         process.env.FRONTEND_URL || "https://realnurture.ai",
+        "https://app.realnurture.ai",
         "http://localhost:5173",
       ];
 
