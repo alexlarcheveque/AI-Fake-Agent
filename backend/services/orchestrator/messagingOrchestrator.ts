@@ -7,11 +7,11 @@ export const sendTwilioMessage = async (messageId, leadId) => {
   const messageToUpdate = await getMessageById(messageId);
   messageToUpdate.sender = "agent";
 
-  const { phoneNumber } = await getLeadById(leadId);
+  const { phone_number } = await getLeadById(leadId);
   let twilioResponse;
 
   try {
-    twilioResponse = await sendMessage(phoneNumber, messageToUpdate.text);
+    twilioResponse = await sendMessage(phone_number, messageToUpdate.text);
     messageToUpdate.delivery_status = "sent";
   } catch (error) {
     messageToUpdate.delivery_status = "failed";
@@ -29,10 +29,10 @@ export const craftAndSendMessage = async (messageId, leadId) => {
   messageToUpdate.text = await generateResponse(leadId);
   messageToUpdate.sender = "agent";
 
-  const { phoneNumber } = await getLeadById(leadId);
+  const { phone_number } = await getLeadById(leadId);
   let twilioResponse;
   try {
-    twilioResponse = await sendMessage(phoneNumber, messageToUpdate.text);
+    twilioResponse = await sendMessage(phone_number, messageToUpdate.text);
     messageToUpdate.delivery_status = "sent";
   } catch (error) {
     messageToUpdate.delivery_status = "failed";
