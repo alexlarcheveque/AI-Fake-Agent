@@ -4,17 +4,8 @@ import leadApi from "../api/leadApi";
 import { MessageRow } from "../../../../backend/models/Message";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
-import AppointmentCreator from "./AppointmentCreator";
-import AppointmentsList from "./AppointmentsList";
-import { useNotifications } from "../contexts/NotificationContext";
 import "../styles/MessageThread.css";
-
-// Define ApiError interface
-interface ApiError {
-  code?: number;
-  message: string;
-  isAuthError?: boolean;
-}
+import AppointmentModal from "./AppointmentModal";
 
 // Custom hook for message fetching
 const useMessageFetching = (leadId: number) => {
@@ -106,18 +97,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     null
   );
   const [isSending, setIsSending] = useState(false);
-  const [showAppointments, setShowAppointments] = useState(false);
-  const [latestMessage, setLatestMessage] = useState<string | null>(null);
   const [appointmentSuccess, setAppointmentSuccess] = useState<string | null>(
     null
   );
-  const [calendarConfigurationError, setCalendarConfigurationError] =
-    useState(false);
   const [nextScheduledMessage, setNextScheduledMessage] = useState<
     string | undefined
-  >(propNextScheduledMessage);
+  >("Tomorrow at 10:00 AM");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { createNotification } = useNotifications();
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(
     null
@@ -398,82 +384,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     console.log("Current messages state:", messages);
   }, [messages]);
 
-  const handleAppointmentSuccess = () => {
-    setAppointmentSuccess("Appointment scheduled successfully!");
-
-    // Refresh latest message to clear the appointment form
-    setLatestMessage(null);
-  };
-
-  const handleAppointmentError = (error: any) => {
-    console.error("Appointment error:", error);
-
-    // If it's an ApiError from our client
-    if (error && typeof error === "object" && "code" in error) {
-      const apiError = error as ApiError;
-
-      // Set calendar configuration error if it's an auth error or related to Calendly
-      if (
-        apiError.isAuthError ||
-        apiError.code === 503 ||
-        (apiError.message &&
-          (apiError.message.includes("Calendly") ||
-            apiError.message.includes("calendar") ||
-            apiError.message.includes("authentication")))
-      ) {
-        setCalendarConfigurationError(true);
-
-        if (apiError.code === 503) {
-          setError(
-            "Calendly service is temporarily unavailable. You can still create appointments manually."
-          );
-        } else {
-          setError(apiError.message);
-        }
-      } else {
-        setError(apiError.message);
-      }
-    } else {
-      // Handle generic error
-      setError(
-        typeof error === "string"
-          ? error
-          : "An error occurred with the appointment"
-      );
-    }
-
-    setTimeout(() => {
-      setError(null);
-    }, 8000); // Show for a longer time so the user has time to read it
-  };
-
-  // Handle Calendly success
-  const handleCalendlySuccess = (link: string) => {
-    setAppointmentSuccess(`Calendly link created successfully: ${link}`);
-    setTimeout(() => setAppointmentSuccess(null), 5000);
-  };
-
-  // Handle Calendly error
-  const handleCalendlyError = (err: any) => {
-    console.error("Error with Calendly:", err);
-
-    // Set calendar configuration error
-    setCalendarConfigurationError(true);
-
-    // If error has a message, display it
-    if (err && typeof err === "object" && "message" in err) {
-      setError(err.message || "Failed to create Calendly link");
-    } else {
-      setError(
-        "There was an issue with the Calendly integration. You can use manual scheduling instead."
-      );
-    }
-
-    setTimeout(() => {
-      setError(null);
-    }, 8000);
-  };
-
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header with lead info and actions */}
@@ -558,10 +468,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                     : "bg-gray-300"
                 }`}
                 type="button"
-                disabled={aiAssistantEnabled === null} // Disable while loading
+                disabled={aiAssistantEnabled === null}
               >
                 {aiAssistantEnabled === null ? (
-                  // Loading indicator
                   <span className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-3 animate-pulse"></span>
                 ) : (
                   <span
@@ -607,91 +516,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         )}
       </div>
 
-      {/* Error message */}
-      {error && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-3 flex items-start">
-          <div className="flex-shrink-0">
-            <svg
-              className="h-5 w-5 text-red-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
-          <button
-            className="ml-auto text-red-400"
-            onClick={() => setError(null)}
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      {/* Success message */}
-      {appointmentSuccess && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-3 flex items-start">
-          <div className="flex-shrink-0">
-            <svg
-              className="h-5 w-5 text-green-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm text-green-600">{appointmentSuccess}</p>
-          </div>
-          <button
-            className="ml-auto text-green-400"
-            onClick={() => setAppointmentSuccess(null)}
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      {/* Main content */}
       <div
         className="flex-1 overflow-y-auto flex flex-col message-thread-container"
         id="message-container"
@@ -701,54 +525,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           <MessageList messages={messages} />
         </div>
       </div>
-
-      {/* Show appointments if requested */}
-      {showAppointments && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          onClick={(e) => {
-            // Close the modal when clicking on the background overlay
-            if (e.target === e.currentTarget) {
-              console.log("Closing appointments modal by clicking outside");
-              setShowAppointments(false);
-            }
-          }}
-        >
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h2 className="text-lg font-medium">Appointments</h2>
-              <button
-                onClick={() => setShowAppointments(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="p-4">
-              <AppointmentsList lead_id={leadId} />
-              <div className="mt-4 pt-4 border-t">
-                <AppointmentCreator
-                  lead_id={leadId}
-                  onSuccess={handleAppointmentSuccess}
-                  onError={handleAppointmentError}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Quick Actions bar */}
       <div className="border-t border-gray-200 bg-white">
@@ -761,7 +537,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             <button
               onClick={() => {
                 console.log("Appointments button clicked");
-                setShowAppointments(true);
+                setShowAppointmentModal(true);
               }}
               className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
               type="button"
@@ -811,6 +587,15 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           />
         )}
       </div>
+
+      <AppointmentModal
+        lead_id={leadId}
+        isOpen={showAppointmentModal}
+        onClose={() => setShowAppointmentModal(false)}
+        onSuccess={() => {
+          setAppointmentSuccess("Appointment scheduled successfully!");
+        }}
+      />
     </div>
   );
 };

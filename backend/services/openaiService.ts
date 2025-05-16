@@ -83,9 +83,10 @@ export const generateResponse = async (leadId: number): Promise<string> => {
 
     await checkForNewSearchCriteria(responseContent);
     await checkForAppointmentDetails(responseContent);
-    const sanitizedResponse = await sanitizeResponse(responseContent);
 
-    return sanitizedResponse;
+    // const sanitizedResponse = await sanitizeResponse(responseContent);
+
+    return responseContent;
   } catch (error) {
     logger.error("Error generating OpenAI response:", error);
     throw error;
