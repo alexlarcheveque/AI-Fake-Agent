@@ -16,8 +16,6 @@ const LeadManagement = () => {
     subscriptionPlan: string;
   } | null>(null);
 
-  console.log("leads -- lead management", leads);
-
   const singleLeadModalRef = useRef<HTMLDivElement>(null);
 
   const fetchLeads = useCallback(async () => {
@@ -64,8 +62,6 @@ const LeadManagement = () => {
   }, [isCreateSingleLeadModalOpen]);
 
   const handleLeadCreated = useCallback(async (newLead: LeadRow) => {
-    console.log("newLead", newLead);
-
     setLeads((prevLeads) => [newLead, ...prevLeads]);
     setIsCreateSingleLeadModalOpen(false); // Close modal after successful creation
 

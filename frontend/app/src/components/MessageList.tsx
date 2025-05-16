@@ -8,7 +8,8 @@ import {
   startOfDay,
 } from "date-fns";
 import { MessageRow } from "../../../../backend/models/Message.ts";
-import appointmentApi, { Appointment } from "../api/appointmentApi";
+import appointmentApi from "../api/appointmentApi";
+import { AppointmentRow } from "../../../../backend/models/Appointment.ts";
 
 const getStatusIndicator = (message: MessageRow) => {
   if (message.sender === "lead") return null;
@@ -48,7 +49,7 @@ const MessageList: React.FC<{ messages: MessageRow[] }> = ({ messages }) => {
   const messageEndRef = React.useRef<HTMLDivElement>(null);
   const messagesContainerRef = React.useRef<HTMLDivElement>(null);
   const [previousMessagesLength, setPreviousMessagesLength] = React.useState(0);
-  const [appointments, setAppointments] = React.useState<Appointment[]>([]);
+  const [appointments, setAppointments] = React.useState<AppointmentRow[]>([]);
   const [leadId, setLeadId] = React.useState<number | null>(null);
 
   // Fetch appointments if we have a leadId
@@ -249,7 +250,7 @@ const MessageList: React.FC<{ messages: MessageRow[] }> = ({ messages }) => {
                         (message.created_at &&
                           isSameDay(
                             new Date(message.created_at),
-                            new Date(appointment.startTime)
+                            new Date(appointment.start_time_at)
                           ));
 
                       if (isAppointmentMessage) {
@@ -283,12 +284,12 @@ const MessageList: React.FC<{ messages: MessageRow[] }> = ({ messages }) => {
                                 </svg>
                                 <span>
                                   {format(
-                                    new Date(appointment.startTime),
+                                    new Date(appointment.start_time_at),
                                     "MMMM d, yyyy"
                                   )}{" "}
                                   at{" "}
                                   {format(
-                                    new Date(appointment.startTime),
+                                    new Date(appointment.start_time_at),
                                     "h:mm a"
                                   )}
                                 </span>

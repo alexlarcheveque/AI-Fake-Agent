@@ -43,9 +43,7 @@ const leadApi = {
   },
 
   // Create a new lead
-  async createLead(
-    lead: Omit<LeadRow, "id" | "created_at" | "updated_at" | "archived">
-  ): Promise<LeadRow> {
+  async createLead(lead: LeadInsert): Promise<LeadRow> {
     return await apiClient.post("/leads", lead);
   },
 

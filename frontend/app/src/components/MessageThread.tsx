@@ -737,10 +737,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               </button>
             </div>
             <div className="p-4">
-              <AppointmentsList leadId={leadId} />
+              <AppointmentsList lead_id={leadId} />
               <div className="mt-4 pt-4 border-t">
                 <AppointmentCreator
-                  leadId={leadId}
+                  lead_id={leadId}
                   onSuccess={handleAppointmentSuccess}
                   onError={handleAppointmentError}
                 />

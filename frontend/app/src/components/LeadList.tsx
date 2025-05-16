@@ -20,8 +20,6 @@ const LeadList: React.FC<LeadListProps> = ({
   onLeadsChange,
   onError,
 }) => {
-  console.log("leads", leads);
-
   const [editingLead, setEditingLead] = useState<LeadRow | null>(null);
   const [updateLoading, setUpdateLoading] = useState<number | null>(null);
   const navigate = useNavigate();
