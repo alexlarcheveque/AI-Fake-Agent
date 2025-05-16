@@ -1,6 +1,27 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import leadApi from "../api/leadApi";
-import { Lead, LeadStatus, LeadFormData, LeadType } from "../types/lead";
+import { LeadInsert, LeadRow } from "../../../../backend/models/Lead";
+
+export enum LeadStatus {
+  NEW = "New",
+  IN_CONVERSATION = "In Conversation",
+  QUALIFIED = "Qualified",
+  APPOINTMENT_SET = "Appointment Set",
+  CONVERTED = "Converted",
+  INACTIVE = "Inactive",
+}
+
+export enum LeadType {
+  BUYER = "buyer",
+  SELLER = "seller",
+}
+
+export enum FirstMessageTiming {
+  IMMEDIATE = "immediate",
+  NEXT_DAY = "next_day",
+  ONE_WEEK = "one_week",
+  TWO_WEEKS = "two_weeks",
+}
 
 // Validation constants
 const VALIDATION_RULES = {
@@ -55,32 +76,19 @@ interface ValidationError {
 }
 
 interface LeadFormProps {
-  onLeadCreated: (lead: Lead) => void;
+  onLeadCreated: (lead: LeadRow) => void;
 }
 
-interface FormData extends Omit<LeadFormData, "phoneNumber"> {
-  phoneNumber: string;
-  messageTime: string;
-  aiAssistantEnabled: boolean;
-  firstMessageTiming: "immediate" | "next_day" | "one_week" | "two_weeks";
-  messageCount: number;
-  context: string;
-  isArchived: boolean;
-  formattedPhone?: string;
-}
-
-const initialFormData: FormData = {
+const initialFormData: LeadInsert = {
   name: "",
   email: "",
-  phoneNumber: "",
+  phone_number: 0,
   status: "New",
-  aiAssistantEnabled: true,
-  messageTime: "now",
-  leadType: "buyer",
-  firstMessageTiming: "immediate",
-  messageCount: 0,
+  is_ai_enabled: true,
+  lead_type: "buyer",
   context: "",
-  isArchived: false,
+  is_archived: false,
+  first_message: "immediate",
 };
 
 // Validation functions
@@ -118,20 +126,20 @@ const validateEmail = (email: string): ValidationError | undefined => {
 
 const validatePhone = (phone: string): ValidationError | undefined => {
   if (!phone)
-    return { field: "phoneNumber", message: "Phone number is required" };
+    return { field: "phone_number", message: "Phone number is required" };
   const cleanPhone = phone.replace(/\D/g, "");
   if (
     cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
     cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
   ) {
     return {
-      field: "phoneNumber",
+      field: "phone_number",
       message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits`,
     };
   }
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
     return {
-      field: "phoneNumber",
+      field: "phone_number",
       message: VALIDATION_RULES.PHONE.PATTERN_MESSAGE,
     };
   }
@@ -146,7 +154,7 @@ const validateStatus = (status: string): ValidationError | undefined => {
 const validateLeadType = (leadType: string): ValidationError | undefined => {
   if (!VALIDATION_RULES.LEAD_TYPE.VALID_VALUES.includes(leadType as LeadType)) {
     return {
-      field: "leadType",
+      field: "lead_type",
       message: "Lead type must be 'buyer' or 'seller'",
     };
   }
@@ -154,7 +162,7 @@ const validateLeadType = (leadType: string): ValidationError | undefined => {
 };
 
 const validateField = (
-  name: keyof FormData,
+  name: keyof LeadInsert,
   value: string
 ): ValidationError | undefined => {
   switch (name) {
@@ -162,11 +170,11 @@ const validateField = (
       return validateName(value);
     case "email":
       return validateEmail(value);
-    case "phoneNumber":
+    case "phone_number":
       return validatePhone(value);
     case "status":
       return validateStatus(value);
-    case "leadType":
+    case "lead_type":
       return validateLeadType(value);
     default:
       return undefined;
@@ -174,7 +182,7 @@ const validateField = (
 };
 
 const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
-  const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [formData, setFormData] = useState<LeadInsert>(initialFormData);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
@@ -182,10 +190,10 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     Object.keys(formData).forEach((key) => {
-      if (key === "aiAssistantEnabled") return;
+      if (key === "is_ai_enabled") return;
       const value = formData[key as keyof typeof formData];
       if (typeof value === "string") {
-        const error = validateField(key as keyof FormData, value);
+        const error = validateField(key as keyof LeadInsert, value);
         if (error) {
           newErrors[key as keyof FormErrors] = error;
         }
@@ -209,7 +217,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
 
     // Only validate if field has been touched
     if (touchedFields.has(name)) {
-      const error = validateField(name as keyof FormData, value);
+      const error = validateField(name as keyof LeadInsert, value);
       setErrors((prev) => ({
         ...prev,
         [name]: error,
@@ -228,7 +236,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     setTouchedFields((prev) => new Set(prev).add(name));
 
     // Validate on blur
-    const error = validateField(name as keyof FormData, value);
+    const error = validateField(name as keyof LeadInsert, value);
     setErrors((prev) => ({
       ...prev,
       [name]: error,
@@ -326,7 +334,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           id="email"
           name="email"
           required
-          value={formData.email}
+          value={formData.email || ""}
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -352,14 +360,14 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         </label>
         <input
           type="tel"
-          id="phoneNumber"
-          name="phoneNumber"
+          id="phone_number"
+          name="phone_number"
           required
-          value={formData.phoneNumber}
+          value={formData.phone_number || ""}
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.phoneNumber
+            errors.phone_number
               ? "border-red-500 ring-red-100"
               : "border-gray-300"
           }`}
@@ -384,7 +392,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         <select
           id="status"
           name="status"
-          value={formData.status}
+          value={formData.status || ""}
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -417,7 +425,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         <select
           id="leadType"
           name="leadType"
-          value={formData.leadType}
+          value={formData.lead_type || ""}
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -476,31 +484,29 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
             onClick={() =>
               setFormData((prev) => ({
                 ...prev,
-                aiAssistantEnabled: !prev.aiAssistantEnabled,
+                is_ai_enabled: !prev.is_ai_enabled,
               }))
             }
             className={`${
-              formData.aiAssistantEnabled ? "bg-blue-600" : "bg-gray-200"
+              formData.is_ai_enabled ? "bg-blue-600" : "bg-gray-200"
             } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
             disabled={isLoading}
           >
             <span
               className={`${
-                formData.aiAssistantEnabled ? "translate-x-5" : "translate-x-0"
+                formData.is_ai_enabled ? "translate-x-5" : "translate-x-0"
               } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
             />
           </button>
         </div>
-
-        {/* First message timing options */}
-        {formData.aiAssistantEnabled && (
+        {formData.is_ai_enabled && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               When to send first message
             </label>
             <select
-              name="firstMessageTiming"
-              value={formData.firstMessageTiming}
+              name="first_message"
+              value={formData.first_message || ""}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               disabled={isLoading}

@@ -21,7 +21,10 @@ const client = twilio(accountSid, authToken);
 export const sendMessage = async (to: number, body: string): Promise<any> => {
   try {
     // Use backend URL for status callback
-    const statusCallbackUrl = `${process.env.BACKEND_URL}/api/messages/status-callback`;
+    const statusCallbackUrl =
+      process.env.NODE_ENV === "production"
+        ? `${process.env.BACKEND_URL}/api/messages/status-callback`
+        : "https://wanted-husky-scarcely.ngrok-free.app/api/messages/status-callback";
 
     console.log("send message to twilio", to, body, statusCallbackUrl);
 

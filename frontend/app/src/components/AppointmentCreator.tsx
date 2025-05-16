@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { format } from "date-fns";
-import appointmentApi, {
-  CreateAppointmentRequest,
-} from "../api/appointmentApi";
+import appointmentApi from "../api/appointmentApi";
 import { useNotifications } from "../contexts/NotificationContext";
+import { AppointmentInsert } from "../../../../backend/models/Appointment";
 
 interface AppointmentCreatorProps {
   lead_id: number;
@@ -53,11 +52,11 @@ const AppointmentCreator: React.FC<AppointmentCreatorProps> = ({
       const endDate = new Date(startDate);
       endDate.setHours(endDate.getHours() + 1);
 
-      const appointmentData: CreateAppointmentRequest = {
+      const appointmentData: AppointmentInsert = {
         lead_id,
         title,
-        startTime: startDate.toISOString(),
-        endTime: endDate.toISOString(),
+        start_time_at: startDate.toISOString(),
+        end_time_at: endDate.toISOString(),
         location,
         description,
       };

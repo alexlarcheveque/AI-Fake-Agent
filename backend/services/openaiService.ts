@@ -2,8 +2,10 @@ import OpenAI from "openai";
 import logger from "../utils/logger.ts";
 import { format, addDays } from "date-fns";
 import generateBuyerLeadPrompt from "./prompts/buyerPrompt.ts";
-import { getMessagesByLeadId, updateMessage } from "./messageService.ts";
+import { getMessagesByLeadIdDescending } from "./messageService.ts";
+import { getUserSettings } from "./userSettingsService.ts";
 import { getLeadById } from "./leadService.ts";
+import supabase from "../config/supabase.ts";
 
 const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
 
@@ -20,25 +22,47 @@ export const generateResponse = async (leadId: number): Promise<string> => {
     const currentDate = new Date();
     const formattedCurrentDate = format(currentDate, "MMMM d, yyyy");
     const currentDayName = format(currentDate, "EEEE");
-    const tomorrow = addDays(currentDate, 1);
-    const tomorrowFormatted = format(tomorrow, "MM/dd/yyyy");
+
+    const leadContext = await getLeadById(leadId);
+    if (!leadContext) {
+      throw new Error(`Lead with ID ${leadId} not found`);
+    }
+
+    console.log("leadContext", leadContext);
 
     // Convert previous messages to OpenAI format
     const messageHistory: OpenAIMessage[] = (
-      await getMessagesByLeadId(leadId)
-    ).map((msg) => ({
-      role: msg.sender === "lead" ? "user" : "assistant",
-      content: msg.text || "",
-    }));
+      await getMessagesByLeadIdDescending(leadId)
+    )
+      .filter((msg) => msg.text)
+      .filter((msg) => msg.delivery_status !== "failed")
+      .map((msg) => ({
+        role: msg.sender === "lead" ? "user" : "assistant",
+        content: msg.text || "",
+      }));
 
-    const leadContext = await getLeadById(leadId);
+    const agentContext = await getUserSettings(leadContext.user_uuid);
 
-    const systemPrompt = generateBuyerLeadPrompt(
+    console.log("agentContext", agentContext);
+
+    console.log(
+      "generate lead prompt",
+      agentContext,
       leadContext,
       formattedCurrentDate,
-      currentDayName,
-      tomorrowFormatted
+      currentDayName
     );
+
+    const systemPrompt = generateBuyerLeadPrompt(
+      agentContext,
+      leadContext,
+      formattedCurrentDate,
+      currentDayName
+    );
+
+    console.log("system prompt", systemPrompt);
+
+    console.log("message history", messageHistory);
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",

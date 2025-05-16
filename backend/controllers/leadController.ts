@@ -10,7 +10,9 @@ import {
 import { createMessage as createMessageService } from "../services/messageService.ts";
 import logger from "../utils/logger.ts";
 
-const getFirstMessageTiming = (firstMessageTiming: string) => {
+type FirstMessageTiming = "immediate" | "next_day" | "one_week" | "two_weeks";
+
+const getFirstMessageTiming = (firstMessageTiming: FirstMessageTiming) => {
   switch (firstMessageTiming) {
     case "immediate":
       return new Date(Date.now());
@@ -65,6 +67,8 @@ export const getLeadById = async (req, res) => {
 
 export const createLeadAndScheduleMessage = async (req, res) => {
   try {
+    console.log("req.body", req.body);
+
     const lead: LeadRow = await createLeadService(req.user, req.body);
 
     console.log("req.body", req.body);
@@ -77,9 +81,7 @@ export const createLeadAndScheduleMessage = async (req, res) => {
       error_message: null,
       is_ai_generated: true,
       created_at: new Date(Date.now()).toISOString(),
-      scheduled_at: getFirstMessageTiming(
-        req.body.firstMessageTiming
-      ).toISOString(),
+      scheduled_at: getFirstMessageTiming(req.body.first_message).toISOString(),
       sender: "agent",
     });
 

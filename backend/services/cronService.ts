@@ -21,11 +21,7 @@ cron.schedule("* * * * *", async () => {
           `Processing message ${message.id} for lead ${message.lead_id}`
         );
 
-        if (message.is_ai_generated === false) {
-          await sendTwilioMessage(message.id, message.lead_id);
-        } else {
-          await craftAndSendMessage(message.id, message.lead_id);
-        }
+        await craftAndSendMessage(message.id, message.lead_id);
       } catch (error) {
         // This only catches errors for this specific message
         logger.error(`Error processing message ${message.id}:`, error);

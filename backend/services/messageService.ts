@@ -60,34 +60,10 @@ export const getMessagesByLeadId = async (
 };
 
 export const getMessagesByLeadIdDescending = async (
-  leadId: number,
-  userId: number
+  leadId: number
 ): Promise<MessageRow[]> => {
   try {
-    // Debugging information
-    console.log(`Getting messages for leadId: ${leadId}, userId: ${userId}`);
-
-    // First, check if the lead belongs to the user
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("id", leadId)
-      .eq("user_uuid", userId)
-      .single();
-
-    if (leadError) {
-      if (leadError.code === "PGRST116") {
-        // Not found
-        console.error(`Lead ${leadId} does not belong to user ${userId}`);
-        throw new Error(
-          `Lead ${leadId} not found or does not belong to the user`
-        );
-      }
-      console.error(`Supabase lead query error: ${leadError.message}`);
-      throw new Error(leadError.message);
-    }
-
-    // Get all messages for this lead (without user_id filter since it might not exist)
+    // Get all messages for this particular lead
     const { data, error } = await supabase
       .from("messages")
       .select("*")
@@ -137,10 +113,12 @@ export const getMessagesThatAreOverdue = async (): Promise<MessageRow[]> => {
 
 export const updateMessage = async (
   messageId: number,
-  settings: Partial<MessageRow>
+  settings: MessageInsert
 ): Promise<MessageRow> => {
   // Convert to database format if needed
   const updateData = settings;
+
+  console.log("update message -- data to update", updateData);
 
   const { data, error } = await supabase
     .from("messages")
@@ -162,9 +140,7 @@ export const deleteMessage = async (messageId: number): Promise<void> => {
   if (error) throw new Error(error.message);
 };
 
-export const receiveIncomingMessage = async (
-  messageData
-): Promise<MessageRow[]> => {
+export const receiveIncomingMessage = async (messageData): Promise<void> => {
   const to = cleanPhoneNumber(messageData.To);
   const from = cleanPhoneNumber(messageData.From);
   const text = messageData.Body;
@@ -192,16 +168,30 @@ export const receiveIncomingMessage = async (
 
   console.log("lead", lead);
 
-  // Create the message
-  return await createMessage({
+  // Create the incoming message
+  await createMessage({
     lead_id: lead.id,
     text,
     sender: "lead",
     twilio_sid,
     delivery_status: "delivered",
+    is_ai_generated: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
+
+  // respond to the lead
+  if (lead.is_ai_enabled) {
+    await createMessage({
+      lead_id: lead.id,
+      sender: "agent",
+      is_ai_generated: true,
+      delivery_status: "scheduled",
+      scheduled_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  }
 };
 
 // Get message statistics for dashboard

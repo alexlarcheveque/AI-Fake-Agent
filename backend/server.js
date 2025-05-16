@@ -57,9 +57,16 @@ const server = http.createServer(app);
 // Initialize and start server
 const initializeApp = async () => {
   try {
-    // Start the server
-    server.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+    // Log binding information
+    console.log(`Attempting to bind to 0.0.0.0:${PORT}`);
+
+    // Start the server with explicit host binding
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server is running on 0.0.0.0:${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV}`);
+      // Check what interfaces we're actually listening on
+      const addressInfo = server.address();
+      console.log(`Server address info:`, addressInfo);
     });
   } catch (error) {
     console.error("Error initializing application:", error);
