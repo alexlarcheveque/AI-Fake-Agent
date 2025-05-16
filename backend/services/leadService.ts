@@ -65,6 +65,7 @@ export const createLead = async (user, settings: LeadRow): Promise<LeadRow> => {
     is_ai_enabled,
     lead_type,
     context,
+    first_message,
   } = settings;
 
   console.log("create lead settings", settings);
@@ -95,6 +96,7 @@ export const createLead = async (user, settings: LeadRow): Promise<LeadRow> => {
         is_archived: false,
         user_uuid: user?.id,
         context,
+        first_message,
       },
     ])
     .select()

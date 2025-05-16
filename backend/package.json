@@ -11,6 +11,7 @@
     "update-types": "npx supabase gen types typescript --project-id sqdzarxuyhirqexynlgb --schema public > database.types.ts"
   },
   "dependencies": {
+    "@sentry/node": "^9.18.0",
     "@supabase/supabase-js": "^2.49.4",
     "@types/jsonwebtoken": "^9.0.9",
     "axios": "^1.8.4",

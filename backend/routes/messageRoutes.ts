@@ -22,14 +22,7 @@ router.post(
 // Status callback endpoint for Twilio
 router.post(
   "/status-callback",
-  asyncHandler((req: express.Request, res: express.Response) => {
-    console.log("Received Twilio status callback:", {
-      body: req.body,
-      headers: req.headers,
-      method: req.method,
-    });
-    statusCallback(req, res);
-  })
+  asyncHandler((req, res) => statusCallback(req, res))
 );
 
 // Apply protect middleware to all other message routes
@@ -56,20 +49,6 @@ router.post(
 router.get(
   "/next-scheduled/:leadId",
   asyncHandler((req, res) => getNextScheduledMessageForLead(req, res))
-);
-
-// Add this route for status callbacks
-router.post(
-  "/status-callback",
-  asyncHandler((req, res) => {
-    console.log("Received Twilio status callback:", {
-      body: req.body,
-      headers: req.headers,
-      method: req.method,
-    });
-    // Assuming statusCallback is implemented in messageController
-    statusCallback(req, res);
-  })
 );
 
 // Mark message as read
