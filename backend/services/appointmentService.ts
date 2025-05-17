@@ -4,11 +4,12 @@ import { getLeadsByUserId } from "./leadService.ts";
 
 export const createAppointment = async (
   settings: AppointmentInsert
-): Promise<AppointmentRow[]> => {
+): Promise<AppointmentRow> => {
   const { data, error } = await supabase
     .from("appointments")
     .insert([settings])
-    .select();
+    .select()
+    .single();
 
   if (error) throw new Error(error.message);
   return data;

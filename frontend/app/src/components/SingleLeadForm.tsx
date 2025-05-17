@@ -253,11 +253,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
     setIsLoading(true);
 
     try {
-      console.log("formData", formData);
-
       const newLead = await leadApi.createLead(formData);
-
-      console.log("newLead", newLead);
 
       onLeadCreated(newLead);
       setFormData(initialFormData);

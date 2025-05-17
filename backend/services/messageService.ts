@@ -1,5 +1,7 @@
 import supabase from "../config/supabase.ts";
 import { MessageInsert, MessageRow } from "../models/Message.ts";
+import { updateLeadStatusBasedOnMessages } from "./leadService.ts";
+import logger from "../utils/logger.ts";
 
 // Utility function to clean phone numbers
 const cleanPhoneNumber = (phoneNumber: string): string => {
@@ -115,19 +117,44 @@ export const updateMessage = async (
   messageId: number,
   settings: MessageInsert
 ): Promise<MessageRow> => {
-  // Convert to database format if needed
-  const updateData = settings;
+  console.log("update message -- data to update", settings);
 
-  console.log("update message -- data to update", updateData);
+  if (settings.twilio_sid) {
+    console.log(
+      `IMPORTANT: Updating message ${messageId} with Twilio SID: ${settings.twilio_sid}`
+    );
+  }
+
+  // Always set the updated_at timestamp to ensure changes are detected
+  settings.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("messages")
-    .update(updateData)
+    .update(settings)
     .eq("id", messageId)
-    .select()
+    .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error(`Error updating message ${messageId}:`, error);
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    console.error(`No data returned when updating message ${messageId}`);
+    throw new Error(`Failed to update message ${messageId}`);
+  }
+
+  // For critical updates like twilio_sid, verify the update was successful
+  if (settings.twilio_sid && data.twilio_sid !== settings.twilio_sid) {
+    console.error(`CRITICAL: Twilio SID mismatch after update for message ${messageId}. 
+      Expected: ${settings.twilio_sid}, Got: ${data.twilio_sid}`);
+  }
+
+  console.log(
+    `Message ${messageId} updated successfully with twilio_sid: ${data.twilio_sid}`
+  );
+
   return data;
 };
 
@@ -166,7 +193,33 @@ export const receiveIncomingMessage = async (messageData): Promise<void> => {
     throw new Error(`No lead found with phone number ${from}`);
   }
 
-  console.log("lead", lead);
+  logger.info(`Received message from lead ${lead.id} (${lead.name})`);
+
+  // Cancel any pending scheduled messages for this lead
+  try {
+    const { data: scheduledMessages } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("lead_id", lead.id)
+      .eq("delivery_status", "scheduled")
+      .gt("scheduled_at", new Date().toISOString());
+
+    if (scheduledMessages && scheduledMessages.length > 0) {
+      logger.info(
+        `Canceling ${scheduledMessages.length} scheduled messages for lead ${lead.id} due to incoming response`
+      );
+
+      // Cancel each scheduled message
+      for (const msg of scheduledMessages) {
+        await deleteMessage(msg.id);
+      }
+    }
+  } catch (error) {
+    logger.error(
+      `Error canceling scheduled messages for lead ${lead.id}: ${error.message}`
+    );
+    // Don't throw to continue with message processing
+  }
 
   // Create the incoming message
   await createMessage({
@@ -180,69 +233,30 @@ export const receiveIncomingMessage = async (messageData): Promise<void> => {
     updated_at: new Date().toISOString(),
   });
 
+  // Update lead status based on message history
+  try {
+    await updateLeadStatusBasedOnMessages(lead.id);
+    logger.info(
+      `Successfully updated status for lead ${lead.id} after receiving message`
+    );
+  } catch (error) {
+    logger.error(
+      `Error updating lead status for lead ${lead.id}: ${error.message}`
+    );
+    // Don't throw here, just log the error to avoid stopping the message flow
+  }
+
   // respond to the lead
   if (lead.is_ai_enabled) {
+    // Schedule immediate response
     await createMessage({
       lead_id: lead.id,
       sender: "agent",
       is_ai_generated: true,
       delivery_status: "scheduled",
-      scheduled_at: new Date().toISOString(),
+      scheduled_at: new Date().toISOString(), // Schedule for immediate processing
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
   }
-};
-
-// Get message statistics for dashboard
-export const getMessageStats = async (): Promise<{
-  totalMessages: number;
-  deliveredMessages: number;
-  failedMessages: number;
-  activeConversations: number;
-}> => {
-  // Get total message count
-  const { count: totalCount, error: totalError } = await supabase
-    .from("messages")
-    .select("*", { count: "exact", head: true });
-
-  if (totalError) throw new Error(totalError.message);
-
-  // Get delivered message count
-  const { count: deliveredCount, error: deliveredError } = await supabase
-    .from("messages")
-    .select("*", { count: "exact", head: true })
-    .eq("delivery_status", "delivered");
-
-  if (deliveredError) throw new Error(deliveredError.message);
-
-  // Get failed message count
-  const { count: failedCount, error: failedError } = await supabase
-    .from("messages")
-    .select("*", { count: "exact", head: true })
-    .eq("delivery_status", "failed");
-
-  if (failedError) throw new Error(failedError.message);
-
-  // Get active conversations (leads with messages in last 7 days)
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  const { data: activeLeads, error: activeError } = await supabase
-    .from("messages")
-    .select("lead_id")
-    .gte("created_at", sevenDaysAgo.toISOString())
-    .is("lead_id", "not.null");
-
-  if (activeError) throw new Error(activeError.message);
-
-  // Count unique lead IDs
-  const uniqueLeadIds = new Set(activeLeads.map((msg) => msg.lead_id));
-
-  return {
-    totalMessages: totalCount || 0,
-    deliveredMessages: deliveredCount || 0,
-    failedMessages: failedCount || 0,
-    activeConversations: uniqueLeadIds.size,
-  };
 };

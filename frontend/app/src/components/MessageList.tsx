@@ -7,8 +7,8 @@ import {
   isSameWeek,
   startOfDay,
 } from "date-fns";
-import { MessageRow } from "../../../../backend/models/Message.ts";
 import appointmentApi from "../api/appointmentApi";
+import { MessageRow } from "../../../../backend/models/Message.ts";
 import { AppointmentRow } from "../../../../backend/models/Appointment.ts";
 
 const getStatusIndicator = (message: MessageRow) => {
@@ -228,102 +228,6 @@ const MessageList: React.FC<{ messages: MessageRow[] }> = ({ messages }) => {
                       </div>
                     )}
                   </div>
-
-                  {/* Check for associated appointments */}
-                  {appointments.length > 0 &&
-                    message.id &&
-                    // Find appointments not shown in this group yet
-                    appointments.map((appointment) => {
-                      // Skip if already shown in this message group
-                      if (group.shownAppointments.has(appointment.id)) {
-                        return null;
-                      }
-
-                      // Appointment mentions are often related to the appointment description/title
-                      const isAppointmentMessage =
-                        message.text?.toLowerCase().includes("appointment") ||
-                        message.text?.toLowerCase().includes("meeting") ||
-                        message.text?.toLowerCase().includes("scheduled") ||
-                        // Time references
-                        message.text?.toLowerCase().includes("calendar") ||
-                        // Same day as appointment
-                        (message.created_at &&
-                          isSameDay(
-                            new Date(message.created_at),
-                            new Date(appointment.start_time_at)
-                          ));
-
-                      if (isAppointmentMessage) {
-                        // Mark as shown to avoid duplicates
-                        group.shownAppointments.add(appointment.id);
-
-                        return (
-                          <div
-                            key={appointment.id}
-                            className={`mt-1 ${
-                              message.sender === "lead" ? "ml-4" : "mr-4"
-                            }`}
-                          >
-                            <div className="bg-green-50 border border-green-100 rounded-md p-2">
-                              <h4 className="text-xs font-semibold text-green-700 mb-1">
-                                {appointment.title || "Appointment"}
-                              </h4>
-                              <div className="flex items-center text-sm text-green-800">
-                                <svg
-                                  className="w-4 h-4 mr-1 text-green-600"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                  />
-                                </svg>
-                                <span>
-                                  {format(
-                                    new Date(appointment.start_time_at),
-                                    "MMMM d, yyyy"
-                                  )}{" "}
-                                  at{" "}
-                                  {format(
-                                    new Date(appointment.start_time_at),
-                                    "h:mm a"
-                                  )}
-                                </span>
-                              </div>
-                              {appointment.location && (
-                                <div className="flex items-center text-sm text-green-800 mt-1">
-                                  <svg
-                                    className="w-4 h-4 mr-1 text-green-600"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                                    />
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                                    />
-                                  </svg>
-                                  <span>{appointment.location}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
                 </div>
               );
             })}

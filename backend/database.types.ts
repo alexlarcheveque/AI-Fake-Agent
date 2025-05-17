@@ -157,33 +157,33 @@ export type Database = {
           id: number
           is_read: boolean | null
           lead_id: number | null
-          messsage: string | null
+          message: string | null
           title: string | null
           type: string | null
           upated_at: string | null
-          uuid: string | null
+          user_uuid: string | null
         }
         Insert: {
           created_at?: string
           id?: number
           is_read?: boolean | null
           lead_id?: number | null
-          messsage?: string | null
+          message?: string | null
           title?: string | null
           type?: string | null
           upated_at?: string | null
-          uuid?: string | null
+          user_uuid?: string | null
         }
         Update: {
           created_at?: string
           id?: number
           is_read?: boolean | null
           lead_id?: number | null
-          messsage?: string | null
+          message?: string | null
           title?: string | null
           type?: string | null
           upated_at?: string | null
-          uuid?: string | null
+          user_uuid?: string | null
         }
         Relationships: [
           {

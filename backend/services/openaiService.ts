@@ -1,11 +1,14 @@
 import OpenAI from "openai";
 import logger from "../utils/logger.ts";
-import { format, addDays } from "date-fns";
+import { format, addDays, addHours } from "date-fns";
 import generateBuyerLeadPrompt from "./prompts/buyerPrompt.ts";
 import { getMessagesByLeadIdDescending } from "./messageService.ts";
 import { getUserSettings } from "./userSettingsService.ts";
 import { getLeadById } from "./leadService.ts";
 import supabase from "../config/supabase.ts";
+import { createAppointment } from "./appointmentService.ts";
+import { createNotification } from "./notificationService.ts";
+import { LeadRow } from "../models/Lead.ts";
 
 const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
 
@@ -24,18 +27,20 @@ export const generateResponse = async (leadId: number): Promise<string> => {
     const currentDayName = format(currentDate, "EEEE");
 
     const leadContext = await getLeadById(leadId);
-    if (!leadContext) {
+    if (!leadContext.id) {
       throw new Error(`Lead with ID ${leadId} not found`);
     }
-
-    console.log("leadContext", leadContext);
 
     // Convert previous messages to OpenAI format
     const messageHistory: OpenAIMessage[] = (
       await getMessagesByLeadIdDescending(leadId)
     )
       .filter((msg) => msg.text)
-      .filter((msg) => msg.delivery_status !== "failed")
+      .filter(
+        (msg) =>
+          msg.delivery_status !== "failed" &&
+          msg.delivery_status !== "scheduled"
+      )
       .map((msg) => ({
         role: msg.sender === "lead" ? "user" : "assistant",
         content: msg.text || "",
@@ -43,17 +48,7 @@ export const generateResponse = async (leadId: number): Promise<string> => {
 
     const agentContext = await getUserSettings(leadContext.user_uuid);
 
-    console.log("agentContext", agentContext);
-
-    console.log(
-      "generate lead prompt",
-      agentContext,
-      leadContext,
-      formattedCurrentDate,
-      currentDayName
-    );
-
-    const systemPrompt = generateBuyerLeadPrompt(
+    const systemPrompt = await generateBuyerLeadPrompt(
       agentContext,
       leadContext,
       formattedCurrentDate,
@@ -61,7 +56,6 @@ export const generateResponse = async (leadId: number): Promise<string> => {
     );
 
     console.log("system prompt", systemPrompt);
-
     console.log("message history", messageHistory);
 
     const completion = await openai.chat.completions.create({
@@ -75,15 +69,20 @@ export const generateResponse = async (leadId: number): Promise<string> => {
       ],
       max_tokens: 1000,
       temperature: 1,
-      frequency_penalty: 0.81,
+      frequency_penalty: 1,
       presence_penalty: 0.85,
     });
 
     const responseContent = completion.choices[0].message.content || "";
 
-    await checkForNewSearchCriteria(responseContent);
-    await checkForAppointmentDetails(responseContent);
+    console.log("responseContent", responseContent);
+
+    await checkForNewSearchCriteria(leadId, responseContent);
+    await checkForAppointmentDetails(leadId, responseContent, leadContext);
+
     const sanitizedResponse = await sanitizeResponse(responseContent);
+
+    console.log("sanitizedResponse", sanitizedResponse);
 
     return sanitizedResponse;
   } catch (error) {
@@ -92,25 +91,106 @@ export const generateResponse = async (leadId: number): Promise<string> => {
   }
 };
 
-const checkForNewSearchCriteria = async (responseContent: string) => {
+const checkForNewSearchCriteria = async (
+  leadId: number,
+  responseContent: string
+) => {
   const searchCriteriaRegex = /NEW SEARCH CRITERIA:.*?(?:\n|$|\|)/i;
   const searchCriteriaMatch = responseContent.match(searchCriteriaRegex);
 
   console.log("searchCriteriaMatch", searchCriteriaMatch);
 };
 
-const checkForAppointmentDetails = async (responseContent: string) => {
+const checkForAppointmentDetails = async (
+  leadId: number,
+  responseContent: string,
+  leadContext: LeadRow
+) => {
   const appointmentRegex =
     /NEW APPOINTMENT SET:\s*(\d{1,2}\/\d{1,2}\/\d{4}|\w+\/\w+\/\w+)\s*at\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/i;
   const appointmentMatch = responseContent.match(appointmentRegex);
 
-  console.log("appointmentMatch", appointmentMatch);
+  if (!appointmentMatch) {
+    return;
+  }
+
+  // Extract date and time properly from regex groups
+  const dateString = appointmentMatch[1];
+  const timeString = appointmentMatch[2];
+
+  const [month, day, year] = dateString.split("/");
+
+  // Parse hour and minute properly
+  let [hourMinute, ampm] = timeString.trim().split(/\s+/);
+  let [hour, minute] = hourMinute.split(":");
+
+  // Convert to 24-hour format if PM
+  let hourNum = parseInt(hour, 10);
+  if (ampm && ampm.toUpperCase() === "PM" && hourNum < 12) {
+    hourNum += 12;
+  } else if (ampm && ampm.toUpperCase() === "AM" && hourNum === 12) {
+    hourNum = 0;
+  }
+
+  const appointmentDate = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    hourNum,
+    parseInt(minute, 10)
+  );
+
+  console.log("appointmentDate", appointmentDate);
+
+  let appointment;
+
+  try {
+    appointment = await createAppointment({
+      lead_id: leadId,
+      title: "Autogenerated Appointment",
+      description:
+        "Appointment autogenerated by Messages - read the messages if this is a call or a property showing",
+      status: "scheduled",
+      start_time_at: appointmentDate.toISOString(),
+      end_time_at: addHours(appointmentDate, 1).toISOString(),
+      created_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("Error creating appointment:", error);
+  }
+
+  console.log("appointment successful", appointment);
+
+  if (appointment?.id) {
+    console.log("creating notification");
+
+    try {
+      await createNotification({
+        lead_id: leadId,
+        user_uuid: leadContext.user_uuid,
+        type: "appointment",
+        title: "Client Appointment Detected",
+        message:
+          "Client has scheduled a call or property showing. Click notification to go to the message thread.",
+        created_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error creating notification:", error);
+    }
+  }
 };
 
 const sanitizeResponse = async (responseContent: string) => {
-  const sanitizedResponse = responseContent.replace(
+  // Remove appointment details completely without any replacement
+  const firstSanitizedResponse = responseContent.replace(
+    /NEW APPOINTMENT SET:\s*(\d{1,2}\/\d{1,2}\/\d{4}|\w+\/\w+\/\w+)\s*at\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/gi,
+    ""
+  );
+
+  const finalSanitizedResponse = firstSanitizedResponse.replace(
     /NEW SEARCH CRITERIA:.*?(?:\n|$|\|)/i,
     ""
   );
-  return sanitizedResponse;
+
+  return finalSanitizedResponse.trim();
 };

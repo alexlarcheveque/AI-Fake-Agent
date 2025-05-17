@@ -7,7 +7,7 @@ import {
   receiveIncomingMessage as receiveIncomingMessageService,
   getNextScheduledMessageForLead as getNextScheduledMessageForLeadService,
 } from "../services/messageService.ts";
-import { sendTwilioMessage } from "../services/orchestrator/messagingOrchestrator.ts";
+import { updateLeadStatusBasedOnMessages } from "../services/leadService.ts";
 import logger from "../utils/logger.ts";
 import supabase from "../config/supabase.ts";
 
@@ -26,7 +26,7 @@ export const createOutgoingMessage = async (req, res) => {
     const message = await createMessageService({
       lead_id,
       text,
-      delivery_status: "queued",
+      delivery_status: "scheduled",
       error_code: null,
       error_message: null,
       is_ai_generated: false,
@@ -37,24 +37,6 @@ export const createOutgoingMessage = async (req, res) => {
     });
 
     console.log("message to send", message);
-
-    // Immediately send the message instead of waiting for cron job
-    // Check if message is an array (from createMessage service) and get the first item
-    if (message && Array.isArray(message) && message.length > 0) {
-      const messageId = message[0].id;
-      const actualLeadId = message[0].lead_id;
-
-      try {
-        logger.info(
-          `Immediately sending message ${messageId} for lead ${actualLeadId}`
-        );
-        await sendTwilioMessage(messageId, actualLeadId);
-        logger.info(`Successfully sent message ${messageId}`);
-      } catch (sendError) {
-        logger.error(`Error sending message ${messageId}:`, sendError);
-        // Still return success for the message creation
-      }
-    }
 
     res.status(201).json(message);
   } catch (error) {
@@ -119,7 +101,13 @@ export const getMessagesByLeadIdDescending = async (req, res) => {
       return res.status(400).json({ message: "Invalid lead ID format" });
     }
 
-    logger.info(`Fetching messages for lead ${leadIdNum}`);
+    // Get userId from the authenticated user
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "User ID not found in request" });
+    }
+
+    logger.info(`Fetching messages for lead ${leadIdNum} and user ${userId}`);
 
     const messages = await getMessagesByLeadIdDescendingService(leadIdNum);
 
@@ -153,7 +141,7 @@ export const receiveIncomingMessage = async (req, res) => {
     console.log("receiveIncomingMessage", req.body);
 
     // Process the incoming webhook data
-    await receiveIncomingMessageService(req.body);
+    const message = await receiveIncomingMessageService(req.body);
     res.status(200).send();
   } catch (error) {
     logger.error(`Error in receiveIncomingMessage: ${error.message}`);
@@ -177,45 +165,51 @@ export const statusCallback = async (req, res) => {
   try {
     console.log("statusCallback", req.body);
 
-    const { SmsSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+    const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+    logger.info(
+      `Twilio message ${MessageSid} status updated to ${MessageStatus}`
+    );
 
-    if (!SmsSid) {
-      logger.error("Received status callback without SmsSid");
-      return res.status(400).json({ message: "Missing SmsSid parameter" });
-    }
-
-    logger.info(`Twilio message ${SmsSid} status updated to ${MessageStatus}`);
+    console.log("statusCallback", req.body);
 
     // Find the message by twilioSid and then update it
-    const { data: messages, error } = await supabase
+    const { data: messageToUpdate, error } = await supabase
       .from("messages")
-      .select("id, twilio_sid")
-      .eq("twilio_sid", SmsSid);
+      .select("id, lead_id")
+      .eq("twilio_sid", MessageSid)
+      .single();
 
     if (error) {
       logger.error(
-        `Error finding message with Twilio SID ${SmsSid}: ${error.message}`
+        `Error finding message with Twilio SID ${MessageSid}: ${error.message}`
       );
-      return res.status(500).json({ message: "Database error" });
-    }
-
-    if (!messages || messages.length === 0) {
-      logger.warn(`No messages found with Twilio SID ${SmsSid}`);
       return res.status(404).json({ message: "Message not found" });
     }
 
-    if (messages.length > 1) {
-      logger.warn(
-        `Multiple messages found with Twilio SID ${SmsSid}, updating the first one`
-      );
+    if (messageToUpdate) {
+      await updateMessageService(messageToUpdate.id, {
+        delivery_status: MessageStatus,
+        error_code: ErrorCode || null,
+        error_message: ErrorMessage || null,
+      });
+      
+      // If the message status changes to "delivered", update the lead status and schedule next follow-up
+      if (MessageStatus === "delivered" && messageToUpdate.lead_id) {
+        try {
+          // Update lead status based on message history
+          await updateLeadStatusBasedOnMessages(messageToUpdate.lead_id);
+          logger.info(`Updated lead status for lead ${messageToUpdate.lead_id} after message delivery status update`);
+          
+          // Schedule the next follow-up message
+          const { scheduleNextFollowUp } = await import("../services/leadService.ts");
+          await scheduleNextFollowUp(messageToUpdate.lead_id);
+          logger.info(`Scheduled next follow-up for lead ${messageToUpdate.lead_id}`);
+        } catch (statusError) {
+          logger.error(`Error updating lead status: ${statusError.message}`);
+          // Don't throw to continue response
+        }
+      }
     }
-
-    // Update the first message found (or the only one if there's just one)
-    await updateMessageService(messages[0].id, {
-      delivery_status: MessageStatus,
-      error_code: ErrorCode || null,
-      error_message: ErrorMessage || null,
-    });
 
     res.status(200).send();
   } catch (error) {

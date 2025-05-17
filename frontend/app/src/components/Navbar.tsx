@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  useNotifications,
-  Notification,
-} from "../contexts/NotificationContext";
+import { useNotifications } from "../contexts/NotificationContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useUserSettings } from "../hooks/useUserSettings";
 import { format } from "date-fns";
+import { NotificationRow } from "../../../../backend/models/Notification";
 
 const Navbar: React.FC = () => {
   const location = useLocation();
@@ -49,64 +47,20 @@ const Navbar: React.FC = () => {
   }, []);
 
   // Handle notification click and navigation
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = (notification: NotificationRow) => {
     // Mark as read when clicked
-    if (!notification.isRead) {
+    if (!notification.is_read) {
       markAsRead(notification.id);
     }
 
-    // Handle navigation based on notification type
-    if (notification.type === "appointment" && notification.metadata) {
-      const leadId = notification.metadata.leadId;
-      if (leadId) {
-        navigate(`/leads?leadId=${leadId}`);
-      }
-    } else if (notification.type === "message" && notification.metadata) {
-      const leadId = notification.metadata.leadId;
-      if (leadId) {
-        navigate(`/messages?leadId=${leadId}`);
-      }
-    } else if (notification.type === "lead" && notification.metadata) {
-      const leadId = notification.metadata.id;
-      if (leadId) {
-        navigate(`/leads?leadId=${leadId}`);
-      }
-    } else if (
-      notification.type === "property_search" &&
-      notification.metadata
-    ) {
-      const leadId = notification.metadata.leadId;
-      if (leadId) {
-        navigate(`/leads?leadId=${leadId}`);
-      }
+    if (notification.lead_id) {
+      navigate(`/messages?leadId=${notification.lead_id}`);
     } else {
-      // For other notification types or if data is missing
       navigate("/notifications");
     }
 
     // Close notification panel after clicking
     setShowNotifications(false);
-  };
-
-  // Format the notification time
-  const formatNotificationTime = (date: Date | string) => {
-    try {
-      if (!date) {
-        return "Unknown date";
-      }
-
-      const dateObj = date instanceof Date ? date : new Date(date);
-
-      // Check if date is valid
-      if (isNaN(dateObj.getTime())) {
-        return "Invalid date";
-      }
-
-      return format(dateObj, "dd/MM/yyyy hh:mm a");
-    } catch (error) {
-      console.error("Error formatting date:", error, date);
-      return "Invalid date";
-    }
   };
 
   // Get notification icon based on type
@@ -126,42 +80,6 @@ const Navbar: React.FC = () => {
                 strokeLinejoin="round"
                 strokeWidth={2}
                 d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-        );
-      case "message":
-        return (
-          <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
-            <svg
-              className="h-5 w-5 text-green-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-              />
-            </svg>
-          </div>
-        );
-      case "lead":
-        return (
-          <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
-            <svg
-              className="h-5 w-5 text-purple-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
               />
             </svg>
           </div>
@@ -206,7 +124,7 @@ const Navbar: React.FC = () => {
   };
 
   // Mark notification as unread (stopping event propagation)
-  const handleMarkAsUnread = (e: React.MouseEvent, notificationId: string) => {
+  const handleMarkAsUnread = (e: React.MouseEvent, notificationId: number) => {
     e.stopPropagation();
     markAsUnread(notificationId);
   };
@@ -335,7 +253,7 @@ const Navbar: React.FC = () => {
                                 handleNotificationClick(notification)
                               }
                               className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start ${
-                                !notification.isRead ? "bg-blue-50" : ""
+                                !notification.is_read ? "bg-blue-50" : ""
                               }`}
                             >
                               <div className="flex-shrink-0 mr-3">
@@ -344,7 +262,7 @@ const Navbar: React.FC = () => {
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-gray-900">
                                   {notification.title}
-                                  {!notification.isRead && (
+                                  {!notification.is_read && (
                                     <span className="ml-2 text-xs inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                                       Unread
                                     </span>
@@ -355,11 +273,12 @@ const Navbar: React.FC = () => {
                                 </p>
                                 <div className="flex justify-between items-center mt-1">
                                   <p className="text-xs text-gray-500">
-                                    {formatNotificationTime(
-                                      notification.timestamp
+                                    {format(
+                                      new Date(notification.created_at),
+                                      "MMM d, yyyy h:mm a"
                                     )}
                                   </p>
-                                  {notification.isRead ? (
+                                  {notification.is_read ? (
                                     <button
                                       onClick={(e) =>
                                         handleMarkAsUnread(e, notification.id)

@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { format, parseISO } from "date-fns";
-import appointmentApi, { Appointment } from "../api/appointmentApi";
+import appointmentApi from "../api/appointmentApi";
+import { AppointmentRow } from "../../../../backend/models/Appointment";
 
 interface AppointmentsListProps {
   lead_id?: number;
-  limit?: number;
-  showLeadName?: boolean;
 }
 
-const AppointmentsList: React.FC<AppointmentsListProps> = ({
-  lead_id,
-  showLeadName = false,
-}) => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+const AppointmentsList: React.FC<AppointmentsListProps> = ({ lead_id }) => {
+  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState(false);
@@ -23,7 +19,7 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
     const fetchAppointments = async () => {
       try {
         setLoading(true);
-        let data: Appointment[];
+        let data: AppointmentRow[];
 
         if (lead_id) {
           data = await appointmentApi.getAppointmentsByLeadId(lead_id);
@@ -31,7 +27,15 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
           data = [];
         }
 
-        console.log("Data:", data);
+        // Sort appointments by start time (most recent first)
+        data.sort((a, b) => {
+          if (!a.start_time_at) return 1;
+          if (!b.start_time_at) return -1;
+          return (
+            new Date(b.start_time_at).getTime() -
+            new Date(a.start_time_at).getTime()
+          );
+        });
 
         setAppointments(data);
         setError(null);
@@ -107,12 +111,7 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="border-b border-gray-200 px-4 py-3 bg-gray-50">
-        <h3 className="text-lg font-medium text-gray-900">
-          Upcoming Appointments
-        </h3>
-      </div>
+    <div className="bg-white rounded-lg shadow overflow-hidden mb-4">
       <ul className="divide-y divide-gray-200">
         {(Array.isArray(appointments) ? appointments : []).map(
           (appointment) => (
@@ -122,16 +121,15 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
                   <p className="font-medium text-blue-600">
                     {appointment.title}
                   </p>
-                  {showLeadName && appointment.Lead && (
-                    <p className="text-sm text-gray-600">
-                      With: {appointment.Lead.name}
-                    </p>
-                  )}
-                  {appointment.startTime && appointment.endTime ? (
+
+                  {appointment.start_time_at && appointment.end_time_at ? (
                     <p className="text-sm text-gray-500">
-                      {format(parseISO(appointment.startTime), "MMMM d, yyyy")}{" "}
-                      at {format(parseISO(appointment.startTime), "h:mm a")} -{" "}
-                      {format(parseISO(appointment.endTime), "h:mm a")}
+                      {format(
+                        parseISO(appointment.start_time_at),
+                        "MMMM d, yyyy"
+                      )}{" "}
+                      at {format(parseISO(appointment.start_time_at), "h:mm a")}{" "}
+                      - {format(parseISO(appointment.end_time_at), "h:mm a")}
                     </p>
                   ) : (
                     <p className="text-sm text-gray-500">
@@ -158,8 +156,10 @@ const AppointmentsList: React.FC<AppointmentsListProps> = ({
                           : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      {appointment?.status?.charAt(0).toUpperCase() +
-                        appointment?.status?.slice(1)}
+                      {appointment.status
+                        ? appointment.status.charAt(0).toUpperCase() +
+                          appointment.status.slice(1)
+                        : "Unknown"}
                     </span>
                   </div>
                 </div>

@@ -6,7 +6,6 @@ export const getUserSettings = async (
   userId: string
 ): Promise<UserSettingsRow> => {
   try {
-
     logger.info(`Fetching user settings for userId: ${userId}`);
 
     // First, check if settings exist for this user
