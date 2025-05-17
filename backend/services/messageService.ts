@@ -120,14 +120,43 @@ export const updateMessage = async (
 
   console.log("update message -- data to update", updateData);
 
+  // For critical updates like twilio_sid, add extra logging
+  if (updateData.twilio_sid) {
+    console.log(
+      `IMPORTANT: Updating message ${messageId} with Twilio SID: ${updateData.twilio_sid}`
+    );
+  }
+
+  // Always set the updated_at timestamp to ensure changes are detected
+  updateData.updated_at = new Date().toISOString();
+
   const { data, error } = await supabase
     .from("messages")
     .update(updateData)
     .eq("id", messageId)
-    .select()
+    .select("*")
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    console.error(`Error updating message ${messageId}:`, error);
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    console.error(`No data returned when updating message ${messageId}`);
+    throw new Error(`Failed to update message ${messageId}`);
+  }
+
+  // For critical updates like twilio_sid, verify the update was successful
+  if (updateData.twilio_sid && data.twilio_sid !== updateData.twilio_sid) {
+    console.error(`CRITICAL: Twilio SID mismatch after update for message ${messageId}. 
+      Expected: ${updateData.twilio_sid}, Got: ${data.twilio_sid}`);
+  }
+
+  console.log(
+    `Message ${messageId} updated successfully with twilio_sid: ${data.twilio_sid}`
+  );
+
   return data;
 };
 

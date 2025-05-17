@@ -6,30 +6,22 @@ import React, {
   useCallback,
 } from "react";
 import notificationApi from "../api/notificationApi";
-import { useAuth } from "./AuthContext";
+import { NotificationRow } from "../../../../backend/models/Notification";
 
-export interface Notification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  timestamp: Date;
-  isRead: boolean;
-  metadata?: any;
-}
-
+// Define the context type
 interface NotificationContextType {
-  notifications: Notification[];
+  notifications: NotificationRow[];
   unreadCount: number;
   getNotifications: () => Promise<void>;
-  markAsRead: (id: string) => Promise<void>;
-  markAsUnread: (id: string) => Promise<void>;
+  markAsRead: (id: number) => Promise<void>;
+  markAsUnread: (id: number) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   createNotification: (data: any) => Promise<void>;
-  deleteNotification: (id: string) => Promise<void>;
+  deleteNotification: (id: number) => Promise<void>;
 }
 
-const NotificationContext = createContext<NotificationContextType>({
+// Create the context with default values
+export const NotificationContext = createContext<NotificationContextType>({
   notifications: [],
   unreadCount: 0,
   getNotifications: async () => {},
@@ -43,7 +35,7 @@ const NotificationContext = createContext<NotificationContextType>({
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   // Fetch notifications on component mount
@@ -62,7 +54,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   // Update unread count whenever notifications change
   useEffect(() => {
     const count = notifications.filter(
-      (notification) => !notification.isRead
+      (notification) => !notification.is_read
     ).length;
     setUnreadCount(count);
   }, [notifications]);
@@ -78,14 +70,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   // Mark a notification as read
-  const markAsRead = useCallback(async (id: string) => {
+  const markAsRead = useCallback(async (id: number) => {
     try {
       const updatedNotification = await notificationApi.markAsRead(id);
-
       setNotifications((prev) =>
         prev.map((notification) =>
-          notification.id === id
-            ? { ...notification, isRead: true }
+          notification.id === Number(id)
+            ? { ...notification, is_read: true }
             : notification
         )
       );
@@ -95,14 +86,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   // Mark a notification as unread
-  const markAsUnread = useCallback(async (id: string) => {
+  const markAsUnread = useCallback(async (id: number) => {
     try {
       const updatedNotification = await notificationApi.markAsUnread(id);
 
       setNotifications((prev) =>
         prev.map((notification) =>
-          notification.id === id
-            ? { ...notification, isRead: false }
+          notification.id === Number(id)
+            ? { ...notification, is_read: false }
             : notification
         )
       );
@@ -117,7 +108,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
       await notificationApi.markAllAsRead();
 
       setNotifications((prev) =>
-        prev.map((notification) => ({ ...notification, isRead: true }))
+        prev.map((notification) => ({ ...notification, is_read: true }))
       );
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
@@ -135,11 +126,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   // Delete a notification
-  const deleteNotification = useCallback(async (id: string) => {
+  const deleteNotification = useCallback(async (id: number) => {
     try {
       await notificationApi.deleteNotification(id);
       setNotifications((prev) =>
-        prev.filter((notification) => notification.id !== id)
+        prev.filter((notification) => notification.id !== Number(id))
       );
     } catch (error) {
       console.error("Error deleting notification:", error);

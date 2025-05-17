@@ -1,7 +1,6 @@
 import { useState } from "react";
 import leadApi from "../api/leadApi";
 import React from "react";
-import FollowUpIndicator from "./FollowUpIndicator";
 import { useNavigate } from "react-router-dom";
 import { LeadRow } from "../../../../backend/models/Lead";
 
@@ -235,7 +234,7 @@ const LeadList: React.FC<LeadListProps> = ({
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,
-                                  phone_number: e.target.value,
+                                  phone_number: parseInt(e.target.value),
                                 })
                               }
                               className="w-full h-8 px-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
@@ -341,8 +340,9 @@ const LeadList: React.FC<LeadListProps> = ({
                                   : "bg-red-100 text-red-800"
                               }`}
                             >
-                              {lead.status?.charAt(0).toUpperCase() +
-                                lead.status?.slice(1)}
+                              {lead.status &&
+                                lead.status?.charAt(0).toUpperCase() +
+                                  lead.status?.slice(1)}
                             </span>
                           </div>
                         </td>

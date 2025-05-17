@@ -2,95 +2,151 @@ import { getLeadById } from "../leadService.ts";
 import { getMessageById, updateMessage } from "../messageService.ts";
 import { generateResponse } from "../openaiService.ts";
 import { sendMessage } from "../twilioService.ts";
+import logger from "../../utils/logger.ts";
 
 export const sendTwilioMessage = async (messageId, leadId) => {
+  // First, get the message and update it with sender information
   const messageToUpdate = await getMessageById(messageId);
-  messageToUpdate.sender = "agent";
-
-  const { phone_number } = await getLeadById(leadId);
-  let twilioResponse;
 
   try {
-    twilioResponse = await sendMessage(phone_number, messageToUpdate.text);
-    messageToUpdate.delivery_status = "sent";
+    // First update the message with sender info before sending
+    const updatedMessage = await updateMessage(messageId, {
+      ...messageToUpdate,
+      sender: "agent",
+    });
 
-    // Ensure we have a valid SID and log it
+    logger.info(`Updated message ${messageId} with sender info before sending`);
+
+    const { phone_number } = await getLeadById(leadId);
+
+    // Now send the message via Twilio
+    const twilioResponse = await sendMessage(
+      phone_number,
+      messageToUpdate.text
+    );
+
+    // Immediately update the message with the Twilio SID
     if (twilioResponse && twilioResponse.sid) {
-      console.log("Twilio SID from response:", twilioResponse.sid);
-      messageToUpdate.twilio_sid = String(twilioResponse.sid);
-      console.log(
-        "Message twilio_sid after assignment:",
-        messageToUpdate.twilio_sid
+      logger.info(
+        `Received Twilio SID: ${twilioResponse.sid} for message ${messageId}`
+      );
+
+      // Update with SID first, before updating status
+      const sidUpdateResult = await updateMessage(messageId, {
+        twilio_sid: String(twilioResponse.sid),
+      });
+
+      logger.info(
+        `Updated message ${messageId} with Twilio SID: ${twilioResponse.sid}`
+      );
+
+      // Then update status separately
+      const statusUpdateResult = await updateMessage(messageId, {
+        delivery_status: "sent",
+      });
+
+      logger.info(`Updated message ${messageId} status to sent`);
+
+      // Verify the SID was saved correctly
+      const verifyMessage = await getMessageById(messageId);
+      logger.info(
+        `Verification: Message ${messageId} has SID: ${verifyMessage.twilio_sid}`
       );
     } else {
-      console.error("No SID returned from Twilio response:", twilioResponse);
-      messageToUpdate.twilio_sid = null;
+      logger.error(`No SID returned from Twilio for message ${messageId}`);
+      await updateMessage(messageId, {
+        delivery_status: "failed",
+        error_message: "No SID returned from Twilio",
+      });
     }
   } catch (error) {
-    console.error("Error sending message via Twilio:", error);
-    messageToUpdate.delivery_status = "failed";
-    messageToUpdate.error_code = error.code || "UNKNOWN";
-    messageToUpdate.error_message = error.message || "Unknown error";
-    messageToUpdate.twilio_sid = null;
-  }
-
-  // Log before update
-  console.log(
-    "Before database update, twilio_sid =",
-    messageToUpdate.twilio_sid
-  );
-
-  try {
-    // Update the message to reflect that the message is sent
-    await updateMessage(messageId, messageToUpdate);
-  } catch (dbError) {
-    console.error("Failed to update message in database:", dbError);
-    // Consider retrying or implementing a fallback mechanism here
+    logger.error(
+      `Error in sendTwilioMessage for message ${messageId}: ${error.message}`
+    );
+    await updateMessage(messageId, {
+      delivery_status: "failed",
+      error_code: error.code || "UNKNOWN",
+      error_message: error.message || "Unknown error",
+    });
   }
 };
 
 export const craftAndSendMessage = async (messageId, leadId) => {
-  let twilioResponse;
-
-  // Use OpenAI endpoint to create the body of what the message is going to say
-  const messageToUpdate = await getMessageById(messageId);
-
-  console.log("messageToUpdate -- craftAndSendMessage", messageToUpdate);
-
-  // Generate the response text
-  const generatedText = await generateResponse(leadId);
-  messageToUpdate.text = generatedText;
-  messageToUpdate.sender = "agent";
-
-  console.log("messageToUpdate -- generatedText", generatedText);
-
-  const { phone_number } = await getLeadById(leadId);
   try {
-    // Send the message with the generated text
-    twilioResponse = await sendMessage(phone_number, generatedText);
-    messageToUpdate.delivery_status = "sent";
+    console.log(
+      "message id to update -- craftAndSendMessage",
+      messageId,
+      leadId
+    );
 
-    // Ensure we have a valid SID
+    // 1. Get the message and generate text
+    const messageToUpdate = await getMessageById(messageId);
+    logger.info(`Crafting message ${messageId} for lead ${leadId}`);
+
+    // 2. Generate the response text
+    const generatedText = await generateResponse(leadId);
+
+    console.log("generatedText", generatedText);
+
+    // 3. First update with the generated text but keep as scheduled
+    const textUpdateResult = await updateMessage(messageId, {
+      text: generatedText,
+      sender: "agent",
+    });
+
+    logger.info(`Updated message ${messageId} with generated text`);
+
+    // 4. Get lead phone number
+    const { phone_number } = await getLeadById(leadId);
+
+    // 5. Send via Twilio
+    const twilioResponse = await sendMessage(phone_number, generatedText);
+
+    // 6. Immediately update with the Twilio SID first
     if (twilioResponse && twilioResponse.sid) {
-      messageToUpdate.twilio_sid = String(twilioResponse.sid);
-      console.log("Assigned Twilio SID:", messageToUpdate.twilio_sid);
+      // Update SID first in a separate transaction
+      const sidUpdateResult = await updateMessage(messageId, {
+        twilio_sid: String(twilioResponse.sid),
+      });
+
+      logger.info(
+        `Updated message ${messageId} with Twilio SID: ${twilioResponse.sid}`
+      );
+
+      // Then update status in a separate transaction
+      const statusUpdateResult = await updateMessage(messageId, {
+        delivery_status: "sent",
+      });
+
+      logger.info(`Updated message ${messageId} status to sent`);
+
+      // Verify the SID was saved
+      const verifyMessage = await getMessageById(messageId);
+      logger.info(
+        `Verification: Message ${messageId} has SID: ${verifyMessage.twilio_sid}`
+      );
     } else {
-      console.error("No SID returned from Twilio response:", twilioResponse);
-      messageToUpdate.twilio_sid = null;
+      logger.error(`No SID returned from Twilio for message ${messageId}`);
+      await updateMessage(messageId, {
+        delivery_status: "failed",
+        error_message: "No SID returned from Twilio",
+      });
     }
   } catch (error) {
-    console.error("Error sending message via Twilio:", error);
-    messageToUpdate.delivery_status = "failed";
-    messageToUpdate.error_code = error.code || "UNKNOWN";
-    messageToUpdate.error_message = error.message || "Unknown error";
-    messageToUpdate.twilio_sid = null;
-  }
+    logger.error(
+      `Error in craftAndSendMessage for message ${messageId}: ${error.message}`
+    );
 
-  try {
-    // Update the message to reflect that the message is sent
-    await updateMessage(messageId, messageToUpdate);
-  } catch (dbError) {
-    console.error("Failed to update message in database:", dbError);
-    // Consider retrying or implementing a fallback mechanism here
+    try {
+      await updateMessage(messageId, {
+        delivery_status: "failed",
+        error_code: error.code || "UNKNOWN",
+        error_message: error.message || "Unknown error",
+      });
+    } catch (updateError) {
+      logger.error(
+        `Failed to update error status for message ${messageId}: ${updateError.message}`
+      );
+    }
   }
 };

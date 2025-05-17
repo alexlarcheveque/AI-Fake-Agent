@@ -1,42 +1,20 @@
-import supabase from "../config/supabase";
+import {
+  NotificationRow,
+  NotificationInsert,
+} from "../../../../backend/models/Notification";
 import apiClient from "./apiClient";
-
-export interface Notification {
-  id: string;
-  type: "appointment" | "message" | "lead" | "system" | "property_search";
-  title: string;
-  message: string;
-  timestamp: Date;
-  isRead: boolean;
-  metadata?: Record<string, any>;
-}
-
-export interface CreateNotificationRequest {
-  type: Notification["type"];
-  title: string;
-  message: string;
-  metadata?: Record<string, any>;
-}
 
 class NotificationApi {
   // Create a new notification
   async createNotification(
-    notificationData: CreateNotificationRequest
-  ): Promise<Notification> {
+    notificationData: NotificationInsert
+  ): Promise<NotificationRow> {
     try {
       const data = await apiClient.post("/notifications", notificationData);
 
       console.log("notification data", data);
 
-      return {
-        id: data.id,
-        type: data.type,
-        title: data.title,
-        message: data.message,
-        timestamp: data.createdAt,
-        isRead: data.is_read,
-        metadata: data.metadata,
-      };
+      return data;
     } catch (error) {
       console.error("Error creating notification:", error);
       throw error;
@@ -44,13 +22,11 @@ class NotificationApi {
   }
 
   // Get notifications by user ID
-  async getNotificationsByUserId(): Promise<Notification[]> {
+  async getNotificationsByUserId(): Promise<NotificationRow[]> {
     try {
       const data = await apiClient.get("/notifications");
-      return data.map((item: any) => ({
-        ...item,
-        timestamp: new Date(item.createdAt),
-      }));
+
+      return data;
     } catch (error) {
       console.error("Error fetching notifications by user ID:", error);
       throw error;
@@ -58,13 +34,10 @@ class NotificationApi {
   }
 
   // Get notifications by lead ID
-  async getNotificationsByLeadId(leadId: string): Promise<Notification[]> {
+  async getNotificationsByLeadId(leadId: string): Promise<NotificationRow[]> {
     try {
       const data = await apiClient.get(`/notifications/lead/${leadId}`);
-      return data.map((item: any) => ({
-        ...item,
-        timestamp: new Date(item.createdAt),
-      }));
+      return data;
     } catch (error) {
       console.error("Error fetching notifications by lead ID:", error);
       throw error;
@@ -74,14 +47,11 @@ class NotificationApi {
   // Update a notification
   async updateNotification(
     id: string,
-    data: Partial<Notification>
-  ): Promise<Notification> {
+    data: Partial<NotificationInsert>
+  ): Promise<NotificationRow> {
     try {
       const response = await apiClient.put(`/notifications/${id}`, data);
-      return {
-        ...response,
-        timestamp: new Date(response.createdAt),
-      };
+      return response;
     } catch (error) {
       console.error("Error updating notification:", error);
       throw error;
@@ -89,7 +59,7 @@ class NotificationApi {
   }
 
   // Delete a notification
-  async deleteNotification(id: string): Promise<void> {
+  async deleteNotification(id: number): Promise<void> {
     try {
       await apiClient.delete(`/notifications/${id}`);
     } catch (error) {
@@ -99,9 +69,9 @@ class NotificationApi {
   }
 
   // Mark all notifications as read for a user
-  async markAllAsRead(userId: string): Promise<void> {
+  async markAllAsRead(): Promise<void> {
     try {
-      await apiClient.put(`/notifications/user/${userId}/mark-all-read`);
+      await apiClient.put(`/notifications/mark-all-read`);
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
       throw error;
@@ -109,15 +79,10 @@ class NotificationApi {
   }
 
   // Mark a notification as read for a user
-  async markAsRead(id: string, userId: string): Promise<Notification> {
+  async markAsRead(id: number): Promise<NotificationRow> {
     try {
-      const response = await apiClient.put(
-        `/notifications/${id}/user/${userId}/read`
-      );
-      return {
-        ...response,
-        timestamp: new Date(response.createdAt),
-      };
+      const response = await apiClient.put(`/notifications/${id}/read`);
+      return response;
     } catch (error) {
       console.error("Error marking notification as read:", error);
       throw error;
@@ -125,15 +90,10 @@ class NotificationApi {
   }
 
   // Mark a notification as unread for a user
-  async markAsUnread(id: string, userId: string): Promise<Notification> {
+  async markAsUnread(id: number): Promise<NotificationRow> {
     try {
-      const response = await apiClient.put(
-        `/notifications/${id}/user/${userId}/unread`
-      );
-      return {
-        ...response,
-        timestamp: new Date(response.createdAt),
-      };
+      const response = await apiClient.put(`/notifications/${id}/unread`);
+      return response;
     } catch (error) {
       console.error("Error marking notification as unread:", error);
       throw error;
@@ -146,15 +106,6 @@ class NotificationApi {
       return data.count;
     } catch (error) {
       console.error("Error getting unread count:", error);
-      throw error;
-    }
-  }
-
-  async testConnection(): Promise<{ status: string }> {
-    try {
-      return await apiClient.get("/notifications/test");
-    } catch (error) {
-      console.error("Notification API connection failed:", error);
       throw error;
     }
   }

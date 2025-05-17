@@ -47,7 +47,7 @@ export const deleteNotification = async (req, res) => {
 };
 
 export const markAllAsRead = async (req, res) => {
-  const notification = await markAllAsReadService(req.params.userId);
+  const notification = await markAllAsReadService(req.user.id);
   res.json(notification);
 };
 
