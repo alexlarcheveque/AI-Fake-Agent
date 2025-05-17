@@ -178,8 +178,9 @@ const checkForAppointmentDetails = async (
         lead_id: leadId,
         user_uuid: leadContext.user_uuid,
         type: "appointment",
-        title: "Appointment Created",
-        message: "Client has scheduled a call or property showing",
+        title: "Client Appointment Detected",
+        message:
+          "Client has scheduled a call or property showing. Click notification to go to the message thread.",
         created_at: new Date().toISOString(),
       });
     } catch (error) {
