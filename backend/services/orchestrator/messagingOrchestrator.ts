@@ -1,4 +1,4 @@
-import { getLeadById } from "../leadService.ts";
+import { getLeadById, updateLeadStatusBasedOnMessages } from "../leadService.ts";
 import { getMessageById, updateMessage } from "../messageService.ts";
 import { generateResponse } from "../openaiService.ts";
 import { sendMessage } from "../twilioService.ts";
@@ -10,7 +10,7 @@ export const sendTwilioMessage = async (messageId, leadId) => {
 
   try {
     // First update the message with sender info before sending
-    const updatedMessage = await updateMessage(messageId, {
+    await updateMessage(messageId, {
       ...messageToUpdate,
       sender: "agent",
     });
@@ -34,30 +34,10 @@ export const sendTwilioMessage = async (messageId, leadId) => {
       // Update with SID first, before updating status
       const sidUpdateResult = await updateMessage(messageId, {
         twilio_sid: String(twilioResponse.sid),
-      });
-
-      logger.info(
-        `Updated message ${messageId} with Twilio SID: ${twilioResponse.sid}`
-      );
-
-      // Then update status separately
-      const statusUpdateResult = await updateMessage(messageId, {
         delivery_status: "sent",
       });
 
       logger.info(`Updated message ${messageId} status to sent`);
-
-      // Verify the SID was saved correctly
-      const verifyMessage = await getMessageById(messageId);
-      logger.info(
-        `Verification: Message ${messageId} has SID: ${verifyMessage.twilio_sid}`
-      );
-    } else {
-      logger.error(`No SID returned from Twilio for message ${messageId}`);
-      await updateMessage(messageId, {
-        delivery_status: "failed",
-        error_message: "No SID returned from Twilio",
-      });
     }
   } catch (error) {
     logger.error(
@@ -79,74 +59,45 @@ export const craftAndSendMessage = async (messageId, leadId) => {
       leadId
     );
 
-    // 1. Get the message and generate text
-    const messageToUpdate = await getMessageById(messageId);
-    logger.info(`Crafting message ${messageId} for lead ${leadId}`);
+    await getMessageById(messageId);
 
-    // 2. Generate the response text
     const generatedText = await generateResponse(leadId);
-
     console.log("generatedText", generatedText);
 
-    // 3. First update with the generated text but keep as scheduled
-    const textUpdateResult = await updateMessage(messageId, {
+    await updateMessage(messageId, {
       text: generatedText,
-      sender: "agent",
     });
 
     logger.info(`Updated message ${messageId} with generated text`);
 
-    // 4. Get lead phone number
     const { phone_number } = await getLeadById(leadId);
 
-    // 5. Send via Twilio
     const twilioResponse = await sendMessage(phone_number, generatedText);
 
-    // 6. Immediately update with the Twilio SID first
+    console.log("twilioResponse -- craftAndSendMessage", twilioResponse);
+
     if (twilioResponse && twilioResponse.sid) {
-      // Update SID first in a separate transaction
-      const sidUpdateResult = await updateMessage(messageId, {
+      await updateMessage(messageId, {
         twilio_sid: String(twilioResponse.sid),
+        delivery_status: "sent",
       });
 
       logger.info(
         `Updated message ${messageId} with Twilio SID: ${twilioResponse.sid}`
       );
-
-      // Then update status in a separate transaction
-      const statusUpdateResult = await updateMessage(messageId, {
-        delivery_status: "sent",
-      });
-
-      logger.info(`Updated message ${messageId} status to sent`);
-
-      // Verify the SID was saved
-      const verifyMessage = await getMessageById(messageId);
-      logger.info(
-        `Verification: Message ${messageId} has SID: ${verifyMessage.twilio_sid}`
-      );
-    } else {
-      logger.error(`No SID returned from Twilio for message ${messageId}`);
-      await updateMessage(messageId, {
-        delivery_status: "failed",
-        error_message: "No SID returned from Twilio",
-      });
+      
+      // Update lead status after sending message
+      try {
+        await updateLeadStatusBasedOnMessages(leadId);
+        logger.info(`Successfully updated status for lead ${leadId} after sending message`);
+      } catch (statusError) {
+        logger.error(`Error updating lead status for lead ${leadId}: ${statusError.message}`);
+        // Don't throw to prevent disrupting the message flow
+      }
     }
   } catch (error) {
     logger.error(
       `Error in craftAndSendMessage for message ${messageId}: ${error.message}`
     );
-
-    try {
-      await updateMessage(messageId, {
-        delivery_status: "failed",
-        error_code: error.code || "UNKNOWN",
-        error_message: error.message || "Unknown error",
-      });
-    } catch (updateError) {
-      logger.error(
-        `Failed to update error status for message ${messageId}: ${updateError.message}`
-      );
-    }
   }
 };

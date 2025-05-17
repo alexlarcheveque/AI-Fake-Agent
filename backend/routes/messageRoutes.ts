@@ -12,13 +12,6 @@ import protect from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
 
-// Create routes for webhook endpoints that don't need authentication
-// Webhook for receiving messages (for Twilio)
-router.post(
-  "/receive",
-  asyncHandler((req, res) => receiveIncomingMessage(req, res))
-);
-
 // Status callback endpoint for Twilio
 router.post(
   "/status-callback",
@@ -40,12 +33,6 @@ router.post(
   asyncHandler((req, res) => createOutgoingMessage(req, res))
 );
 
-// Webhook for receiving messages (for Twilio)
-router.post(
-  "/receive",
-  asyncHandler((req, res) => receiveIncomingMessage(req, res))
-);
-
 router.get(
   "/next-scheduled/:leadId",
   asyncHandler((req, res) => getNextScheduledMessageForLead(req, res))
@@ -55,6 +42,12 @@ router.get(
 router.patch(
   "/messages/:messageId/read",
   asyncHandler((req, res) => markAsRead(req, res))
+);
+
+// Webhook for receiving messages (for Twilio)
+router.post(
+  "/receive",
+  asyncHandler((req, res) => receiveIncomingMessage(req, res))
 );
 
 export default router;

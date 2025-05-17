@@ -67,15 +67,12 @@ export const getLeadById = async (req, res) => {
 
 export const createLeadAndScheduleMessage = async (req, res) => {
   try {
-    console.log("req.body", req.body);
-
     const lead: LeadRow = await createLeadService(req.user, req.body);
 
-    console.log("req.body", req.body);
-
+    // schedules the first message, which the cron service will update with the AI generated message
     await createMessageService({
       lead_id: lead.id,
-      text: "", // hit openai api to get first message
+      text: null,
       delivery_status: "scheduled",
       error_code: null,
       error_message: null,

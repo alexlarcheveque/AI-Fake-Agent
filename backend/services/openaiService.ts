@@ -31,14 +31,16 @@ export const generateResponse = async (leadId: number): Promise<string> => {
       throw new Error(`Lead with ID ${leadId} not found`);
     }
 
-    console.log("leadContext", leadContext);
-
     // Convert previous messages to OpenAI format
     const messageHistory: OpenAIMessage[] = (
       await getMessagesByLeadIdDescending(leadId)
     )
       .filter((msg) => msg.text)
-      .filter((msg) => msg.delivery_status !== "failed")
+      .filter(
+        (msg) =>
+          msg.delivery_status !== "failed" &&
+          msg.delivery_status !== "scheduled"
+      )
       .map((msg) => ({
         role: msg.sender === "lead" ? "user" : "assistant",
         content: msg.text || "",
@@ -46,17 +48,7 @@ export const generateResponse = async (leadId: number): Promise<string> => {
 
     const agentContext = await getUserSettings(leadContext.user_uuid);
 
-    console.log("agentContext", agentContext);
-
-    console.log(
-      "generate lead prompt",
-      agentContext,
-      leadContext,
-      formattedCurrentDate,
-      currentDayName
-    );
-
-    const systemPrompt = generateBuyerLeadPrompt(
+    const systemPrompt = await generateBuyerLeadPrompt(
       agentContext,
       leadContext,
       formattedCurrentDate,
@@ -64,7 +56,6 @@ export const generateResponse = async (leadId: number): Promise<string> => {
     );
 
     console.log("system prompt", systemPrompt);
-
     console.log("message history", messageHistory);
 
     const completion = await openai.chat.completions.create({
@@ -191,15 +182,15 @@ const checkForAppointmentDetails = async (
 
 const sanitizeResponse = async (responseContent: string) => {
   // Remove appointment details completely without any replacement
-  const sanitizedResponse = responseContent.replace(
+  const firstSanitizedResponse = responseContent.replace(
     /NEW APPOINTMENT SET:\s*(\d{1,2}\/\d{1,2}\/\d{4}|\w+\/\w+\/\w+)\s*at\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/gi,
     ""
   );
 
-  // const sanitizedResponseForSearchCriteria = responseContent.replace(
-  //   /NEW SEARCH CRITERIA:.*?(?:\n|$|\|)/i,
-  //   ""
-  // );
+  const finalSanitizedResponse = firstSanitizedResponse.replace(
+    /NEW SEARCH CRITERIA:.*?(?:\n|$|\|)/i,
+    ""
+  );
 
-  return sanitizedResponse.trim();
+  return finalSanitizedResponse.trim();
 };

@@ -32,8 +32,6 @@ export const getNotificationsByUserId = async (
   userUuid: string
 ): Promise<NotificationRow[]> => {
   try {
-    console.log("Getting notifications for user:", userUuid);
-
     const { data, error } = await supabase
       .from("notifications")
       .select("*")
@@ -45,10 +43,6 @@ export const getNotificationsByUserId = async (
       console.error("Error getting notifications:", error);
       throw new Error(error.message);
     }
-
-    console.log(
-      `Found ${data?.length || 0} notifications for user ${userUuid}`
-    );
     return data.map((notification) => notification);
   } catch (error) {
     console.error("Exception in getNotificationsByUserId:", error);
