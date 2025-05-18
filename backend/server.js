@@ -16,6 +16,7 @@ import "./services/cronService";
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 
 // ===== Middleware =====
 app.use(
@@ -25,6 +26,8 @@ app.use(
         process.env.FRONTEND_URL || "https://realnurture.ai",
         "https://app.realnurture.ai",
         "http://localhost:5173",
+        "https://real-nurture-backend.fly.dev",
+        "http://real-nurture-backend.fly.dev",
       ];
 
       // Allow requests with no origin (like mobile apps or curl requests)
@@ -33,7 +36,7 @@ app.use(
       if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
       } else {
-        console.log(`Origin ${origin} not allowed by CORS`);
+        console.log(`Origin ${origin} not allowed by CORS: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -43,6 +46,17 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Health check endpoint for Fly.io
+app.get("/api/health", (req, res) => {
+  console.log("Health check endpoint hit");
+  res.status(200).json({ status: "ok" });
+});
+
+// Root endpoint for basic testing
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "API is running" });
+});
 
 // ===== API Routes =====
 app.use("/api/leads", leadRoutes);
@@ -58,11 +72,11 @@ const server = http.createServer(app);
 const initializeApp = async () => {
   try {
     // Log binding information
-    console.log(`Attempting to bind to 0.0.0.0:${PORT}`);
+    console.log(`Attempting to bind to ${HOST}:${PORT}`);
 
     // Start the server with explicit host binding
-    server.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server is running on 0.0.0.0:${PORT}`);
+    server.listen(PORT, HOST, () => {
+      console.log(`Server is running on ${HOST}:${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
       // Check what interfaces we're actually listening on
       const addressInfo = server.address();

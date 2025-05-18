@@ -1,40 +1,35 @@
-app = "backend-red-dust-1909"
-primary_region = "sjc"
+# fly.toml app configuration file generated for real-nurture-backend on 2025-05-17T18:35:33-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'real-nurture-backend'
+primary_region = 'sjc'
 
 [build]
-dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-NODE_ENV = "production"
-PORT = "3000"
+  NODE_ENV = 'production'
+  PORT = '3000'
+  HOST = '0.0.0.0'
 
 [http_service]
-auto_start_machines = true
-auto_stop_machines = true
-force_https = true
-internal_port = 3000
-min_machines_running = 0
-processes = [ "app" ]
+  internal_port = 3000
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = true
+  min_machines_running = 0
 
-[[services]]
-internal_port = 3000
-processes = [ "app" ]
-protocol = "tcp"
-
-  [services.concurrency]
+  [http_service.concurrency]
+  type = "connections"
   hard_limit = 25
   soft_limit = 20
-  type = "connections"
 
-  [[services.ports]]
-  handlers = [ "http" ]
-  port = 80
-
-  [[services.ports]]
-  handlers = [ "tls", "http" ]
-  port = 443
-
-  [[services.tcp_checks]]
-  grace_period = "10s"
-  interval = "30s"
-  timeout = "5s"
+  [[http_service.checks]]
+    interval = "10s"
+    grace_period = "30s"
+    method = "get"
+    path = "/"
+    protocol = "http"
+    timeout = "5s"
