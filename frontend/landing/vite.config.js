@@ -4,7 +4,7 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  base: "/landing/",
+  base: "/",
   build: {
     outDir: "dist",
     target: "ES2020",
