@@ -37,18 +37,31 @@ const Settings: React.FC = () => {
     const { name, value, type } = e.target as HTMLInputElement;
 
     setSettings((prev) => {
-      // Handle number inputs for follow-up intervals
-      if (name.startsWith("followUpInterval")) {
-        return {
-          ...prev,
-          [name]: type === "number" ? parseInt(value) || 0 : value,
-        };
-      }
+      if (!prev) return prev;
+
+      // Map form field names to database field names
+      const fieldMappings = {
+        agentName: "agent_name",
+        companyName: "company_name",
+        agentState: "agent_state",
+        followUpIntervalNew: "follow_up_interval_new",
+        followUpIntervalInConversation: "follow_up_interval_in_converesation",
+        followUpIntervalInactive: "follow_up_interval_inactive",
+      };
+
+      const dbFieldName = fieldMappings[name] || name;
+
+      // Handle number inputs
+      const fieldValue =
+        type === "number"
+          ? parseInt(value) || 0
+          : type === "checkbox"
+          ? (e.target as HTMLInputElement).checked
+          : value;
 
       return {
         ...prev,
-        [name]:
-          type === "checkbox" ? (e.target as HTMLInputElement).checked : value,
+        [dbFieldName]: fieldValue,
       };
     });
   };

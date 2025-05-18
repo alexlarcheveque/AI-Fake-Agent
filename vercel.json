@@ -18,7 +18,7 @@
           "value": "app.realnurture.ai"
         }
       ],
-      "destination": "https://backend-red-dust-1909.fly.dev/api/:path*"
+      "destination": "https://real-nurture-backend.fly.dev/api/:path*"
     },
     {
       "source": "/(.*)",

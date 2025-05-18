@@ -12,6 +12,12 @@ import protect from "../middleware/authMiddleware.ts";
 
 const router = express.Router();
 
+// Webhook for receiving messages (for Twilio)
+router.post(
+  "/receive",
+  asyncHandler((req, res) => receiveIncomingMessage(req, res))
+);
+
 // Status callback endpoint for Twilio
 router.post(
   "/status-callback",
@@ -42,12 +48,6 @@ router.get(
 router.patch(
   "/messages/:messageId/read",
   asyncHandler((req, res) => markAsRead(req, res))
-);
-
-// Webhook for receiving messages (for Twilio)
-router.post(
-  "/receive",
-  asyncHandler((req, res) => receiveIncomingMessage(req, res))
 );
 
 export default router;

@@ -153,7 +153,7 @@ const Dashboard: React.FC = () => {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-sm">Messages Deliveryed</p>
+                  <p className="text-gray-500 text-sm">Messages Delivered</p>
                   <p className="text-2xl font-bold">{deliveredMessages}</p>
                   <div className="flex text-xs mt-1">
                     {failedMessages > 0 && (

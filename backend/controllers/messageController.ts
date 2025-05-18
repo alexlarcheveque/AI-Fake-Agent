@@ -192,18 +192,24 @@ export const statusCallback = async (req, res) => {
         error_code: ErrorCode || null,
         error_message: ErrorMessage || null,
       });
-      
+
       // If the message status changes to "delivered", update the lead status and schedule next follow-up
       if (MessageStatus === "delivered" && messageToUpdate.lead_id) {
         try {
           // Update lead status based on message history
           await updateLeadStatusBasedOnMessages(messageToUpdate.lead_id);
-          logger.info(`Updated lead status for lead ${messageToUpdate.lead_id} after message delivery status update`);
-          
+          logger.info(
+            `Updated lead status for lead ${messageToUpdate.lead_id} after message delivery status update`
+          );
+
           // Schedule the next follow-up message
-          const { scheduleNextFollowUp } = await import("../services/leadService.ts");
+          const { scheduleNextFollowUp } = await import(
+            "../services/leadService.ts"
+          );
           await scheduleNextFollowUp(messageToUpdate.lead_id);
-          logger.info(`Scheduled next follow-up for lead ${messageToUpdate.lead_id}`);
+          logger.info(
+            `Scheduled next follow-up for lead ${messageToUpdate.lead_id}`
+          );
         } catch (statusError) {
           logger.error(`Error updating lead status: ${statusError.message}`);
           // Don't throw to continue response
