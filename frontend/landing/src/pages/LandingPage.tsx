@@ -9,7 +9,7 @@ const LandingPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
         <div className="text-center">
           <h1 className="text-4xl tracking-tight font-extrabold sm:text-5xl md:text-6xl">
-            <span className="block">AI Fake Agent</span>
+            <span className="block">Real Nurture</span>
             <span className="block text-indigo-400 mt-2">
               Your Intelligent Lead Management Solution
             </span>
