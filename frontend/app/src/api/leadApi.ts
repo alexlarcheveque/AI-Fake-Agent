@@ -8,14 +8,6 @@ declare global {
   }
 }
 
-// Define lead limit info type
-export interface LeadLimitInfo {
-  currentCount: number;
-  limit: number;
-  subscriptionPlan: string;
-  canCreateLead: boolean;
-}
-
 const leadApi = {
   // Get leads by user ID
   async getLeadsByUserId(): Promise<LeadRow[]> {
@@ -28,7 +20,7 @@ const leadApi = {
   },
 
   // Get lead limit info for the current user
-  async getLeadLimitInfo(): Promise<LeadLimitInfo> {
+  async getLeadLimitInfo(): Promise<LeadRow> {
     try {
       return await apiClient.get("/leads/limit");
     } catch (error) {

@@ -3,19 +3,13 @@ import { LeadInsert, LeadRow, LeadUpdate } from "../models/Lead.ts";
 import { createMessage } from "./messageService.ts";
 import { getUserSettings } from "./userSettingsService.ts";
 import logger from "../utils/logger.ts";
+import { LeadStatus } from "../../shared/types/leadTypes.ts";
 
 // Define lead limits for different subscription plans
 const LEAD_LIMITS = {
   FREE: 10,
   PREMIUM: 100,
   UNLIMITED: Infinity,
-};
-
-// Define lead status constants
-export const LEAD_STATUS = {
-  NEW: "new",
-  IN_CONVERSATION: "in_conversation",
-  INACTIVE: "inactive"
 };
 
 // Function to check if a user has reached their lead limit
@@ -100,7 +94,7 @@ export const createLead = async (user, settings: LeadRow): Promise<LeadRow> => {
         name,
         email,
         phone_number,
-        status: status || LEAD_STATUS.NEW, // Default to "new" status if not provided
+        status: status || LeadStatus.NEW, // Default to "new" status if not provided
         lead_type,
         is_ai_enabled,
         is_archived: false,
@@ -227,11 +221,13 @@ export const searchLeads = async (
  * Updates the lead status based on message history
  * - "In Conversation": Lead has responded to at least one message
  * - "Inactive": Lead hasn't responded to at least 10 messages
- * 
+ *
  * @param leadId The ID of the lead to update
  * @returns Updated lead data
  */
-export const updateLeadStatusBasedOnMessages = async (leadId: number): Promise<LeadRow> => {
+export const updateLeadStatusBasedOnMessages = async (
+  leadId: number
+): Promise<LeadRow> => {
   try {
     // Get all messages for this lead
     const { data: messages, error: messagesError } = await supabase
@@ -241,20 +237,22 @@ export const updateLeadStatusBasedOnMessages = async (leadId: number): Promise<L
       .order("created_at", { ascending: true });
 
     if (messagesError) throw new Error(messagesError.message);
-    
+
     // Get current lead data
     const lead = await getLeadById(leadId);
     if (!lead) throw new Error(`Lead with ID ${leadId} not found`);
-    
+
     // Count messages from lead (user responses)
-    const leadMessages = messages.filter(msg => msg.sender === "lead");
-    
+    const leadMessages = messages.filter((msg) => msg.sender === "lead");
+
     // Count consecutive messages from agent with no response
-    const agentMessages = messages.filter(msg => msg.sender === "agent" && msg.delivery_status === "delivered");
-    
+    const agentMessages = messages.filter(
+      (msg) => msg.sender === "agent" && msg.delivery_status === "delivered"
+    );
+
     let consecutiveAgentMessages = 0;
     let lastLeadMessageIndex = -1;
-    
+
     // Find the last message from the lead
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].sender === "lead") {
@@ -262,7 +260,7 @@ export const updateLeadStatusBasedOnMessages = async (leadId: number): Promise<L
         break;
       }
     }
-    
+
     // Count how many consecutive agent messages there have been since the last lead message
     if (lastLeadMessageIndex >= 0) {
       consecutiveAgentMessages = messages.length - lastLeadMessageIndex - 1;
@@ -270,33 +268,33 @@ export const updateLeadStatusBasedOnMessages = async (leadId: number): Promise<L
       // If the lead has never sent a message, count all agent messages
       consecutiveAgentMessages = agentMessages.length;
     }
-    
+
     let newStatus = lead.status;
-    
+
     // Update status based on message history
     if (leadMessages.length > 0) {
       // If lead has ever responded, they're "in conversation"
-      newStatus = LEAD_STATUS.IN_CONVERSATION;
-      
+      newStatus = LeadStatus.IN_CONVERSATION;
+
       // But if they haven't responded to 10+ consecutive messages, mark as inactive
       if (consecutiveAgentMessages >= 10) {
-        newStatus = LEAD_STATUS.INACTIVE;
+        newStatus = LeadStatus.INACTIVE;
       }
     } else {
       // If lead has never responded, keep them as new
-      newStatus = LEAD_STATUS.NEW;
+      newStatus = LeadStatus.NEW;
     }
-    
+
     // Only update if status has changed
     if (newStatus !== lead.status) {
       const updatedLead = await updateLead(leadId, { status: newStatus });
-      
+
       // Schedule a follow-up based on new status
       await scheduleNextFollowUp(leadId);
-      
+
       return updatedLead;
     }
-    
+
     return lead;
   } catch (error) {
     console.error(`Error updating lead status: ${error.message}`);
@@ -306,7 +304,7 @@ export const updateLeadStatusBasedOnMessages = async (leadId: number): Promise<L
 
 /**
  * Schedules the next follow-up message for a lead based on their status and user settings
- * 
+ *
  * @param leadId The ID of the lead to schedule a follow-up for
  * @returns Promise<void>
  */
@@ -315,29 +313,31 @@ export const scheduleNextFollowUp = async (leadId: number): Promise<void> => {
     // Get lead data
     const lead = await getLeadById(leadId);
     if (!lead || !lead.is_ai_enabled) {
-      logger.info(`No follow-up scheduled for lead ${leadId}: AI is disabled or lead not found`);
+      logger.info(
+        `No follow-up scheduled for lead ${leadId}: AI is disabled or lead not found`
+      );
       return;
     }
-    
+
     // Get user settings for follow-up intervals
     const userSettings = await getUserSettings(lead.user_uuid);
-    
+
     // Determine appropriate interval based on lead status
     let intervalDays = 0;
     switch (lead.status) {
-      case LEAD_STATUS.NEW:
+      case LeadStatus.NEW:
         intervalDays = userSettings.follow_up_interval_new;
         break;
-      case LEAD_STATUS.IN_CONVERSATION:
+      case LeadStatus.IN_CONVERSATION:
         intervalDays = userSettings.follow_up_interval_in_converesation;
         break;
-      case LEAD_STATUS.INACTIVE:
+      case LeadStatus.INACTIVE:
         intervalDays = userSettings.follow_up_interval_inactive;
         break;
       default:
         intervalDays = userSettings.follow_up_interval_in_converesation;
     }
-    
+
     // Check if there's already a pending scheduled message
     const { data: pendingMessages } = await supabase
       .from("messages")
@@ -345,17 +345,17 @@ export const scheduleNextFollowUp = async (leadId: number): Promise<void> => {
       .eq("lead_id", leadId)
       .eq("delivery_status", "scheduled")
       .gt("scheduled_at", new Date().toISOString());
-    
+
     // If there's already a scheduled message, don't create another one
     if (pendingMessages && pendingMessages.length > 0) {
       logger.info(`Follow-up already scheduled for lead ${leadId}, skipping`);
       return;
     }
-    
+
     // Calculate next follow-up date (current date + interval days)
     const scheduledAt = new Date();
     scheduledAt.setDate(scheduledAt.getDate() + intervalDays);
-    
+
     // Create a new scheduled message
     await createMessage({
       lead_id: leadId,
@@ -364,12 +364,18 @@ export const scheduleNextFollowUp = async (leadId: number): Promise<void> => {
       delivery_status: "scheduled",
       scheduled_at: scheduledAt.toISOString(),
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     });
-    
-    logger.info(`Scheduled follow-up for lead ${leadId} with status "${lead.status}" on ${scheduledAt.toISOString()}`);
+
+    logger.info(
+      `Scheduled follow-up for lead ${leadId} with status "${
+        lead.status
+      }" on ${scheduledAt.toISOString()}`
+    );
   } catch (error) {
-    logger.error(`Error scheduling follow-up for lead ${leadId}: ${error.message}`);
+    logger.error(
+      `Error scheduling follow-up for lead ${leadId}: ${error.message}`
+    );
     // Don't throw to prevent disrupting the workflow
   }
 };

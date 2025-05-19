@@ -3,6 +3,7 @@ import leadApi from "../api/leadApi";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { LeadRow } from "../../../../backend/models/Lead";
+import { LeadStatus } from "../../../../shared/types/leadTypes";
 
 interface LeadListProps {
   leads: LeadRow[];
@@ -11,6 +12,39 @@ interface LeadListProps {
   onLeadsChange: (leads: LeadRow[]) => void;
   onError: (error: string | null) => void;
 }
+
+// Helper function to get status color classes
+const getStatusColorClasses = (status: string | null | undefined): string => {
+  if (!status) return "bg-gray-100 text-gray-800"; // Default for null/undefined
+
+  console.log("status", status);
+
+  switch (status) {
+    case LeadStatus.NEW:
+      return "bg-blue-100 text-blue-800";
+    case LeadStatus.IN_CONVERSATION:
+      return "bg-yellow-100 text-yellow-800";
+    case LeadStatus.QUALIFIED:
+    case LeadStatus.APPOINTMENT_SCHEDULED:
+      return "bg-green-100 text-green-800";
+    case LeadStatus.CONVERTED:
+      return "bg-purple-100 text-purple-800";
+    case LeadStatus.INACTIVE:
+      return "bg-red-100 text-red-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+};
+
+// Helper function to properly capitalize status text
+const formatStatusText = (status: string | null | undefined): string => {
+  if (!status) return "";
+  // Split by underscore or space and capitalize each word
+  return status
+    .split(/[_\s]/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+};
 
 const LeadList: React.FC<LeadListProps> = ({
   leads = [],
@@ -187,10 +221,26 @@ const LeadList: React.FC<LeadListProps> = ({
                               className="w-full h-8 px-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm appearance-none"
                               disabled={updateLoading === lead.id}
                             >
-                              <option value="new">New</option>
-                              <option value="contacted">Contacted</option>
-                              <option value="qualified">Qualified</option>
-                              <option value="lost">Lost</option>
+                              <option value={LeadStatus.NEW}>
+                                {formatStatusText(LeadStatus.NEW)}
+                              </option>
+                              <option value={LeadStatus.IN_CONVERSATION}>
+                                {formatStatusText(LeadStatus.IN_CONVERSATION)}
+                              </option>
+                              <option value={LeadStatus.APPOINTMENT_SCHEDULED}>
+                                {formatStatusText(
+                                  LeadStatus.APPOINTMENT_SCHEDULED
+                                )}
+                              </option>
+                              <option value={LeadStatus.QUALIFIED}>
+                                {formatStatusText(LeadStatus.QUALIFIED)}
+                              </option>
+                              <option value={LeadStatus.CONVERTED}>
+                                {formatStatusText(LeadStatus.CONVERTED)}
+                              </option>
+                              <option value={LeadStatus.INACTIVE}>
+                                {formatStatusText(LeadStatus.INACTIVE)}
+                              </option>
                             </select>
                           </div>
                         </td>
@@ -330,19 +380,11 @@ const LeadList: React.FC<LeadListProps> = ({
                         <td className="px-6 h-[52px]">
                           <div className="py-2">
                             <span
-                              className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                lead.status === "new"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : lead.status === "contacted"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : lead.status === "qualified"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
+                              className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColorClasses(
+                                lead.status
+                              )}`}
                             >
-                              {lead.status &&
-                                lead.status?.charAt(0).toUpperCase() +
-                                  lead.status?.slice(1)}
+                              {formatStatusText(lead.status)}
                             </span>
                           </div>
                         </td>

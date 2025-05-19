@@ -1,15 +1,7 @@
 import React, { useState } from "react";
 import leadApi from "../api/leadApi";
 import { LeadInsert, LeadRow } from "../../../../backend/models/Lead";
-
-export enum LeadStatus {
-  NEW = "New",
-  IN_CONVERSATION = "In Conversation",
-  QUALIFIED = "Qualified",
-  APPOINTMENT_SET = "Appointment Set",
-  CONVERTED = "Converted",
-  INACTIVE = "Inactive",
-}
+import { LeadStatus } from "../../../../shared/types/leadTypes";
 
 export enum LeadType {
   BUYER = "buyer",
@@ -45,13 +37,13 @@ const VALIDATION_RULES = {
   },
   STATUS: {
     VALID_VALUES: [
-      "New",
-      "In Conversation",
-      "Qualified",
-      "Appointment Set",
-      "Converted",
-      "Inactive",
-    ] as LeadStatus[],
+      LeadStatus.NEW,
+      LeadStatus.IN_CONVERSATION,
+      LeadStatus.QUALIFIED,
+      LeadStatus.APPOINTMENT_SCHEDULED,
+      LeadStatus.CONVERTED,
+      LeadStatus.INACTIVE,
+    ],
   },
   LEAD_TYPE: {
     VALID_VALUES: ["buyer", "seller"] as LeadType[],
@@ -83,7 +75,7 @@ const initialFormData: LeadInsert = {
   name: "",
   email: "",
   phone_number: 0,
-  status: "New",
+  status: LeadStatus.NEW,
   is_ai_enabled: true,
   lead_type: "buyer",
   context: "",
@@ -369,11 +361,11 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           }`}
           disabled={isLoading}
         />
-        {errors.phoneNumber && touchedFields.has("phoneNumber") && (
+        {errors.phone_number && touchedFields.has("phoneNumber") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.phoneNumber === "string"
-              ? errors.phoneNumber
-              : errors.phoneNumber.message}
+            {typeof errors.phone_number === "string"
+              ? errors.phone_number
+              : errors.phone_number.message}
           </p>
         )}
       </div>
@@ -425,7 +417,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.leadType ? "border-red-500 ring-red-100" : "border-gray-300"
+            errors.lead_type ? "border-red-500 ring-red-100" : "border-gray-300"
           }`}
           disabled={isLoading}
         >
@@ -435,11 +427,11 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
             </option>
           ))}
         </select>
-        {errors.leadType && touchedFields.has("leadType") && (
+        {errors.lead_type && touchedFields.has("leadType") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.leadType === "string"
-              ? errors.leadType
-              : errors.leadType.message}
+            {typeof errors.lead_type === "string"
+              ? errors.lead_type
+              : errors.lead_type.message}
           </p>
         )}
       </div>
