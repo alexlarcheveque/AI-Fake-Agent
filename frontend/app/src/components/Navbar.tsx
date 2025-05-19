@@ -147,7 +147,10 @@ const Navbar: React.FC = () => {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-xl font-bold text-blue-600">
-                RealNurture
+                RealNurture{" "}
+                <span className="text-xs font-normal text-gray-500">
+                  (Beta)
+                </span>
               </Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
@@ -181,6 +184,28 @@ const Navbar: React.FC = () => {
               >
                 Leads
               </Link>
+              <a
+                href="https://forms.gle/URBsfWCUZmAHQGpz6"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-3 py-1.5 ml-2 rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200 font-medium text-sm transition-colors"
+              >
+                <svg
+                  className="w-4 h-4 mr-1.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+                  />
+                </svg>
+                Feedback
+              </a>
             </div>
           </div>
 
@@ -329,7 +354,11 @@ const Navbar: React.FC = () => {
                 <span className="sr-only">Open user menu</span>
                 <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border border-gray-300">
                   <span className="text-gray-700 font-medium">
-                    {userSettings?.agent_name?.charAt(0).toUpperCase() || "U"}
+                    {userSettings?.agent_name
+                      ? (userSettings.agent_name as string)
+                          .charAt(0)
+                          .toUpperCase()
+                      : "U"}
                   </span>
                 </div>
               </button>
