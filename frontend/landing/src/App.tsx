@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import "./index.css";
 
 function App() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-white">
       {/* Navigation */}
@@ -16,7 +18,9 @@ function App() {
                 </span>
               </h1>
             </div>
-            <div className="flex items-center space-x-6">
+
+            {/* Desktop navigation */}
+            <div className="hidden md:flex items-center space-x-6">
               <a
                 href="#features"
                 className="text-gray-700 hover:text-indigo-600 text-sm font-medium"
@@ -48,8 +52,93 @@ function App() {
                 Try Now
               </a>
             </div>
+
+            {/* Mobile menu button */}
+            <div className="flex items-center md:hidden">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+                aria-expanded="false"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                <span className="sr-only">Open main menu</span>
+                {!mobileMenuOpen ? (
+                  <svg
+                    className="block h-6 w-6"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M4 6h16M4 12h16M4 18h16"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="block h-6 w-6"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile menu, show/hide based on menu state */}
+        {mobileMenuOpen && (
+          <div className="md:hidden">
+            <div className="pt-2 pb-3 space-y-1 border-t border-gray-100">
+              <a
+                href="#features"
+                className="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
+              >
+                Features
+              </a>
+              <a
+                href="#testimonials"
+                className="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
+              >
+                Testimonials
+              </a>
+              <a
+                href="#pricing"
+                className="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
+              >
+                Pricing
+              </a>
+              <div className="mt-4 flex flex-col space-y-2 px-3">
+                <a
+                  href="https://app.realnurture.ai"
+                  className="w-full flex items-center justify-center px-4 py-2 border border-gray-200 text-sm font-medium rounded-md text-indigo-600 hover:bg-gray-50"
+                >
+                  Sign in
+                </a>
+                <a
+                  href="https://app.realnurture.ai"
+                  className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                >
+                  Try Now
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Hero Section */}
