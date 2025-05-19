@@ -1,7 +1,13 @@
 import React, { useState } from "react";
 import leadApi from "../api/leadApi";
 import { LeadInsert, LeadRow } from "../../../../backend/models/Lead";
-import { LeadStatus } from "../../../../shared/types/leadTypes";
+
+export enum LeadStatus {
+  NEW = "new",
+  IN_CONVERSATION = "in_conversation",
+  CONVERTED = "converted",
+  INACTIVE = "inactive",
+}
 
 export enum LeadType {
   BUYER = "buyer",
@@ -39,8 +45,6 @@ const VALIDATION_RULES = {
     VALID_VALUES: [
       LeadStatus.NEW,
       LeadStatus.IN_CONVERSATION,
-      LeadStatus.QUALIFIED,
-      LeadStatus.APPOINTMENT_SCHEDULED,
       LeadStatus.CONVERTED,
       LeadStatus.INACTIVE,
     ],

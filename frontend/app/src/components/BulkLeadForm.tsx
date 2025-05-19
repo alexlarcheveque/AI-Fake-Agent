@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import leadApi from "../api/leadApi";
 import { LeadRow } from "../../../../backend/models/Lead";
-import { LeadStatus } from "../../../../shared/types/leadTypes";
+import { LeadStatus } from "./SingleLeadForm";
 
 // Validation constants
 const VALIDATION_RULES = {
@@ -27,8 +27,6 @@ const VALIDATION_RULES = {
     VALID_VALUES: [
       LeadStatus.NEW,
       LeadStatus.IN_CONVERSATION,
-      LeadStatus.APPOINTMENT_SCHEDULED,
-      LeadStatus.QUALIFIED,
       LeadStatus.CONVERTED,
       LeadStatus.INACTIVE,
     ] as const,

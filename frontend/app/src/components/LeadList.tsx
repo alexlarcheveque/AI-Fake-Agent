@@ -3,7 +3,7 @@ import leadApi from "../api/leadApi";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { LeadRow } from "../../../../backend/models/Lead";
-import { LeadStatus } from "../../../../shared/types/leadTypes";
+import { LeadStatus } from "./SingleLeadForm";
 
 interface LeadListProps {
   leads: LeadRow[];
@@ -24,11 +24,8 @@ const getStatusColorClasses = (status: string | null | undefined): string => {
       return "bg-blue-100 text-blue-800";
     case LeadStatus.IN_CONVERSATION:
       return "bg-yellow-100 text-yellow-800";
-    case LeadStatus.QUALIFIED:
-    case LeadStatus.APPOINTMENT_SCHEDULED:
-      return "bg-green-100 text-green-800";
     case LeadStatus.CONVERTED:
-      return "bg-purple-100 text-purple-800";
+      return "bg-green-100 text-green-800";
     case LeadStatus.INACTIVE:
       return "bg-red-100 text-red-800";
     default:
@@ -226,14 +223,6 @@ const LeadList: React.FC<LeadListProps> = ({
                               </option>
                               <option value={LeadStatus.IN_CONVERSATION}>
                                 {formatStatusText(LeadStatus.IN_CONVERSATION)}
-                              </option>
-                              <option value={LeadStatus.APPOINTMENT_SCHEDULED}>
-                                {formatStatusText(
-                                  LeadStatus.APPOINTMENT_SCHEDULED
-                                )}
-                              </option>
-                              <option value={LeadStatus.QUALIFIED}>
-                                {formatStatusText(LeadStatus.QUALIFIED)}
                               </option>
                               <option value={LeadStatus.CONVERTED}>
                                 {formatStatusText(LeadStatus.CONVERTED)}

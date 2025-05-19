@@ -3,7 +3,14 @@ import { LeadInsert, LeadRow, LeadUpdate } from "../models/Lead.ts";
 import { createMessage } from "./messageService.ts";
 import { getUserSettings } from "./userSettingsService.ts";
 import logger from "../utils/logger.ts";
-import { LeadStatus } from "../../shared/types/leadTypes.ts";
+
+// Define the enum locally
+export enum LeadStatus {
+  NEW = "new",
+  IN_CONVERSATION = "in_conversation",
+  CONVERTED = "converted",
+  INACTIVE = "inactive",
+}
 
 // Define lead limits for different subscription plans
 const LEAD_LIMITS = {
@@ -242,6 +249,14 @@ export const updateLeadStatusBasedOnMessages = async (
     const lead = await getLeadById(leadId);
     if (!lead) throw new Error(`Lead with ID ${leadId} not found`);
 
+    // Don't automatically update CONVERTED status - it's a terminal state
+    if (lead.status === LeadStatus.CONVERTED) {
+      logger.info(
+        `Not auto-updating lead ${leadId} with CONVERTED status as it's a terminal state`
+      );
+      return lead;
+    }
+
     // Count messages from lead (user responses)
     const leadMessages = messages.filter((msg) => msg.sender === "lead");
 
@@ -331,6 +346,9 @@ export const scheduleNextFollowUp = async (leadId: number): Promise<void> => {
       case LeadStatus.IN_CONVERSATION:
         intervalDays = userSettings.follow_up_interval_in_converesation;
         break;
+      case LeadStatus.CONVERTED:
+        logger.info(`No follow-up scheduled for converted lead ${leadId}`);
+        return;
       case LeadStatus.INACTIVE:
         intervalDays = userSettings.follow_up_interval_inactive;
         break;
