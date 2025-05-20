@@ -154,7 +154,17 @@ const MessagesCenter: React.FC = () => {
                           {lead.is_ai_enabled ? "AI Enabled" : "Manual"}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-500">{lead.status}</div>
+                      <div className="text-sm text-gray-500">
+                        {lead.status
+                          ? lead.status
+                              .split("_")
+                              .map(
+                                (word) =>
+                                  word.charAt(0).toUpperCase() + word.slice(1)
+                              )
+                              .join(" ")
+                          : ""}
+                      </div>
                     </button>
                   ))}
                 </div>
