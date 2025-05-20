@@ -159,6 +159,8 @@ export const updateMessage = async (
 };
 
 export const deleteMessage = async (messageId: number): Promise<void> => {
+  console.log("delete message", messageId);
+
   const { error } = await supabase
     .from("messages")
     .delete()

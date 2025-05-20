@@ -99,9 +99,7 @@ const messageApi = {
   // Delete a message
   async deleteMessage(messageId: string): Promise<MessageRow> {
     try {
-      return await apiClient.delete(`/messages/${messageId}`, {
-        data: { message_id: messageId },
-      });
+      return await apiClient.delete(`/messages/${messageId}`);
     } catch (error) {
       console.error("Error deleting message:", error);
       throw error;

@@ -108,6 +108,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(
     null
   );
+  const [showAiDisableConfirmation, setShowAiDisableConfirmation] =
+    useState(false);
+  const [scheduledMessageCount, setScheduledMessageCount] = useState(0);
 
   // Update local state when prop changes
   useEffect(() => {
@@ -179,7 +182,40 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
   // Toggle AI Assistant
   const handleToggleAiAssistant = async () => {
-    const newAiState = !aiAssistantEnabled;
+    // If turning on, just do it directly
+    if (!aiAssistantEnabled) {
+      await updateAiAssistantState(true);
+      await leadApi.scheduleNextFollowUp(leadId);
+      return;
+    }
+
+    // If turning off, first check for scheduled messages
+    try {
+      const allMessages = await messageApi.getMessagesByLeadIdDescending(
+        leadId
+      );
+      const scheduledMessages = allMessages.filter(
+        (message) => message.delivery_status === "scheduled"
+      );
+
+      setScheduledMessageCount(scheduledMessages.length);
+
+      if (scheduledMessages.length > 0) {
+        // Show confirmation modal
+        setShowAiDisableConfirmation(true);
+      } else {
+        // No scheduled messages, proceed with disabling
+        await updateAiAssistantState(false);
+      }
+    } catch (error) {
+      console.error("Error checking for scheduled messages:", error);
+      setError("Failed to check for scheduled messages. Please try again.");
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  // Handle actual state update after confirmation
+  const updateAiAssistantState = async (newAiState: boolean) => {
     setAiAssistantEnabled(newAiState);
 
     try {
@@ -189,6 +225,49 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       } as any);
 
       console.log("Successfully updated lead AI Assistant status:", newAiState);
+
+      // If turning off AI Assistant, delete any scheduled messages
+      if (!newAiState) {
+        try {
+          // Find any scheduled messages for this lead
+          const allMessages = await messageApi.getMessagesByLeadIdDescending(
+            leadId
+          );
+          const scheduledMessages = allMessages.filter(
+            (message) => message.delivery_status === "scheduled"
+          );
+
+          if (scheduledMessages.length > 0) {
+            console.log(
+              `Deleting ${scheduledMessages.length} scheduled messages for lead ${leadId}`
+            );
+
+            // Delete each scheduled message
+            for (const msg of scheduledMessages) {
+              await messageApi.deleteMessage(String(msg.id));
+            }
+
+            // Clear the next scheduled message display
+            setNextScheduledMessage(undefined);
+
+            // Refresh messages to update the UI
+            refreshMessages();
+
+            // Dispatch an event to update any parent components
+            window.dispatchEvent(
+              new CustomEvent("lead-updated", {
+                detail: {
+                  leadId: leadId,
+                  nextScheduledMessage: null,
+                },
+              })
+            );
+          }
+        } catch (deleteError) {
+          console.error("Error deleting scheduled messages:", deleteError);
+          // Don't revert AI status, just log the error
+        }
+      }
     } catch (error) {
       console.error("Error updating lead with AI Assistant status:", error);
       setError("Failed to update AI Assistant setting. Please try again.");
@@ -596,6 +675,78 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           setAppointmentSuccess("Appointment scheduled successfully!");
         }}
       />
+
+      {/* AI Assistant Disable Confirmation Modal */}
+      {showAiDisableConfirmation && (
+        <div className="fixed inset-0 z-10 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            {/* Background overlay */}
+            <div
+              className="fixed inset-0 transition-opacity"
+              aria-hidden="true"
+            >
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            {/* Modal panel */}
+            <div className="inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg
+                      className="h-6 w-6 text-red-600"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">
+                      Disable AI Assistant
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Turning off the AI Assistant will delete{" "}
+                        {scheduledMessageCount} scheduled{" "}
+                        {scheduledMessageCount === 1 ? "message" : "messages"}{" "}
+                        for this lead. This action cannot be undone.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button
+                  type="button"
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => {
+                    setShowAiDisableConfirmation(false);
+                    updateAiAssistantState(false);
+                  }}
+                >
+                  Disable & Delete Messages
+                </button>
+                <button
+                  type="button"
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => setShowAiDisableConfirmation(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

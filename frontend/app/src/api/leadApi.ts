@@ -49,6 +49,11 @@ const leadApi = {
     await apiClient.delete(`/leads/${id}`);
   },
 
+  // Schedule next follow-up message for a lead
+  async scheduleNextFollowUp(id: number): Promise<LeadRow> {
+    return await apiClient.post(`/leads/schedule-follow-up/${id}`);
+  },
+
   // Import leads from CSV
   async importLeadsFromCSV(
     file: File,

@@ -62,7 +62,8 @@ export const updateMessage = async (req, res) => {
 
 export const deleteMessage = async (req, res) => {
   try {
-    const { message_id } = req.body;
+    console.log("deleteMessage", req.params);
+    const message_id = req.params.id;
     await deleteMessageService(message_id);
     res.json({ success: true });
   } catch (error) {

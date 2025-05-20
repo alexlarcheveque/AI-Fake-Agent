@@ -6,6 +6,7 @@ import {
   deleteLead as deleteLeadService,
   getLeadsByUserId as getLeadsByUserIdService,
   checkLeadLimit as checkLeadLimitService,
+  scheduleNextFollowUp as scheduleNextFollowUpService,
 } from "../services/leadService.ts";
 import { createMessage as createMessageService } from "../services/messageService.ts";
 import logger from "../utils/logger.ts";
@@ -61,6 +62,19 @@ export const getLeadById = async (req, res) => {
     res.json(lead);
   } catch (error) {
     logger.error("Error fetching lead:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const scheduleNextFollowUp = async (req, res) => {
+  try {
+    console.log("scheduleNextFollowUp", req.params.id);
+
+    const leadId = req.params.id;
+    const lead = await scheduleNextFollowUpService(leadId);
+    res.json(lead);
+  } catch (error) {
+    logger.error("Error scheduling next follow-up:", error);
     res.status(500).json({ error: error.message });
   }
 };

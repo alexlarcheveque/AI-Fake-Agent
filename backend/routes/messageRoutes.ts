@@ -7,6 +7,7 @@ import {
   statusCallback,
   markAsRead,
   getNextScheduledMessageForLead,
+  deleteMessage,
 } from "../controllers/messageController.ts";
 import protect from "../middleware/authMiddleware.ts";
 
@@ -48,6 +49,12 @@ router.get(
 router.patch(
   "/messages/:messageId/read",
   asyncHandler((req, res) => markAsRead(req, res))
+);
+
+// Delete message
+router.delete(
+  "/:id",
+  asyncHandler((req, res) => deleteMessage(req, res))
 );
 
 export default router;
