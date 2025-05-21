@@ -287,7 +287,7 @@ function App() {
               </div>
               <div className="bg-gray-100 rounded-xl overflow-hidden w-full aspect-video mx-auto shadow-md border border-gray-200">
                 <video
-                  src="/videos/automated-client-chats.mov"
+                  src="/videos/appointment-generation.mov"
                   className="object-cover h-full w-full"
                   autoPlay
                   loop
