@@ -195,6 +195,62 @@ export type Database = {
           },
         ]
       }
+      search_criterias: {
+        Row: {
+          created_at: string
+          id: number
+          lead_id: number | null
+          locations: string[] | null
+          max_bathrooms: number | null
+          max_bedroom: number | null
+          max_price: number | null
+          max_square_feet: number | null
+          min_bathrooms: number | null
+          min_bedrooms: number | null
+          min_price: number | null
+          min_square_feet: number | null
+          property_types: string[] | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          lead_id?: number | null
+          locations?: string[] | null
+          max_bathrooms?: number | null
+          max_bedroom?: number | null
+          max_price?: number | null
+          max_square_feet?: number | null
+          min_bathrooms?: number | null
+          min_bedrooms?: number | null
+          min_price?: number | null
+          min_square_feet?: number | null
+          property_types?: string[] | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          lead_id?: number | null
+          locations?: string[] | null
+          max_bathrooms?: number | null
+          max_bedroom?: number | null
+          max_price?: number | null
+          max_square_feet?: number | null
+          min_bathrooms?: number | null
+          min_bedrooms?: number | null
+          min_price?: number | null
+          min_square_feet?: number | null
+          property_types?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_criteria_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_settings: {
         Row: {
           agent_name: string | null

@@ -9,6 +9,7 @@ import messageRoutes from "./routes/messageRoutes.ts";
 import userSettingsRoutes from "./routes/userSettingsRoutes.ts";
 import appointmentRoutes from "./routes/appointmentRoutes.ts";
 import notificationRoutes from "./routes/notificationRoutes.ts";
+import searchCriteriaRoutes from "./routes/searchCriteriaRoutes.ts";
 
 // Services
 import "./services/cronService";
@@ -64,6 +65,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/search-criteria", searchCriteriaRoutes);
 
 // ===== Server Initialization =====
 const server = http.createServer(app);

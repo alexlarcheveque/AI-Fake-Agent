@@ -9,6 +9,7 @@ import supabase from "../config/supabase.ts";
 import { createAppointment } from "./appointmentService.ts";
 import { createNotification } from "./notificationService.ts";
 import { LeadRow } from "../models/Lead.ts";
+import { upsertSearchCriteria } from "./searchCriteriaService.ts";
 
 const apiKey = process.env.OPENAI_API_KEY || "your_api_key_here";
 
@@ -77,9 +78,11 @@ export const generateResponse = async (leadId: number): Promise<string> => {
 
     console.log("responseContent", responseContent);
 
-    await checkForNewSearchCriteria(leadId, responseContent);
+    // Extract and process metadata without modifying the original response
+    await checkForNewSearchCriteria(leadId, responseContent, leadContext);
     await checkForAppointmentDetails(leadId, responseContent, leadContext);
 
+    // Sanitize the response for sending to the user (remove metadata)
     const sanitizedResponse = await sanitizeResponse(responseContent);
 
     console.log("sanitizedResponse", sanitizedResponse);
@@ -93,12 +96,97 @@ export const generateResponse = async (leadId: number): Promise<string> => {
 
 const checkForNewSearchCriteria = async (
   leadId: number,
-  responseContent: string
+  responseContent: string,
+  leadContext?: LeadRow
 ) => {
+  // Extract search criteria without modifying the original response
   const searchCriteriaRegex = /NEW SEARCH CRITERIA:.*?(?:\n|$|\|)/i;
   const searchCriteriaMatch = responseContent.match(searchCriteriaRegex);
 
-  console.log("searchCriteriaMatch", searchCriteriaMatch);
+  if (!searchCriteriaMatch) {
+    return;
+  }
+
+  try {
+    // Parse the structured format
+    const criteriaText = searchCriteriaMatch[0]
+      .replace(/NEW SEARCH CRITERIA:/i, "")
+      .trim();
+
+    // Create criteria object with leadId
+    const criteria: any = {
+      lead_id: leadId,
+    };
+
+    // Parse each key-value pair
+    const keyValuePairs = criteriaText.split(",").map((pair) => pair.trim());
+
+    for (const pair of keyValuePairs) {
+      const [key, value] = pair.split(":").map((part) => part.trim());
+
+      if (!key || value === undefined) continue;
+
+      const keyLower = key.toLowerCase();
+
+      // Process based on key type
+      if (keyLower === "min bedrooms" && value) {
+        criteria.min_bedrooms = parseInt(value, 10);
+      } else if (keyLower === "max bedrooms" && value) {
+        criteria.max_bedroom = parseInt(value, 10);
+      } else if (keyLower === "min bathrooms" && value) {
+        criteria.min_bathrooms = parseFloat(value);
+      } else if (keyLower === "max bathrooms" && value) {
+        criteria.max_bathrooms = parseFloat(value);
+      } else if (keyLower === "min price" && value) {
+        criteria.min_price = parseInt(value.replace(/[$,]/g, ""), 10);
+      } else if (keyLower === "max price" && value) {
+        criteria.max_price = parseInt(value.replace(/[$,]/g, ""), 10);
+      } else if (keyLower === "min square feet" && value) {
+        criteria.min_square_feet = parseInt(value.replace(/,/g, ""), 10);
+      } else if (keyLower === "max square feet" && value) {
+        criteria.max_square_feet = parseInt(value.replace(/,/g, ""), 10);
+      } else if (keyLower === "locations" && value) {
+        criteria.locations = value
+          .split(",")
+          .map((loc) => loc.trim())
+          .filter(Boolean);
+      } else if (keyLower === "property types" && value) {
+        criteria.property_types = value
+          .split(",")
+          .map((type) => type.trim())
+          .filter(Boolean);
+      }
+    }
+
+    console.log("Parsed search criteria:", criteria);
+
+    // Upsert the search criteria
+    const result = await upsertSearchCriteria(criteria);
+    console.log("Search criteria upserted successfully:", result);
+
+    // Create notification when search criteria is successfully upserted
+    if (result?.id && leadContext?.user_uuid) {
+      console.log("Creating search criteria notification");
+
+      try {
+        await createNotification({
+          lead_id: leadId,
+          user_uuid: leadContext.user_uuid,
+          type: "search_criteria",
+          title: "Search Criteria Updated",
+          message:
+            "Client search criteria has been updated. Click to view the details.",
+          created_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.error("Error creating search criteria notification:", error);
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Error parsing and upserting search criteria:", error);
+  }
 };
 
 const checkForAppointmentDetails = async (
@@ -106,6 +194,7 @@ const checkForAppointmentDetails = async (
   responseContent: string,
   leadContext: LeadRow
 ) => {
+  // Extract appointment details without modifying the original response
   const appointmentRegex =
     /NEW APPOINTMENT SET:\s*(\d{1,2}\/\d{1,2}\/\d{4}|\w+\/\w+\/\w+)\s*at\s*(\d{1,2}:\d{2}\s*(?:AM|PM))/i;
   const appointmentMatch = responseContent.match(appointmentRegex);
@@ -180,6 +269,7 @@ const checkForAppointmentDetails = async (
   }
 };
 
+// This function is solely responsible for sanitizing the response by removing metadata
 const sanitizeResponse = async (responseContent: string) => {
   // Remove appointment details completely without any replacement
   const firstSanitizedResponse = responseContent.replace(
@@ -192,5 +282,9 @@ const sanitizeResponse = async (responseContent: string) => {
     ""
   );
 
-  return finalSanitizedResponse.trim();
+  // Cleanup the final response
+  return finalSanitizedResponse
+    .trim()
+    .replace(/\s{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
 };

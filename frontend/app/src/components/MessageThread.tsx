@@ -6,6 +6,9 @@ import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import "../styles/MessageThread.css";
 import AppointmentModal from "./AppointmentModal";
+import searchCriteriaApi from "../api/searchCriteriaApi";
+import { SearchCriteriaRow } from "../../../../backend/models/SearchCriteria.ts";
+import SearchCriteriaModal from "./SearchCriteriaModal";
 
 // Custom hook for message fetching
 const useMessageFetching = (leadId: number) => {
@@ -105,6 +108,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   >("Tomorrow at 10:00 AM");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [showSearchCriteriaModal, setShowSearchCriteriaModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<any | null>(
     null
   );
@@ -634,6 +638,27 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               </svg>
               Appointments
             </button>
+            <button
+              onClick={() => {
+                console.log("Search Criteria button clicked");
+                setShowSearchCriteriaModal(true);
+              }}
+              className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
+              type="button"
+            >
+              <svg
+                className="w-3 h-3 mr-1 text-gray-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Search Criteria
+            </button>
           </div>
         </div>
 
@@ -674,6 +699,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         onSuccess={() => {
           setAppointmentSuccess("Appointment scheduled successfully!");
         }}
+      />
+
+      {/* Search Criteria Modal */}
+      <SearchCriteriaModal
+        leadId={leadId}
+        isOpen={showSearchCriteriaModal}
+        onClose={() => setShowSearchCriteriaModal(false)}
       />
 
       {/* AI Assistant Disable Confirmation Modal */}
