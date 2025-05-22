@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import supabase from "../config/supabase";
 
 const ForgotPassword: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -13,17 +14,12 @@ const ForgotPassword: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
+      const response = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to process request");
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to process request");
       }
 
       setSuccess(true);
