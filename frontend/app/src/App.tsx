@@ -18,6 +18,7 @@ import ResetPassword from "./components/ResetPassword";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import NotificationsPage from "./components/NotificationsPage";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { Analytics } from "@vercel/analytics/react";
 
 // Protected route component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -91,11 +92,14 @@ function AppRoutes() {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </Router>
+    <>
+      <Router>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </Router>
+      <Analytics />
+    </>
   );
 }
 

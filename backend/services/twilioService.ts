@@ -26,7 +26,7 @@ export const sendMessage = async (to: number, body: string): Promise<any> => {
         ? `${process.env.BACKEND_URL}/api/messages/status-callback`
         : "https://wanted-husky-scarcely.ngrok-free.app/api/messages/status-callback";
 
-    console.log("send message to twilio", to, body, statusCallbackUrl);
+    logger.info(`Sending message to ${to}`);
 
     const message = await client.messages.create({
       from: twilioPhoneNumber,

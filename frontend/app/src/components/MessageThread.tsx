@@ -1,62 +1,102 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import messageApi from "../api/messageApi";
 import leadApi from "../api/leadApi";
+import callApi, { Call } from "../api/callApi";
 import { MessageRow } from "../../../../backend/models/Message";
-import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
+import CommunicationList from "./CommunicationList";
 import "../styles/MessageThread.css";
 import AppointmentModal from "./AppointmentModal";
-import searchCriteriaApi from "../api/searchCriteriaApi";
-import { SearchCriteriaRow } from "../../../../backend/models/SearchCriteria.ts";
 import SearchCriteriaModal from "./SearchCriteriaModal";
 
-// Custom hook for message fetching
-const useMessageFetching = (leadId: number) => {
+// Communication item interface for unified timeline
+interface CommunicationItem {
+  id: string;
+  type: "message" | "call";
+  timestamp: string;
+  data: MessageRow | Call;
+}
+
+// Custom hook for communication fetching (messages + calls)
+const useCommunicationFetching = (leadId: number) => {
   const [messages, setMessages] = useState<MessageRow[]>([]);
-  const [nextScheduledMessage, setNextScheduledMessage] =
-    useState<MessageRow | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [calls, setCalls] = useState<Call[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMessages = useCallback(async () => {
+  const fetchCommunications = useCallback(async () => {
     if (!leadId) return;
 
-    setLoading(true);
     setError(null);
 
     try {
+      // Fetch messages
       const fetchedMessages = await messageApi.getMessagesByLeadIdDescending(
         leadId
       );
-      const nextScheduledMessage =
-        await messageApi.getNextScheduledMessageForLead(leadId);
-      setNextScheduledMessage(nextScheduledMessage);
-      setMessages(fetchedMessages);
+
+      // Try to fetch calls, but don't crash if it fails
+      let fetchedCalls: Call[] = [];
+      try {
+        fetchedCalls = await callApi.getCallsForLead(leadId);
+      } catch (error) {
+        console.warn("Failed to fetch calls:", error);
+      }
+
+      setMessages(fetchedMessages || []);
+      setCalls(fetchedCalls || []);
     } catch (err) {
-      console.error("Error fetching messages:", err);
-      setError("Failed to load messages");
-    } finally {
-      setLoading(false);
+      console.error("Error fetching communications:", err);
+      setError("Failed to load communications");
     }
   }, [leadId]);
 
+  // Create unified timeline
+  const communicationItems: CommunicationItem[] = useMemo(
+    () =>
+      [
+        ...messages.map((msg) => ({
+          id: `msg-${msg.id}`,
+          type: "message" as const,
+          timestamp: msg.created_at || new Date().toISOString(),
+          data: msg,
+        })),
+        ...calls.map((call) => ({
+          id: `call-${call.id}`,
+          type: "call" as const,
+          timestamp: call.created_at,
+          data: call,
+        })),
+      ].sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      ),
+    [messages, calls]
+  );
+
   // Initial fetch
   useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
+    fetchCommunications();
+  }, [fetchCommunications]);
 
   // Set up periodic refresh
   useEffect(() => {
-    const intervalId = setInterval(fetchMessages, 30000);
+    const intervalId = setInterval(fetchCommunications, 30000);
     return () => clearInterval(intervalId);
-  }, [fetchMessages]);
+  }, [fetchCommunications]);
 
   return {
     messages,
     setMessages,
-    loading,
+    calls,
+    communicationItems,
     error,
-    refreshMessages: fetchMessages,
+    refreshCommunications: fetchCommunications,
   } as const;
 };
 
@@ -86,32 +126,43 @@ const MessageThread: React.FC<MessageThreadProps> = ({
   leadType,
   nextScheduledMessage: propNextScheduledMessage,
   initialMessages = [],
-  isOpen = false,
 }) => {
   const {
     messages,
     setMessages,
-    loading,
-    error: messageError,
-    refreshMessages,
-  } = useMessageFetching(leadId);
+    calls,
+    communicationItems,
+    refreshCommunications,
+  } = useCommunicationFetching(leadId);
+
   const [error, setError] = useState<string | null>(null);
   const [aiAssistantEnabled, setAiAssistantEnabled] = useState<boolean | null>(
     null
   );
   const [isSending, setIsSending] = useState(false);
-  const [appointmentSuccess, setAppointmentSuccess] = useState<string | null>(
-    null
-  );
+  const [isInitiatingCall, setIsInitiatingCall] = useState(false);
+  const [callSuccess, setCallSuccess] = useState<string | null>(null);
+  const [currentCallStatus, setCurrentCallStatus] = useState<{
+    status:
+      | "idle"
+      | "initiating"
+      | "ringing"
+      | "in-progress"
+      | "completed"
+      | "failed";
+    callId?: number;
+    duration?: number;
+    startTime?: Date;
+  }>({ status: "idle" });
+  const [callStatusInterval, setCallStatusInterval] =
+    useState<NodeJS.Timeout | null>(null);
   const [nextScheduledMessage, setNextScheduledMessage] = useState<
     string | undefined
   >("Tomorrow at 10:00 AM");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [showSearchCriteriaModal, setShowSearchCriteriaModal] = useState(false);
-  const [selectedAppointment, setSelectedAppointment] = useState<any | null>(
-    null
-  );
+
   const [showAiDisableConfirmation, setShowAiDisableConfirmation] =
     useState(false);
   const [scheduledMessageCount, setScheduledMessageCount] = useState(0);
@@ -121,16 +172,14 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     setNextScheduledMessage(propNextScheduledMessage);
   }, [propNextScheduledMessage]);
 
-  // Listen for message-sent events
+  // Listen for message-sent events and cleanup intervals
   useEffect(() => {
     const handleMessageSent = (event: CustomEvent<{ leadId: number }>) => {
       // Only refresh if this event is for the current lead
       if (event.detail.leadId === leadId) {
-        console.log("Message sent event received, refreshing messages");
-
-        // Force a full refresh of the messages
+        // Force a full refresh of the communications
         setTimeout(() => {
-          refreshMessages();
+          refreshCommunications();
 
           // Scroll to bottom after refresh
           setTimeout(() => {
@@ -151,8 +200,13 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         "message-sent",
         handleMessageSent as EventListener
       );
+
+      // Clear call status polling interval
+      if (callStatusInterval) {
+        clearInterval(callStatusInterval);
+      }
     };
-  }, [leadId, refreshMessages]);
+  }, [leadId, refreshCommunications, callStatusInterval]);
 
   // Reset AI Assistant state when leadId changes and fetch lead data
   useEffect(() => {
@@ -163,7 +217,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       try {
         setError(null);
         const lead = await leadApi.getLead(leadId);
-        console.log("lead", lead);
 
         setAiAssistantEnabled(lead.is_ai_enabled);
       } catch (err) {
@@ -176,13 +229,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       fetchLeadData();
     }
   }, [leadId]);
-
-  // Scroll to bottom function
-  const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  };
 
   // Toggle AI Assistant
   const handleToggleAiAssistant = async () => {
@@ -228,8 +274,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         is_ai_enabled: newAiState,
       } as any);
 
-      console.log("Successfully updated lead AI Assistant status:", newAiState);
-
       // If turning off AI Assistant, delete any scheduled messages
       if (!newAiState) {
         try {
@@ -255,7 +299,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             setNextScheduledMessage(undefined);
 
             // Refresh messages to update the UI
-            refreshMessages();
+            refreshCommunications();
 
             // Dispatch an event to update any parent components
             window.dispatchEvent(
@@ -320,7 +364,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
 
       // Force a full refresh after a short delay to ensure message is visible
       setTimeout(() => {
-        refreshMessages();
+        refreshCommunications();
       }, 1000);
 
       // If AI is enabled, refresh lead data after a short delay to get the updated nextScheduledMessage
@@ -330,7 +374,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             console.log(
               "Refreshing lead data after sending message to get updated nextScheduledMessage"
             );
-            const refreshedLead = await leadApi.getLead(leadId);
+            await leadApi.getLead(leadId);
 
             // check messages for "scheduled" delivery_status and set nextScheduledMessage to the first one
             const scheduledMessage = messages.find(
@@ -455,17 +499,153 @@ const MessageThread: React.FC<MessageThreadProps> = ({
     };
   }, [leadId]);
 
-  useEffect(() => {
-    console.log("MessageThread mounted with leadId:", leadId);
+  // Handle manual call initiation
+  const handleInitiateCall = async () => {
+    try {
+      setIsInitiatingCall(true);
+      setError(null);
+      setCallSuccess(null);
+      setCurrentCallStatus({
+        status: "initiating",
+        startTime: new Date(),
+      });
 
-    return () => {
-      console.log("MessageThread unmounted with leadId:", leadId);
-    };
-  }, []); // Empty dependency array means this runs once on mount and once on unmount
+      const result = await callApi.initiateCall(leadId);
 
-  useEffect(() => {
-    console.log("Current messages state:", messages);
-  }, [messages]);
+      setCurrentCallStatus({
+        status: "ringing",
+        callId: result.callId,
+        startTime: new Date(),
+      });
+
+      setCallSuccess("Call initiated! Ringing the lead now...");
+
+      // Start polling for call status updates
+      startCallStatusPolling(result.callId);
+
+      // Refresh communications to show the new call
+      setTimeout(() => {
+        refreshCommunications();
+      }, 2000);
+
+      // Clear success message after call progresses
+      setTimeout(() => {
+        setCallSuccess(null);
+      }, 3000);
+    } catch (error: any) {
+      setCurrentCallStatus({ status: "failed" });
+      setError(
+        error.response?.data?.error ||
+          "Failed to initiate call. Please try again."
+      );
+
+      // Clear error message after a few seconds
+      setTimeout(() => {
+        setError(null);
+        setCurrentCallStatus({ status: "idle" });
+      }, 5000);
+    } finally {
+      setIsInitiatingCall(false);
+    }
+  };
+
+  // Poll for call status updates
+  const startCallStatusPolling = (callId: number) => {
+    if (callStatusInterval) {
+      clearInterval(callStatusInterval);
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const calls = await callApi.getCallsForLead(leadId);
+        const currentCall = calls.find((call) => call.id === callId);
+
+        if (currentCall) {
+          const status = mapTwilioStatusToUI(currentCall.status);
+          const duration = calculateCallDuration(currentCall);
+
+          setCurrentCallStatus({
+            status,
+            callId,
+            duration,
+            startTime: new Date(currentCall.created_at),
+          });
+
+          // Stop polling if call is completed or failed
+          if (status === "completed" || status === "failed") {
+            clearInterval(interval);
+            setCallStatusInterval(null);
+
+            // Show final status message
+            if (status === "completed") {
+              setCallSuccess(
+                `Call completed successfully! Duration: ${formatDuration(
+                  duration
+                )}`
+              );
+            } else {
+              setError("Call failed or was not answered.");
+            }
+
+            // Clear status after delay
+            setTimeout(() => {
+              setCurrentCallStatus({ status: "idle" });
+              setCallSuccess(null);
+              setError(null);
+            }, 5000);
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to fetch call status:", error);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    setCallStatusInterval(interval);
+
+    // Stop polling after 5 minutes regardless
+    setTimeout(() => {
+      if (interval) {
+        clearInterval(interval);
+        setCallStatusInterval(null);
+        setCurrentCallStatus({ status: "idle" });
+      }
+    }, 300000);
+  };
+
+  // Helper functions
+  const mapTwilioStatusToUI = (twilioStatus: string) => {
+    switch (twilioStatus) {
+      case "queued":
+      case "initiated":
+        return "initiating";
+      case "ringing":
+        return "ringing";
+      case "in-progress":
+        return "in-progress";
+      case "completed":
+        return "completed";
+      case "busy":
+      case "failed":
+      case "no-answer":
+      case "canceled":
+        return "failed";
+      default:
+        return "idle";
+    }
+  };
+
+  const calculateCallDuration = (call: any) => {
+    if (!call.started_at) return 0;
+    const start = new Date(call.started_at);
+    const end = call.ended_at ? new Date(call.ended_at) : new Date();
+    return Math.floor((end.getTime() - start.getTime()) / 1000);
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -537,7 +717,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
               <span className="mr-2 text-sm text-gray-600">AI Assistant</span>
               <button
                 onClick={() => {
-                  console.log("AI Assistant toggle button clicked");
                   // Only toggle if we've loaded the value
                   if (aiAssistantEnabled !== null) {
                     handleToggleAiAssistant();
@@ -599,13 +778,127 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         )}
       </div>
 
+      {/* Status Messages */}
+      {error && (
+        <div className="mx-4 mt-2 bg-red-50 border-l-4 border-red-400 p-3 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      {callSuccess && (
+        <div className="mx-4 mt-2 bg-green-50 border-l-4 border-green-400 p-3 text-green-700 text-sm">
+          {callSuccess}
+        </div>
+      )}
+
+      {/* Real-time Call Status Indicator */}
+      {currentCallStatus.status !== "idle" && (
+        <div className="mx-4 mt-2 bg-blue-50 border-l-4 border-blue-400 p-3">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              {currentCallStatus.status === "initiating" && (
+                <svg
+                  className="w-5 h-5 text-blue-500 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              )}
+              {currentCallStatus.status === "ringing" && (
+                <svg
+                  className="w-5 h-5 text-blue-500 animate-pulse"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                </svg>
+              )}
+              {currentCallStatus.status === "in-progress" && (
+                <svg
+                  className="w-5 h-5 text-green-500 animate-pulse"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+              {(currentCallStatus.status === "completed" ||
+                currentCallStatus.status === "failed") && (
+                <svg
+                  className="w-5 h-5 text-gray-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+            </div>
+            <div className="ml-3 flex-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    {currentCallStatus.status === "initiating" &&
+                      "Initiating Call..."}
+                    {currentCallStatus.status === "ringing" &&
+                      "Ringing Lead..."}
+                    {currentCallStatus.status === "in-progress" &&
+                      "Call In Progress"}
+                    {currentCallStatus.status === "completed" &&
+                      "Call Completed"}
+                    {currentCallStatus.status === "failed" && "Call Failed"}
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    {currentCallStatus.callId &&
+                      `Call ID: ${currentCallStatus.callId}`}
+                    {currentCallStatus.status === "in-progress" &&
+                      currentCallStatus.duration !== undefined &&
+                      ` • Duration: ${formatDuration(
+                        currentCallStatus.duration
+                      )}`}
+                  </p>
+                </div>
+                {currentCallStatus.status === "in-progress" && (
+                  <div className="flex items-center">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                    <span className="text-xs text-green-600 font-medium">
+                      LIVE
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className="flex-1 overflow-y-auto flex flex-col message-thread-container"
         id="message-container"
       >
-        {/* Messages container */}
+        {/* Communications container */}
         <div className="flex-1">
-          <MessageList messages={messages} />
+          <CommunicationList items={communicationItems} />
         </div>
       </div>
 
@@ -619,7 +912,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
           <div className="flex space-x-1">
             <button
               onClick={() => {
-                console.log("Appointments button clicked");
                 setShowAppointmentModal(true);
               }}
               className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
@@ -640,7 +932,6 @@ const MessageThread: React.FC<MessageThreadProps> = ({
             </button>
             <button
               onClick={() => {
-                console.log("Search Criteria button clicked");
                 setShowSearchCriteriaModal(true);
               }}
               className="px-2 py-1 text-xs border border-gray-200 bg-white text-gray-600 rounded flex items-center"
@@ -658,6 +949,58 @@ const MessageThread: React.FC<MessageThreadProps> = ({
                 />
               </svg>
               Search Criteria
+            </button>
+            <button
+              onClick={handleInitiateCall}
+              disabled={isInitiatingCall || currentCallStatus.status !== "idle"}
+              className={`px-2 py-1 text-xs border rounded flex items-center transition-all ${
+                currentCallStatus.status === "in-progress"
+                  ? "border-green-400 bg-green-100 text-green-800 animate-pulse"
+                  : currentCallStatus.status === "ringing"
+                  ? "border-blue-400 bg-blue-100 text-blue-800 animate-pulse"
+                  : currentCallStatus.status === "initiating" ||
+                    isInitiatingCall
+                  ? "border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+              }`}
+              type="button"
+            >
+              {currentCallStatus.status === "initiating" || isInitiatingCall ? (
+                <svg
+                  className="w-3 h-3 mr-1 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+              ) : (
+                <svg
+                  className="w-3 h-3 mr-1"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                </svg>
+              )}
+              {currentCallStatus.status === "initiating" || isInitiatingCall
+                ? "Calling..."
+                : currentCallStatus.status === "ringing"
+                ? "Ringing..."
+                : currentCallStatus.status === "in-progress"
+                ? "In Call"
+                : "Call Lead"}
             </button>
           </div>
         </div>
@@ -697,7 +1040,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         isOpen={showAppointmentModal}
         onClose={() => setShowAppointmentModal(false)}
         onSuccess={() => {
-          setAppointmentSuccess("Appointment scheduled successfully!");
+          // Appointment scheduled successfully
         }}
       />
 

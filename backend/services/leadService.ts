@@ -15,7 +15,7 @@ export enum LeadStatus {
 // Define lead limits for different subscription plans
 const LEAD_LIMITS = {
   FREE: 10,
-  PREMIUM: 100,
+  PRO: 1000,
   UNLIMITED: Infinity,
 };
 

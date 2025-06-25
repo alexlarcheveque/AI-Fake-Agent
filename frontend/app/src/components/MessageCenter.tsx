@@ -4,7 +4,7 @@ import leadApi from "../api/leadApi";
 import { useSearchParams } from "react-router-dom";
 import { LeadRow } from "../../../../backend/models/Lead";
 
-const MessagesCenter: React.FC = () => {
+const MessageCenter: React.FC = () => {
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,12 +135,11 @@ const MessagesCenter: React.FC = () => {
                     <button
                       key={lead.id}
                       onClick={() => setSelectedLeadId(Number(lead.id))}
-                      className={`w-full p-3 text-left rounded-lg transition-colors
-                        ${
-                          selectedLeadId === Number(lead.id)
-                            ? "bg-blue-100 text-blue-800"
-                            : "hover:bg-gray-100"
-                        }`}
+                      className={`w-full p-3 text-left rounded-lg transition-colors ${
+                        selectedLeadId === Number(lead.id)
+                          ? "bg-blue-100 text-blue-800"
+                          : "hover:bg-gray-100"
+                      }`}
                     >
                       <div className="font-medium flex items-center gap-2">
                         {lead.name}
@@ -198,4 +197,4 @@ const MessagesCenter: React.FC = () => {
   );
 };
 
-export default MessagesCenter;
+export default MessageCenter;

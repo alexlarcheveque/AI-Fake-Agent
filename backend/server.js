@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import http from "http";
@@ -10,6 +11,9 @@ import userSettingsRoutes from "./routes/userSettingsRoutes.ts";
 import appointmentRoutes from "./routes/appointmentRoutes.ts";
 import notificationRoutes from "./routes/notificationRoutes.ts";
 import searchCriteriaRoutes from "./routes/searchCriteriaRoutes.ts";
+import subscriptionRoutes from "./routes/subscriptionRoutes.ts";
+import callRoutes from "./routes/callRoutes.ts";
+import conversationalCallRoutes from "./routes/conversationalCallRoutes.ts";
 
 // Services
 import "./services/cronService";
@@ -66,6 +70,9 @@ app.use("/api/user-settings", userSettingsRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/search-criteria", searchCriteriaRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/calls", callRoutes);
+app.use("/api/calls", conversationalCallRoutes);
 
 // ===== Server Initialization =====
 const server = http.createServer(app);

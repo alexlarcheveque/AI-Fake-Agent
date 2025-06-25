@@ -56,8 +56,7 @@ export const generateResponse = async (leadId: number): Promise<string> => {
       currentDayName
     );
 
-    console.log("system prompt", systemPrompt);
-    console.log("message history", messageHistory);
+    logger.info("Generating AI response for lead");
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",

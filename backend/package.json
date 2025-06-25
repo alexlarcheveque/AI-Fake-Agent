@@ -8,9 +8,11 @@
     "start": "tsx server.js",
     "dev": "tsx server.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "update-types": "npx supabase gen types typescript --project-id sqdzarxuyhirqexynlgb --schema public > database.types.ts"
+    "update-types": "npx supabase gen types typescript --project-id sqdzarxuyhirqexynlgb --schema public > database.types.ts",
+    "ngrok": "ngrok http --url=wanted-husky-scarcely.ngrok-free.app 3000"
   },
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.4.0",
     "@sentry/node": "^9.18.0",
     "@supabase/supabase-js": "^2.49.4",
     "@types/jsonwebtoken": "^9.0.9",
@@ -29,12 +31,13 @@
     "multer": "^1.4.5-lts.2",
     "node-cron": "^3.0.0",
     "nodemailer": "^6.10.0",
-    "openai": "^4.83.0",
+    "openai": "^4.104.0",
     "pg": "^8.13.1",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.5",
     "sequelize-cli": "^6.6.2",
     "socket.io": "^4.8.1",
+    "stripe": "^18.2.1",
     "twilio": "^5.4.3",
     "winston": "^3.17.0"
   },

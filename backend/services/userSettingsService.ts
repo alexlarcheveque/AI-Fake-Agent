@@ -113,6 +113,10 @@ export const updateUserSettings = async (
       follow_up_interval_in_converesation:
         updatedSettings.follow_up_interval_in_converesation,
       follow_up_interval_inactive: updatedSettings.follow_up_interval_inactive,
+      subscription_plan: updatedSettings.subscription_plan,
+      stripe_customer_id: updatedSettings.stripe_customer_id,
+      stripe_subscription_id: updatedSettings.stripe_subscription_id,
+      subscription_status: updatedSettings.subscription_status,
     };
     logger.info(`Settings to update: ${JSON.stringify(settingsToInsert)}`);
 

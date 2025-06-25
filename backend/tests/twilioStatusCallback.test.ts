@@ -27,8 +27,8 @@ describe("Twilio Status Callback", () => {
       text: testMessage,
       sender: "agent",
       delivery_status: "sending",
-      created_at: new Date(),
-      updated_at: new Date(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     console.log("Created message record:", messageRecord);
@@ -42,7 +42,7 @@ describe("Twilio Status Callback", () => {
     await supabase
       .from("messages")
       .update({ twilio_sid: twilioMessage.sid })
-      .eq("id", messageRecord.id);
+      .eq("id", messageRecord[0]?.id);
 
     // 4. Wait for status updates (give it more time for delivery)
     console.log("Waiting for status updates...");
