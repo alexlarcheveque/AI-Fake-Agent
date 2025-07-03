@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { MessageRow } from "../../../../backend/models/Message";
-import { Call, CallRecording } from "../api/callApi";
+import { Call, CallRecording, getCallRecording } from "../api/callApi";
+import { CallRecordingPlayer } from "./CallRecordingPlayer";
+import { User, Bot } from "lucide-react";
 
 interface CommunicationItem {
   id: string;
@@ -14,26 +16,75 @@ interface CommunicationListProps {
 }
 
 // Helper functions for call display
-const formatCallDuration = (duration: number | null): string => {
-  if (!duration) return "0:00";
+const formatCallDuration = (duration: number | null, call?: Call): string => {
+  if (!duration) {
+    // For completed calls without duration, show a placeholder
+    if (call && call.status === "completed") {
+      return "Connected";
+    }
+    return "0:00";
+  }
 
   const minutes = Math.floor(duration / 60);
   const seconds = duration % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 };
 
-const formatCallDateTime = (startedAt: string | null): string => {
+const formatCallDateTime = (
+  startedAt: string | null,
+  recording?: CallRecording | null
+): string => {
+  // Try to extract actual call time from transcript and use correct date from database
+  if (recording?.transcription && startedAt) {
+    const timestampMatch = recording.transcription.match(
+      /\[(\d{1,2}:\d{2}:\d{2}\s*[AP]M)\]/
+    );
+    if (timestampMatch) {
+      const timeStr = timestampMatch[1];
+      // Parse the UTC date from database and convert to local
+      const dbDate = new Date(startedAt + (startedAt.includes("Z") ? "" : "Z")); // Ensure UTC parsing
+      const [time, period] = timeStr.split(/\s+/);
+      const [hours, minutes, seconds] = time.split(":").map(Number);
+
+      // Convert to 24-hour format
+      let hour24 = hours;
+      if (period === "PM" && hours !== 12) hour24 += 12;
+      if (period === "AM" && hours === 12) hour24 = 0;
+
+      // Create local date with database date but transcript time (in local timezone)
+      const correctedDate = new Date(
+        dbDate.getFullYear(),
+        dbDate.getMonth(),
+        dbDate.getDate(),
+        hour24,
+        minutes,
+        seconds
+      );
+
+      return correctedDate.toLocaleString("en-US", {
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
+    }
+  }
+
+  // Fallback to database timestamp - properly convert from UTC
   if (!startedAt) return "";
 
-  const date = new Date(startedAt);
-  return (
-    date.toLocaleDateString() +
-    " " +
-    date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  );
+  // Ensure we're parsing as UTC and converting to local time
+  const utcDate = new Date(startedAt + (startedAt.includes("Z") ? "" : "Z"));
+  return utcDate.toLocaleString("en-US", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 };
 
 const getCallStatusColor = (status: string): string => {
@@ -86,29 +137,39 @@ const getSentimentColor = (sentimentScore: number | null): string => {
 
 // Call Item Component
 const CallItem: React.FC<{ call: Call }> = ({ call }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
-    null
-  );
+  const [recording, setRecording] = useState<CallRecording | null>(null);
+  const [loadingRecording, setLoadingRecording] = useState(false);
 
-  const handlePlayRecording = (recordingUrl: string) => {
-    if (isPlaying && audioElement) {
-      audioElement.pause();
-      setIsPlaying(false);
-      return;
-    }
+  useEffect(() => {
+    // Try to load recording data for this call
+    const fetchRecording = async () => {
+      if (call.status === "completed" && !recording && !loadingRecording) {
+        setLoadingRecording(true);
+        try {
+          console.log(`🔍 Fetching recording for call ${call.id}...`);
+          const callRecording = await getCallRecording(call.id);
+          console.log(
+            `📝 Recording result for call ${call.id}:`,
+            callRecording
+          );
+          if (callRecording) {
+            setRecording(callRecording);
+          }
+        } catch (error) {
+          console.error(
+            `❌ Error fetching recording for call ${call.id}:`,
+            error
+          );
+        } finally {
+          setLoadingRecording(false);
+        }
+      }
+    };
 
-    const audio = new Audio(recordingUrl);
-    audio.onplay = () => setIsPlaying(true);
-    audio.onpause = () => setIsPlaying(false);
-    audio.onended = () => setIsPlaying(false);
+    fetchRecording();
+  }, [call.id, call.status]);
 
-    setAudioElement(audio);
-    audio.play();
-  };
-
-  const hasRecording = call.recordings && call.recordings.length > 0;
-  const recording = hasRecording ? call.recordings![0] : null;
+  // Remove old recording logic - now handled by state
 
   return (
     <div className="flex items-start space-x-3 p-4 hover:bg-gray-50">
@@ -132,96 +193,85 @@ const CallItem: React.FC<{ call: Call }> = ({ call }) => {
             <h4 className="text-sm font-medium text-gray-900">
               {call.direction === "outbound" ? "Outbound Call" : "Inbound Call"}
             </h4>
+            {/* Call Mode Indicator */}
+            {call.call_mode && (
+              <div className="flex items-center space-x-1 px-2 py-1 rounded-full bg-gray-100">
+                {call.call_mode === "manual" ? (
+                  <>
+                    <User className="h-3 w-3 text-blue-600" />
+                    <span className="text-xs font-medium text-blue-600">
+                      Manual
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Bot className="h-3 w-3 text-purple-600" />
+                    <span className="text-xs font-medium text-purple-600">
+                      AI
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
             <span
               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCallStatusColor(
                 call.status!
               )}`}
             >
-              {call.status}
-            </span>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-              {getCallTypeLabel(call.call_type)}
+              {call.status === "completed" ? "✅ Completed" : call.status}
             </span>
           </div>
           <span className="text-xs text-gray-500">
-            {formatCallDateTime(call.started_at)}
+            {formatCallDateTime(call.started_at, recording)}
           </span>
         </div>
 
-        {/* Call Details */}
-        <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
-          <span>Duration: {formatCallDuration(call.duration)}</span>
-          {call.attempt_number > 1 && (
-            <span>Attempt #{call.attempt_number}</span>
-          )}
-          {call.is_voicemail && (
-            <span className="text-orange-600">Voicemail</span>
-          )}
-        </div>
-
-        {/* AI Summary */}
-        {call.ai_summary && (
-          <div className="mt-2 p-2 bg-blue-50 rounded-md">
-            <p className="text-sm text-gray-700">{call.ai_summary}</p>
+        {/* Call Status Details */}
+        {(call.status === "no-answer" || call.status === "busy") && (
+          <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
+            {call.status === "no-answer" && (
+              <span className="text-orange-600">No Answer</span>
+            )}
+            {call.status === "busy" && (
+              <span className="text-orange-600">Busy</span>
+            )}
           </div>
         )}
 
-        {/* Sentiment Score */}
-        {call.sentiment_score !== null && (
-          <div className="mt-2 flex items-center space-x-2">
-            <span className="text-xs text-gray-500">Sentiment:</span>
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getSentimentColor(
-                call.sentiment_score
-              )}`}
-            >
-              {getSentimentLabel(call.sentiment_score)}
-            </span>
-          </div>
-        )}
+        {/* Recording and Highlights - Show for completed calls */}
+        {call.status === "completed" && (
+          <div className="mt-3 space-y-2">
+            {/* Full Recording Player - Show if we have recording OR transcript */}
+            {(recording?.recording_url || recording?.transcription) && (
+              <div className="mt-2">
+                <CallRecordingPlayer
+                  recording={recording}
+                  call={call}
+                  callSummary={
+                    call.ai_summary ||
+                    "Recording analysis could not be processed."
+                  }
+                  sentimentScore={call.sentiment_score || undefined}
+                  showTranscript={true}
+                />
+              </div>
+            )}
 
-        {/* Recording Playback */}
-        {hasRecording && recording?.recording_url && (
-          <div className="mt-3 flex items-center space-x-2">
-            <button
-              onClick={() => handlePlayRecording(recording.recording_url!)}
-              className="inline-flex items-center px-3 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              {isPlaying ? (
-                <>
-                  <svg
-                    className="w-3 h-3 mr-1"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  Pause
-                </>
-              ) : (
-                <>
-                  <svg
-                    className="w-3 h-3 mr-1"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  Play Recording
-                </>
-              )}
-            </button>
-            <span className="text-xs text-gray-500">
-              Duration: {formatCallDuration(recording.duration)}
-            </span>
+            {/* Loading State */}
+            {loadingRecording && (
+              <div className="p-2 bg-gray-50 rounded">
+                <p className="text-xs text-gray-500">Loading recording...</p>
+              </div>
+            )}
+
+            {/* No Recording Available */}
+            {!recording && !loadingRecording && (
+              <div className="p-2 bg-gray-50 rounded">
+                <p className="text-xs text-gray-500">
+                  No recording or transcript available for this call.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -231,22 +281,23 @@ const CallItem: React.FC<{ call: Call }> = ({ call }) => {
 
 // Message Item Component
 const MessageItem: React.FC<{ message: MessageRow }> = ({ message }) => {
-  const isFromUser = message.sender === "user";
+  const isFromAgent = message.sender === "agent";
+  const isFromLead = message.sender === "lead";
   const isScheduled = message.delivery_status === "scheduled";
   const isAiGenerated = message.is_ai_generated;
 
   return (
     <div
-      className={`flex ${isFromUser ? "justify-end" : "justify-start"} mb-4`}
+      className={`flex ${isFromAgent ? "justify-end" : "justify-start"} mb-4`}
     >
       <div
         className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-          isFromUser
-            ? "bg-blue-500 text-white"
-            : isScheduled
-            ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
-            : isAiGenerated
-            ? "bg-green-100 text-green-800 border border-green-200"
+          isFromAgent
+            ? isScheduled
+              ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+              : isAiGenerated
+              ? "bg-green-100 text-green-800 border border-green-200"
+              : "bg-blue-500 text-white"
             : "bg-gray-100 text-gray-800"
         }`}
       >
@@ -254,7 +305,14 @@ const MessageItem: React.FC<{ message: MessageRow }> = ({ message }) => {
         <div className="flex items-center justify-between mt-2">
           <p className="text-xs opacity-75">
             {message.created_at &&
-              new Date(message.created_at).toLocaleString()}
+              new Date(message.created_at).toLocaleString("en-US", {
+                year: "numeric",
+                month: "numeric",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                timeZoneName: "short",
+              })}
           </p>
           {isScheduled && (
             <span className="text-xs font-medium">Scheduled</span>

@@ -4,6 +4,8 @@ import MessageCalendar from "./MessageCalendar";
 import leadApi, { LeadLimitInfo } from "../api/leadApi";
 import messageApi from "../api/messageApi";
 import appointmentApi from "../api/appointmentApi";
+import { useNotifications } from "../contexts/NotificationContext";
+import { format, isToday, isTomorrow } from "date-fns";
 
 const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -17,6 +19,18 @@ const Dashboard: React.FC = () => {
   );
 
   const navigate = useNavigate();
+  const { notifications } = useNotifications();
+
+  // Filter notifications for upcoming activities
+  const upcomingActivities = notifications
+    .filter(
+      (notification) =>
+        notification.type === "scheduled_message" ||
+        notification.type === "upcoming_message" ||
+        notification.type === "call_scheduled" ||
+        notification.type === "upcoming_call"
+    )
+    .slice(0, 5); // Show only the 5 most recent
 
   useEffect(() => {
     const fetchDashboardData = async () => {

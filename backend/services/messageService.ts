@@ -92,6 +92,8 @@ export const getNextScheduledMessageForLead = async (
     .from("messages")
     .select("*")
     .eq("lead_id", leadId)
+    .eq("delivery_status", "scheduled")
+    .gt("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true })
     .limit(1)
     .maybeSingle();

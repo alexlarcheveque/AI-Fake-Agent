@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import cookieParser from "cookie-parser";
+import expressWs from "express-ws";
 
 // Routes
 import leadRoutes from "./routes/leadRoutes.ts";
@@ -13,13 +14,18 @@ import notificationRoutes from "./routes/notificationRoutes.ts";
 import searchCriteriaRoutes from "./routes/searchCriteriaRoutes.ts";
 import subscriptionRoutes from "./routes/subscriptionRoutes.ts";
 import callRoutes from "./routes/callRoutes.ts";
-import conversationalCallRoutes from "./routes/conversationalCallRoutes.ts";
+import recordingRoutes from "./routes/recordingRoutes.ts";
 
 // Services
 import "./services/cronService";
 
 // Initialize Express app
 const app = express();
+const server = http.createServer(app);
+
+// Enable WebSocket support
+expressWs(app, server);
+
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 
@@ -48,6 +54,21 @@ app.use(
     credentials: true,
   })
 );
+
+// Debug middleware to log requests before body parsing
+app.use((req, res, next) => {
+  if (req.path.includes("/calls/leads/") && req.method === "POST") {
+    console.log("Request debug:", {
+      method: req.method,
+      path: req.path,
+      headers: req.headers,
+      contentType: req.headers["content-type"],
+      contentLength: req.headers["content-length"],
+    });
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -71,11 +92,10 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/search-criteria", searchCriteriaRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
-app.use("/api/calls", callRoutes);
-app.use("/api/calls", conversationalCallRoutes);
+app.use("/api/voice", callRoutes);
+app.use("/api/recordings", recordingRoutes);
 
 // ===== Server Initialization =====
-const server = http.createServer(app);
 
 // Initialize and start server
 const initializeApp = async () => {
@@ -87,9 +107,6 @@ const initializeApp = async () => {
     server.listen(PORT, HOST, () => {
       console.log(`Server is running on ${HOST}:${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
-      // Check what interfaces we're actually listening on
-      const addressInfo = server.address();
-      console.log(`Server address info:`, addressInfo);
     });
   } catch (error) {
     console.error("Error initializing application:", error);

@@ -3,7 +3,6 @@ import logger from "../utils/logger.ts";
 import { getMessagesThatAreOverdue } from "./messageService.ts";
 import { craftAndSendMessage } from "./orchestrator/messagingOrchestrator.ts";
 import { scheduleNextFollowUp } from "./leadService.ts";
-import voiceCallingOrchestrator from "./voiceCallingOrchestrator.ts";
 
 // Maximum number of messages to process in a single cron job run
 const MAX_MESSAGES_PER_BATCH = 5;
@@ -65,30 +64,5 @@ cron.schedule("*/20 * * * * *", async () => {
   }
 });
 
-// Voice Calling Cron Jobs
-
-// Process new leads for voice calling - runs every 30 minutes
-cron.schedule("*/30 * * * *", async () => {
-  try {
-    logger.info("Running new leads voice calling cron job...");
-    await voiceCallingOrchestrator.processNewLeads();
-    logger.info("New leads voice calling cron job completed");
-  } catch (error) {
-    logger.error("Error in new leads voice calling cron job:", error);
-  }
-});
-
-// Process inactive leads for reactivation calls - runs daily at 10 AM
-cron.schedule("0 10 * * *", async () => {
-  try {
-    logger.info(
-      "Running inactive leads reactivation voice calling cron job..."
-    );
-    await voiceCallingOrchestrator.processInactiveLeads();
-    logger.info("Inactive leads reactivation voice calling cron job completed");
-  } catch (error) {
-    logger.error("Error in inactive leads voice calling cron job:", error);
-  }
-});
-
-logger.info("Voice calling cron jobs initialized");
+// Voice calling now uses WebRTC + OpenAI Realtime - no cron jobs needed
+logger.info("Message scheduling cron job initialized");

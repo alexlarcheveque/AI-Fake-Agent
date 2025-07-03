@@ -88,6 +88,7 @@ export default function NotificationsPage() {
           </div>
         );
       case "message":
+      case "message_sent":
         return (
           <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
             <svg
@@ -101,6 +102,25 @@ export default function NotificationsPage() {
                 strokeLinejoin="round"
                 strokeWidth={2}
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              />
+            </svg>
+          </div>
+        );
+      case "scheduled_message":
+      case "upcoming_message":
+        return (
+          <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center">
+            <svg
+              className="h-5 w-5 text-orange-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
           </div>
@@ -137,6 +157,25 @@ export default function NotificationsPage() {
                 strokeLinejoin="round"
                 strokeWidth={2}
                 d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+              />
+            </svg>
+          </div>
+        );
+      case "call_scheduled":
+      case "upcoming_call":
+        return (
+          <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center">
+            <svg
+              className="h-5 w-5 text-indigo-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
               />
             </svg>
           </div>

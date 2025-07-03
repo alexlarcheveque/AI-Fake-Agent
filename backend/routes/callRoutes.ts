@@ -1,27 +1,72 @@
 import express from "express";
-import callController from "../controllers/callController.ts";
-import protect from "../middleware/authMiddleware.ts";
+import expressWs from "express-ws";
+import {
+  handleIncomingCall,
+  handleRealtimeWebSocket,
+  initiateCall,
+  initiateAICall,
+  getCallsForLead,
+  debugAndFixCalls,
+  testLeadLookup,
+  testCallInsert,
+  generateAccessToken,
+  handleCallStatusCallback,
+} from "../controllers/callController.ts";
 
 const router = express.Router();
 
-// Webhook routes (no authentication required - Twilio webhooks)
-router.post("/voice-webhook", callController.voiceWebhook);
-router.post("/status-callback", callController.statusCallback);
-router.post("/recording-callback", callController.recordingCallback);
-router.post("/gather-response", callController.gatherResponse);
-router.get("/audio/:filename", callController.serveAudio);
+// Enable WebSocket on this router
+const wsRouter = expressWs(router).app;
 
-// Public testing routes (no auth required)
-router.get("/voices", callController.getAvailableVoices);
-router.post("/voices/test", callController.testVoice);
+/**
+ * Twilio webhook for incoming calls
+ * ALL calls now use WebRTC + Realtime AI
+ */
+router.post("/incoming", handleIncomingCall);
 
-// Apply protect middleware to all remaining routes
-router.use(protect);
+/**
+ * Twilio webhook for call status updates
+ */
+router.post("/status-callback", handleCallStatusCallback);
 
-// Authenticated routes (require user login)
-router.post("/leads/:leadId/call", callController.initiateCall);
-router.get("/leads/:leadId", callController.getCallsForLead);
-router.get("/stats", callController.getCallingStats);
-router.get("/recordings/:recordingId", callController.getCallRecording);
+/**
+ * Initiate a direct AI call to a lead (no WebRTC)
+ */
+router.post("/initiate-ai", initiateAICall);
+
+/**
+ * Initiate an outbound call to a lead using WebRTC (manual call)
+ */
+router.post("/initiate", initiateCall);
+
+/**
+ * Get calls for a specific lead
+ */
+router.get("/lead/:leadId", getCallsForLead);
+
+/**
+ * Debug and fix calls for a specific lead
+ */
+router.post("/debug/:leadId", debugAndFixCalls);
+
+/**
+ * Test endpoint to check if a lead exists
+ */
+router.get("/test-lead/:leadId", testLeadLookup);
+
+/**
+ * Test endpoint to create a call record
+ */
+router.post("/test-call", testCallInsert);
+
+/**
+ * Generate Twilio access token for WebRTC calling
+ */
+router.post("/token", generateAccessToken);
+
+/**
+ * WebSocket endpoint for Realtime voice calls
+ */
+wsRouter.ws("/realtime", handleRealtimeWebSocket);
 
 export default router;

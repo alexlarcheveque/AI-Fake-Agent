@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "npm run build:landing && npm run build:app",
-    "build:landing": "cd frontend/landing && npm install && npm run build",
-    "build:app": "cd frontend/app && npm install && npm run build"
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:ngrok\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend/app && npm run dev",
+    "dev:ngrok": "ngrok http --url=wanted-husky-scarcely.ngrok-free.app 3000",
+    "start": "npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend/app && npm run build",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend/app && npm install"
   },
   "workspaces": [
     "frontend/landing",
@@ -15,6 +21,7 @@
   "devDependencies": {
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.35",
-    "tailwindcss": "^3.4.1"
+    "tailwindcss": "^3.4.1",
+    "concurrently": "^8.2.2"
   }
 }
