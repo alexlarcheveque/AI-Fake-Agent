@@ -1,68 +1,105 @@
 import cron from "node-cron";
 import logger from "../utils/logger.ts";
 import { getMessagesThatAreOverdue } from "./messageService.ts";
+import { getScheduledCallsThatAreOverdue, updateCall } from "./callService.ts";
 import { craftAndSendMessage } from "./orchestrator/messagingOrchestrator.ts";
 import { scheduleNextFollowUp } from "./leadService.ts";
+import { processExpiredGracePeriods } from "./subscriptionDowngradeService.ts";
+import { initiateAICall } from "../controllers/callController.ts";
 
 // Maximum number of messages to process in a single cron job run
 const MAX_MESSAGES_PER_BATCH = 5;
+const MAX_CALLS_PER_BATCH = 3;
 
-// Runs every 20 seconds
+// Process scheduled messages and calls every 20 seconds
 cron.schedule("*/20 * * * * *", async () => {
   try {
-    const overdueMessages = await getMessagesThatAreOverdue();
+    // Process scheduled calls first (follow-up calls, not immediate Call #2)
+    // Call #2 for new leads is now handled immediately via webhooks
+    const allOverdueCalls = await getScheduledCallsThatAreOverdue();
+    const overdueCalls = allOverdueCalls.slice(0, MAX_CALLS_PER_BATCH);
 
-    if (overdueMessages.length === 0) {
-      return;
-    }
+    if (overdueCalls.length > 0) {
+      logger.info(`Processing ${overdueCalls.length} scheduled calls`);
 
-    logger.info(
-      `Found ${overdueMessages.length} overdue messages, processing up to ${MAX_MESSAGES_PER_BATCH}`
-    );
-
-    // Take up to MAX_MESSAGES_PER_BATCH messages to process
-    const messagesToProcess = overdueMessages.slice(0, MAX_MESSAGES_PER_BATCH);
-
-    // Process each message
-    for (const message of messagesToProcess) {
-      try {
-        logger.info(
-          `Processing message ${message.id} for lead ${message.lead_id}`
-        );
-
-        await craftAndSendMessage(message.id, message.lead_id);
-        logger.info(`Successfully processed message ${message.id}`);
-
-        // Schedule the next follow-up after successfully sending a message
+      for (const call of overdueCalls) {
         try {
-          await scheduleNextFollowUp(message.lead_id);
-          logger.info(`Scheduled next follow-up for lead ${message.lead_id}`);
-        } catch (followUpError) {
-          logger.error(
-            `Error scheduling follow-up for lead ${message.lead_id}:`,
-            followUpError
+          // Skip new lead Call #2 - these are handled immediately via webhook
+          if (call.call_type === "new_lead" && call.attempt_number === 2) {
+            logger.info(
+              `Skipping new lead Call #2 (handled by webhook): ${call.id}`
+            );
+            continue;
+          }
+
+          logger.info(
+            `Processing scheduled call ${call.id} for lead ${call.lead_id}`
           );
-          // Don't throw to continue processing other messages
+
+          // Update call status to queued
+          await updateCall(call.id, {
+            status: "queued",
+            updated_at: new Date().toISOString(),
+          });
+
+          // Initiate the call
+          const mockReq = {
+            body: { leadId: call.lead_id },
+          } as any;
+
+          await initiateAICall(mockReq, null as any);
+
+          logger.info(`Successfully initiated scheduled call ${call.id}`);
+        } catch (error) {
+          logger.error(`Error processing call ${call.id}:`, error);
+
+          // Mark call as failed
+          await updateCall(call.id, {
+            status: "failed",
+            updated_at: new Date().toISOString(),
+          });
         }
-      } catch (error) {
-        logger.error(`Error processing message ${message.id}:`, error);
-        // Continue processing other messages
       }
     }
 
-    // Log remaining messages if any
-    if (overdueMessages.length > MAX_MESSAGES_PER_BATCH) {
-      logger.info(
-        `${
-          overdueMessages.length - MAX_MESSAGES_PER_BATCH
-        } messages still waiting to be processed in next cron job run`
-      );
+    // Process scheduled messages (including call fallback messages)
+    const allOverdueMessages = await getMessagesThatAreOverdue();
+    const overdueMessages = allOverdueMessages.slice(0, MAX_MESSAGES_PER_BATCH);
+
+    if (overdueMessages.length > 0) {
+      logger.info(`Processing ${overdueMessages.length} scheduled messages`);
+
+      for (const message of overdueMessages) {
+        try {
+          logger.info(
+            `Processing message ${message.id} for lead ${message.lead_id}`
+          );
+          await craftAndSendMessage(message.id, message.lead_id);
+          await scheduleNextFollowUp(message.lead_id);
+        } catch (error) {
+          logger.error(`Error processing message ${message.id}:`, error);
+        }
+      }
+    }
+
+    if (overdueCalls.length === 0 && overdueMessages.length === 0) {
+      logger.debug("No overdue calls or messages to process");
     }
   } catch (error) {
-    // This catches errors in fetching the messages or other job-level errors
-    logger.error("Error in scheduled message cron job:", error);
+    logger.error("Error in cron job processing:", error);
   }
 });
 
-// Voice calling now uses WebRTC + OpenAI Realtime - no cron jobs needed
-logger.info("Message scheduling cron job initialized");
+// Process subscription downgrades every hour
+cron.schedule("0 * * * *", async () => {
+  try {
+    logger.info("Processing expired grace periods for subscription downgrades");
+    await processExpiredGracePeriods();
+  } catch (error) {
+    logger.error("Error processing subscription downgrades:", error);
+  }
+});
+
+export { cron };
+
+logger.info("Call and message scheduling cron jobs initialized");

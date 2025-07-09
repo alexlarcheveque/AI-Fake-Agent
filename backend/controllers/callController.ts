@@ -1,7 +1,21 @@
 import { Request, Response } from "express";
 import twilio from "twilio";
 import { realtimeVoiceService } from "../services/realtimeVoiceService.ts";
+import { calculateLeadScores } from "../services/leadScoringService.ts";
 import { createClient } from "@supabase/supabase-js";
+import { handleCallCompletion } from "../services/callService.ts";
+import fs from "fs";
+import path from "path";
+const { VoiceResponse } = twilio.twiml;
+
+// Extend Request interface to include user property
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+    email?: string;
+    [key: string]: any;
+  };
+}
 
 const { AccessToken } = twilio.jwt;
 
@@ -296,117 +310,172 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
 };
 
 /**
- * Initiate a direct AI call to a lead (no WebRTC)
+ * Initiate an AI-powered call to a lead
  */
 export const initiateAICall = async (req: Request, res: Response) => {
   try {
-    const { leadId } = req.body;
+    const { leadId, isVoicemailCall = false } = req.body;
 
     if (!leadId) {
-      return res.status(400).json({ error: "Lead ID is required" });
+      const message = "Lead ID is required";
+      console.error(`❌ ${message}`);
+      if (res) return res.status(400).json({ error: message });
+      return;
     }
+
+    console.log(
+      `📞 Initiating AI call for lead ${leadId}${
+        isVoicemailCall ? " (voicemail)" : ""
+      }`
+    );
 
     // Get lead information
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("id, name, phone_number, email")
+      .select("*")
       .eq("id", leadId)
       .single();
 
     if (leadError || !lead) {
-      return res
-        .status(404)
-        .json({ error: "Lead not found", details: leadError });
+      const message = `Lead ${leadId} not found`;
+      console.error(`❌ ${message}:`, leadError);
+      if (res) return res.status(404).json({ error: message });
+      return;
     }
 
     if (!lead.phone_number) {
-      return res.status(400).json({ error: "Lead has no phone number" });
+      const message = `Lead ${leadId} has no phone number`;
+      console.error(`❌ ${message}`);
+      if (res) return res.status(400).json({ error: message });
+      return;
     }
 
-    const callData = {
-      lead_id: leadId,
-      direction: "outbound",
-      status: "queued",
-      to_number: lead.phone_number.toString(),
-      from_number: process.env.TWILIO_PHONE_NUMBER!,
-      call_type: "follow_up",
-      call_mode: "ai", // AI calls
-      attempt_number: 1,
-      is_voicemail: false,
-    };
+    console.log(`📞 Found lead: ${lead.name} (${lead.phone_number})`);
 
-    // Create call record
-    const { data: call, error: callError } = await supabase
-      .from("calls")
-      .insert(callData)
-      .select()
-      .single();
+    // Create or find the call record
+    let callRecord = null;
 
-    if (callError) {
-      console.error("Error creating call record:", callError);
-      return res
-        .status(500)
-        .json({ error: "Failed to create call record", details: callError });
+    if (isVoicemailCall) {
+      // For voicemail calls, find the most recent call record for this lead
+      const { data: recentCall } = await supabase
+        .from("calls")
+        .select("*")
+        .eq("lead_id", leadId)
+        .eq("is_voicemail", true)
+        .eq("status", "queued")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      callRecord = recentCall;
+    } else {
+      // For regular calls, find the most recent scheduled call
+      const { data: scheduledCall } = await supabase
+        .from("calls")
+        .select("*")
+        .eq("lead_id", leadId)
+        .eq("status", "queued")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      callRecord = scheduledCall;
     }
 
-    // Make direct outbound call using Twilio REST API (no WebRTC)
-    const twilioClient = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
+    if (!callRecord) {
+      console.log(`⚠️ No call record found for lead ${leadId}, creating one`);
 
-    const ngrokUrl =
-      process.env.NGROK_URL || "wanted-husky-scarcely.ngrok-free.app";
-    const webhookUrl = `https://${ngrokUrl}/api/voice/incoming?callId=${call.id}`;
+      const { data: newCall } = await supabase
+        .from("calls")
+        .insert({
+          lead_id: leadId,
+          direction: "outbound",
+          status: "queued",
+          to_number: lead.phone_number,
+          from_number: process.env.TWILIO_PHONE_NUMBER,
+          call_type: "new_lead",
+          call_mode: "ai",
+          attempt_number: isVoicemailCall ? 3 : 1,
+          is_voicemail: isVoicemailCall,
+          scheduled_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    const twilioCall = await twilioClient.calls.create({
+      callRecord = newCall;
+    }
+
+    // Initialize Twilio call with appropriate configuration
+    const twilioConfig = {
       to: lead.phone_number,
       from: process.env.TWILIO_PHONE_NUMBER,
-      url: webhookUrl,
-      method: "POST",
-      record: true,
-      recordingStatusCallback: `https://${ngrokUrl}/api/recordings/callback`,
-      recordingStatusCallbackMethod: "POST",
-      statusCallback: `https://${ngrokUrl}/api/voice/status-callback`,
+      // Use different endpoints for voicemail vs conversation calls
+      url: isVoicemailCall
+        ? `${process.env.BASE_URL}/api/calls/voice-voicemail/${leadId}`
+        : `${process.env.BASE_URL}/api/calls/voice/${leadId}`,
+      statusCallback: `${process.env.BASE_URL}/api/calls/status`,
+      statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
       statusCallbackMethod: "POST",
-      statusCallbackEvent: [
-        "initiated",
-        "ringing",
-        "answered",
-        "completed",
-        "busy",
-        "failed",
-        "no-answer",
-        "canceled",
-      ],
+      record: true,
+      recordingStatusCallback: `${process.env.BASE_URL}/api/calls/recording`,
+      recordingStatusCallbackMethod: "POST",
+      machineDetection: "DetectMessageEnd", // Enable voicemail detection
+      timeout: 30,
+    };
+
+    console.log(`📞 Making Twilio call with config:`, {
+      ...twilioConfig,
+      url: twilioConfig.url,
+      isVoicemail: isVoicemailCall,
     });
+
+    const call = await twilioClient.calls.create(twilioConfig);
+
+    console.log(`✅ Twilio call initiated: ${call.sid}`);
 
     // Update call record with Twilio SID
     await supabase
       .from("calls")
       .update({
-        twilio_call_sid: twilioCall.sid,
-        status: "initiated",
+        twilio_call_sid: call.sid,
+        status: "ringing",
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
-      .eq("id", call.id);
+      .eq("id", callRecord.id);
 
-    console.log(
-      `Created AI call ${call.id} with Twilio SID ${twilioCall.sid} for lead ${leadId}`
-    );
-
-    res.json({
+    const response = {
       success: true,
-      callId: call.id,
-      twilioCallSid: twilioCall.sid,
-      leadName: lead.name,
-      phoneNumber: lead.phone_number,
-    });
+      callSid: call.sid,
+      leadId: leadId,
+      callType: isVoicemailCall ? "voicemail" : "conversation",
+      message: isVoicemailCall
+        ? "Voicemail call initiated successfully"
+        : "AI call initiated successfully",
+    };
+
+    console.log(`✅ Call response:`, response);
+
+    if (res) {
+      return res.status(200).json(response);
+    }
+
+    return response;
   } catch (error) {
-    console.error("Error initiating AI call:", error);
-    res.status(500).json({
-      error: "Failed to initiate AI call",
-      details: error instanceof Error ? error.message : "Unknown error",
-    });
+    console.error("❌ Error initiating AI call:", error);
+
+    const errorResponse = {
+      success: false,
+      error: error.message || "Failed to initiate call",
+    };
+
+    if (res) {
+      return res.status(500).json(errorResponse);
+    }
+
+    throw error;
   }
 };
 
@@ -516,6 +585,71 @@ export const getCallsForLead = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching calls:", error);
     res.status(500).json({ error: "Failed to fetch calls" });
+  }
+};
+
+/**
+ * Get all calls for the current user
+ */
+export const getCallsForUser = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const userId = req.user?.id;
+    const { startDate, endDate } = req.query;
+
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    // First, get all leads for this user
+    const { data: userLeads, error: leadsError } = await supabase
+      .from("leads")
+      .select("id, name, user_uuid")
+      .eq("user_uuid", userId);
+
+    if (leadsError) {
+      console.error("Error fetching user leads:", leadsError);
+      return res.status(500).json({ error: "Failed to fetch user leads" });
+    }
+
+    if (!userLeads || userLeads.length === 0) {
+      return res.json([]);
+    }
+
+    const leadIds = userLeads.map((lead) => lead.id);
+
+    // Now get calls for those leads
+    let query = supabase
+      .from("calls")
+      .select("*")
+      .in("lead_id", leadIds)
+      .order("created_at", { ascending: false });
+
+    // Add date filtering if provided
+    if (startDate && endDate) {
+      query = query.gte("created_at", startDate).lte("created_at", endDate);
+    }
+
+    const { data: calls, error } = await query;
+
+    if (error) {
+      console.error("Error fetching calls for user:", error);
+      return res.status(500).json({ error: "Failed to fetch calls" });
+    }
+
+    // Add lead information to each call
+    const callsWithLeads =
+      calls?.map((call) => ({
+        ...call,
+        leads: userLeads.find((lead) => lead.id === call.lead_id),
+      })) || [];
+
+    res.json(callsWithLeads);
+  } catch (error) {
+    console.error("Error in getCallsForUser:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -761,6 +895,7 @@ export const handleCallStatusCallback = async (req: Request, res: Response) => {
       To,
       CallDuration,
       Timestamp,
+      AnsweredBy, // Twilio can detect if answered by human or machine
     } = req.body;
 
     if (!CallSid) {
@@ -782,91 +917,408 @@ export const handleCallStatusCallback = async (req: Request, res: Response) => {
 
     if (callError || !call) {
       console.error(`❌ Call not found for SID ${CallSid}:`, callError);
-
-      // If call not found by Twilio SID, try to find by phone number and recent timestamp
-      // This handles cases where the call was created but Twilio SID wasn't saved yet
-      const { data: recentCalls, error: recentError } = await supabase
-        .from("calls")
-        .select("*")
-        .eq("to_number", req.body.To)
-        .eq("status", "queued")
-        .gte("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString()) // Within last 5 minutes
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (!recentError && recentCalls && recentCalls.length > 0) {
-        console.log(
-          `📞 Found recent queued call ${recentCalls[0].id} for number ${req.body.To}, updating with SID ${CallSid}`
-        );
-
-        // Update the call with the Twilio SID
-        const { error: updateError } = await supabase
-          .from("calls")
-          .update({
-            twilio_call_sid: CallSid,
-            status: CallStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", recentCalls[0].id);
-
-        if (updateError) {
-          console.error(
-            `❌ Error updating call ${recentCalls[0].id}:`,
-            updateError
-          );
-        } else {
-          console.log(
-            `✅ Updated call ${recentCalls[0].id} with Twilio SID ${CallSid} and status ${CallStatus}`
-          );
-        }
-
-        return res.status(200).send("OK");
-      }
-
-      // Still return 200 to Twilio to avoid retries
-      return res.status(200).send("OK");
+      return res.status(404).send("Call not found");
     }
 
-    // Prepare update data
-    const updateData: any = {
+    console.log(`📞 Found call record ${call.id} for SID ${CallSid}`);
+
+    // Update call record with current status
+    const updates: any = {
       status: CallStatus,
       updated_at: new Date().toISOString(),
     };
 
-    // Set started_at when call begins
-    if (CallStatus === "in-progress" && !call.started_at) {
-      updateData.started_at = new Date().toISOString();
+    // Add duration if call completed
+    if (CallDuration) {
+      updates.duration = parseInt(CallDuration);
     }
 
-    // Set ended_at and duration when call completes
-    if (
-      ["completed", "busy", "failed", "no-answer", "canceled"].includes(
+    // Set start/end times based on status
+    if (CallStatus === "in-progress" && !call.started_at) {
+      updates.started_at = new Date().toISOString();
+    } else if (
+      ["completed", "failed", "no-answer", "busy", "canceled"].includes(
         CallStatus
       )
     ) {
-      updateData.ended_at = new Date().toISOString();
+      if (!call.ended_at) {
+        updates.ended_at = new Date().toISOString();
+      }
 
-      // Set duration if provided by Twilio
-      if (CallDuration) {
-        updateData.duration = parseInt(CallDuration);
+      // Handle call completion logic for new lead calls
+      if (call.call_type === "new_lead") {
+        const isVoicemail = detectVoicemail(
+          CallStatus,
+          CallDuration,
+          AnsweredBy
+        );
+
+        console.log(
+          `📞 Call ${call.id} completed with status: ${CallStatus}, duration: ${CallDuration}, answeredBy: ${AnsweredBy}, isVoicemail: ${isVoicemail}`
+        );
+
+        // Trigger our call completion handler which manages the fallback logic
+        await handleCallCompletion(
+          call.id,
+          CallStatus === "completed" ? "completed" : CallStatus,
+          isVoicemail
+        );
       }
     }
 
-    // Update call record
+    // Update the call record
     const { error: updateError } = await supabase
       .from("calls")
-      .update(updateData)
+      .update(updates)
       .eq("id", call.id);
 
     if (updateError) {
       console.error(`❌ Error updating call ${call.id}:`, updateError);
-    } else {
-      console.log(`✅ Call ${call.id} updated with status: ${CallStatus}`);
+      return res.status(500).send("Error updating call");
+    }
+
+    console.log(`✅ Updated call ${call.id} with status ${CallStatus}`);
+
+    // Dispatch call completion event for frontend updates
+    if (["completed", "failed", "no-answer", "busy"].includes(CallStatus)) {
+      console.log(`📢 Call ${call.id} completed with status: ${CallStatus}`);
     }
 
     res.status(200).send("OK");
   } catch (error) {
-    console.error("❌ Error handling call status callback:", error);
+    console.error("❌ Error in call status callback:", error);
     res.status(500).send("Internal server error");
+  }
+};
+
+/**
+ * Detect if a call went to voicemail based on multiple factors
+ */
+function detectVoicemail(
+  callStatus: string,
+  callDuration: string | undefined,
+  answeredBy: string | undefined
+): boolean {
+  // If Twilio explicitly detected machine/voicemail
+  if (
+    answeredBy === "machine_start" ||
+    answeredBy === "machine_end_beep" ||
+    answeredBy === "machine_end_silence"
+  ) {
+    console.log(`🤖 Twilio detected voicemail: ${answeredBy}`);
+    return true;
+  }
+
+  // If call was answered but very short duration (likely voicemail)
+  if (callStatus === "completed" && callDuration) {
+    const duration = parseInt(callDuration);
+
+    // Very short calls (less than 8 seconds) are usually voicemail greetings
+    if (duration < 8) {
+      console.log(`📞 Short call duration (${duration}s) suggests voicemail`);
+      return true;
+    }
+
+    // Calls between 8-20 seconds could be voicemail if no human interaction detected
+    // This is a heuristic - you might want to adjust based on your experience
+    if (duration < 20 && !answeredBy) {
+      console.log(
+        `📞 Medium-short call duration (${duration}s) with no answeredBy suggests voicemail`
+      );
+      return true;
+    }
+  }
+
+  // If explicitly human-answered, definitely not voicemail
+  if (answeredBy === "human") {
+    console.log(`👤 Twilio detected human answered`);
+    return false;
+  }
+
+  // Default: if call completed but we're not sure, assume human answered
+  // Better to err on the side of not making a second call
+  return false;
+}
+
+/**
+ * Get call statistics for the current user
+ */
+export const getCallStats = async (req: Request, res: Response) => {
+  try {
+    // TODO: Add proper user authentication and filtering
+    // For now, get stats for all calls
+
+    const { data: calls, error } = await supabase
+      .from("calls")
+      .select("status")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching call stats:", error);
+      throw error;
+    }
+
+    const totalCalls = calls?.length || 0;
+    const successfulCalls =
+      calls?.filter((call) => call.status === "completed").length || 0;
+    const failedCalls =
+      calls?.filter((call) =>
+        ["failed", "busy", "no-answer", "canceled"].includes(call.status)
+      ).length || 0;
+    const successRate =
+      totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
+
+    const stats = {
+      totalCalls,
+      successfulCalls,
+      failedCalls,
+      successRate,
+    };
+
+    console.log("📊 Call stats generated:", stats);
+    res.json(stats);
+  } catch (error) {
+    console.error("Error getting call stats:", error);
+    res.status(500).json({
+      error: "Failed to get call statistics",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Get available voices for voice calling
+ */
+export const getAvailableVoices = async (req: Request, res: Response) => {
+  try {
+    // Since we're using OpenAI Realtime API with hardcoded "alloy" voice,
+    // we'll return a simple list with just the alloy option
+    const voices = [
+      {
+        id: "alloy",
+        name: "Alloy (OpenAI)",
+        gender: "neutral",
+      },
+    ];
+
+    console.log("🎤 Available voices returned:", voices);
+    res.json(voices);
+  } catch (error) {
+    console.error("Error getting available voices:", error);
+    res.status(500).json({
+      error: "Failed to get available voices",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Test a voice by playing a sample
+ */
+export const testVoice = async (req: Request, res: Response) => {
+  try {
+    const { voiceId } = req.body;
+
+    if (!voiceId) {
+      return res.status(400).json({
+        error: "Voice ID is required",
+      });
+    }
+
+    // Since we only support "alloy" voice, validate it
+    if (voiceId !== "alloy") {
+      return res.status(400).json({
+        error: "Only 'alloy' voice is currently supported",
+      });
+    }
+
+    // For now, return a success message without actually playing audio
+    // In a real implementation, this might trigger a test call or audio preview
+    const result = {
+      success: true,
+      message: `Voice test successful for ${voiceId}. This voice will be used for AI calls.`,
+    };
+
+    console.log(`🎤 Voice test completed for: ${voiceId}`);
+    res.json(result);
+  } catch (error) {
+    console.error("Error testing voice:", error);
+    res.status(500).json({
+      error: "Failed to test voice",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Handle voicemail-only calls (leaves message and hangs up)
+ */
+export const handleVoicemailCall = async (req: Request, res: Response) => {
+  try {
+    const { leadId } = req.params;
+
+    if (!leadId) {
+      console.error("❌ No leadId provided for voicemail call");
+      return res.status(400).send("Lead ID is required");
+    }
+
+    console.log(`📞 Handling voicemail call for lead ${leadId}`);
+
+    // Get lead information
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("id", leadId)
+      .single();
+
+    if (leadError || !lead) {
+      console.error(`❌ Lead ${leadId} not found for voicemail:`, leadError);
+      return res.status(404).send("Lead not found");
+    }
+
+    // Get user settings for personalization
+    const { data: userSettings } = await supabase
+      .from("user_settings")
+      .select("*")
+      .eq("uuid", lead.user_uuid)
+      .single();
+
+    const agentName = userSettings?.agent_name || "your real estate agent";
+    const companyName = userSettings?.company_name || "our team";
+
+    // Create tailored voicemail message based on lead type
+    const leadType = lead.lead_type?.toLowerCase();
+    let voicemailMessage = "";
+
+    if (leadType === "buyer") {
+      voicemailMessage =
+        `Hi ${lead.name}, this is ${agentName} from ${companyName}. ` +
+        `I was trying to reach you about your home search. ` +
+        `I have some exciting new listings that just came on the market that match what you're looking for. ` +
+        `There are also some great opportunities in your price range that I'd love to share with you. ` +
+        `Please give me a call back at ${process.env.TWILIO_PHONE_NUMBER} or feel free to text me. ` +
+        `I don't want you to miss out on these properties. Talk to you soon!`;
+    } else if (leadType === "seller") {
+      voicemailMessage =
+        `Hi ${lead.name}, this is ${agentName} from ${companyName}. ` +
+        `I was trying to reach you about your home value inquiry. ` +
+        `I've prepared a detailed market analysis for your property and have some exciting news about current market conditions. ` +
+        `Home values in your area have been performing really well, and I'd love to share the specifics with you. ` +
+        `Please give me a call back at ${process.env.TWILIO_PHONE_NUMBER} or feel free to text me. ` +
+        `I think you'll be pleasantly surprised by what I found. Have a great day!`;
+    } else {
+      // Generic fallback for unclear lead types
+      voicemailMessage =
+        `Hi ${lead.name}, this is ${agentName} from ${companyName}. ` +
+        `I was trying to reach you about your real estate inquiry. ` +
+        `I have some great information to share with you about current market opportunities in your area. ` +
+        `Whether you're looking to buy or sell, I'd love to help you navigate the market. ` +
+        `Please give me a call back at ${process.env.TWILIO_PHONE_NUMBER} or feel free to text me. ` +
+        `I look forward to hearing from you soon. Have a great day!`;
+    }
+
+    console.log(
+      `📝 Generated ${leadType || "generic"} voicemail for lead ${leadId}: ${
+        lead.name
+      }`
+    );
+
+    try {
+      console.log(`🎤 Generating OpenAI voicemail audio for lead ${leadId}`);
+
+      // Use OpenAI TTS API to generate audio with the same voice as live calls
+      const speech = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "tts-1",
+          voice: "alloy", // Same voice as the Realtime API calls
+          input: voicemailMessage,
+          response_format: "mp3",
+        }),
+      });
+
+      if (!speech.ok) {
+        throw new Error(`OpenAI TTS failed: ${speech.statusText}`);
+      }
+
+      // Get the audio buffer
+      const audioBuffer = await speech.arrayBuffer();
+
+      // Save to temporary file
+      const tempDir = path.join(process.cwd(), "backend", "temp", "audio");
+      await fs.promises.mkdir(tempDir, { recursive: true });
+
+      const fileName = `voicemail-${leadId}-${Date.now()}.mp3`;
+      const filePath = path.join(tempDir, fileName);
+
+      await fs.promises.writeFile(filePath, Buffer.from(audioBuffer));
+
+      console.log(`✅ Saved OpenAI voicemail audio: ${filePath}`);
+
+      // Create public URL for the audio file
+      const audioUrl = `${process.env.BASE_URL}/api/calls/voicemail-audio/${fileName}`;
+
+      // Create TwiML that plays the OpenAI-generated audio
+      const twiml = new VoiceResponse();
+
+      // Play the OpenAI-generated voicemail
+      twiml.play(audioUrl);
+
+      // Hang up after playing the voicemail
+      twiml.hangup();
+
+      console.log(
+        `📞 Generated OpenAI voicemail TwiML for lead ${leadId}: ${lead.name}`
+      );
+
+      res.type("text/xml");
+      res.send(twiml.toString());
+
+      // Clean up the file after a delay (5 minutes)
+      setTimeout(async () => {
+        try {
+          await fs.promises.unlink(filePath);
+          console.log(`🧹 Cleaned up voicemail file: ${fileName}`);
+        } catch (cleanupError) {
+          console.warn(
+            `⚠️ Could not clean up voicemail file: ${fileName}`,
+            cleanupError
+          );
+        }
+      }, 5 * 60 * 1000); // 5 minutes
+    } catch (openaiError) {
+      console.error(
+        "❌ OpenAI TTS failed, falling back to Twilio voice:",
+        openaiError
+      );
+
+      // Fallback to Twilio's built-in voice if OpenAI fails
+      const twiml = new VoiceResponse();
+
+      twiml.say(
+        {
+          voice: "alice",
+        },
+        voicemailMessage
+      );
+
+      twiml.hangup();
+
+      res.type("text/xml");
+      res.send(twiml.toString());
+    }
+  } catch (error) {
+    console.error("❌ Error handling voicemail call:", error);
+
+    const twiml = new VoiceResponse();
+    twiml.say("Sorry, there was an error. Goodbye.");
+    twiml.hangup();
+
+    res.type("text/xml");
+    res.send(twiml.toString());
   }
 };

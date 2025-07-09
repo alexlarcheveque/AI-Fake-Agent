@@ -1,5 +1,11 @@
 import apiClient from "./apiClient";
 
+export interface Voice {
+  id: string;
+  name: string;
+  gender: string;
+}
+
 export interface Call {
   id: number;
   lead_id: number;
@@ -35,6 +41,12 @@ export interface Call {
   action_items?: string[] | null;
   customer_interest_level?: "high" | "medium" | "low" | null;
   commitment_details?: string | null;
+  // Lead information (added by backend when fetching user calls)
+  leads?: {
+    id: number;
+    name: string;
+    user_uuid: string;
+  } | null;
 }
 
 export interface CallRecording {
@@ -139,6 +151,29 @@ export const getCallsForLead = async (leadId: number): Promise<Call[]> => {
 };
 
 /**
+ * Get all calls for the current user
+ */
+export const getCallsForUser = async (
+  startDate?: string,
+  endDate?: string
+): Promise<Call[]> => {
+  try {
+    const params = new URLSearchParams();
+    if (startDate) params.append("startDate", startDate);
+    if (endDate) params.append("endDate", endDate);
+
+    const url = `/voice/user${
+      params.toString() ? `?${params.toString()}` : ""
+    }`;
+    const data = await apiClient.get(url);
+    return data;
+  } catch (error: any) {
+    console.error(`Error in getCallsForUser:`, error);
+    throw error;
+  }
+};
+
+/**
  * Get call recording for a specific call
  */
 export const getCallRecording = async (
@@ -175,10 +210,61 @@ export const getCallTranscript = async (
   return data;
 };
 
+/**
+ * Get calling statistics for the current user
+ */
+export const getCallingStats = async (): Promise<{
+  totalCalls: number;
+  successfulCalls: number;
+  failedCalls: number;
+  successRate: number;
+}> => {
+  try {
+    const data = await apiClient.get("/voice/stats");
+    return data;
+  } catch (error: any) {
+    console.error("Error fetching calling stats:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get available voices for voice calling
+ */
+export const getAvailableVoices = async (): Promise<Voice[]> => {
+  try {
+    const data = await apiClient.get("/voice/voices");
+    return data;
+  } catch (error: any) {
+    console.error("Error fetching available voices:", error);
+    throw error;
+  }
+};
+
+/**
+ * Test a voice by playing a sample
+ */
+export const testVoice = async (
+  voiceId: string
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const data = await apiClient.post("/voice/test", { voiceId });
+    return data;
+  } catch (error: any) {
+    console.error("Error testing voice:", error);
+    throw error;
+  }
+};
+
 export default {
+  initiateAICall,
   initiateCall,
   getCallsForLead,
+  getCallsForUser,
   getCallRecording,
   getLeadRecordings,
   getCallTranscript,
+  getCallingStats,
+  getAvailableVoices,
+  testVoice,
 };

@@ -1,6 +1,13 @@
 import WebSocket from "ws";
 import { createClient } from "@supabase/supabase-js";
 import { callRecordingService } from "./callRecordingService.js";
+import {
+  generateBuyerPrompt,
+  generateBuyerTestPrompt,
+} from "./prompts/buyerPrompt.js";
+import { generateSellerPrompt } from "./prompts/sellerPrompt.js";
+import { LeadRow } from "../models/Lead.js";
+import { calculateLeadScores } from "./leadScoringService.js";
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -32,6 +39,31 @@ export class RealtimeVoiceService {
   async handleWebSocketConnection(twilioWs: any, options: VoiceCallOptions) {
     try {
       console.log(`Starting Realtime voice call for lead ${options.leadId}`);
+
+      // Fetch lead data including context from database
+      let leadData: LeadRow | null = null;
+      try {
+        const { data: lead, error: leadError } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", options.leadId)
+          .single();
+
+        if (leadError) {
+          console.error(`❌ Error fetching lead ${options.leadId}:`, leadError);
+        } else {
+          leadData = lead;
+          console.log(`📋 Fetched lead data for ${lead.name}:`, {
+            name: lead.name,
+            phone: lead.phone_number,
+            email: lead.email,
+            hasContext: !!lead.context,
+            contextLength: lead.context?.length || 0,
+          });
+        }
+      } catch (error) {
+        console.error(`❌ Error fetching lead data:`, error);
+      }
 
       // Create WebSocket connection to OpenAI Realtime API
       const openaiWs = new WebSocket(
@@ -69,6 +101,32 @@ export class RealtimeVoiceService {
 
         // Small delay to ensure connection is fully established
         setTimeout(() => {
+          // Determine which prompt to use based on lead type
+          let promptInstructions = "";
+          if (leadData) {
+            const leadType = leadData.lead_type?.toLowerCase();
+
+            if (leadType === "buyer") {
+              promptInstructions = generateBuyerTestPrompt(leadData);
+              console.log(`🏠 Using BUYER prompt for lead ${leadData.name}`);
+            } else if (leadType === "seller") {
+              promptInstructions = generateSellerPrompt(leadData);
+              console.log(`🏡 Using SELLER prompt for lead ${leadData.name}`);
+            } else {
+              // Default to seller prompt if lead type is unclear
+              promptInstructions = generateSellerPrompt(leadData);
+              console.log(
+                `🏡 Using SELLER prompt (default) for lead ${leadData.name} with type: ${leadType}`
+              );
+            }
+          } else {
+            // Fallback if no lead data available
+            promptInstructions = generateSellerPrompt(null);
+            console.log(
+              `⚠️ Using SELLER prompt (fallback) - no lead data available`
+            );
+          }
+
           // Send session configuration - Pure Speech-to-Speech approach
           const sessionUpdate = {
             type: "session.update",
@@ -86,54 +144,21 @@ export class RealtimeVoiceService {
               },
               voice: "alloy", // Nova is brighter and more conversational than alloy
               model: "gpt-4o-realtime-preview",
-              instructions: `You are Sarah, a friendly and experienced real estate agent from LPT Realty in Culver City, CA.
-
-OPENING APPROACH: 
-- If the user greets you first (like "Hi" or "Hello"), respond naturally: "Hi there! This is Sarah from LPT Realty. Thanks for taking my call!"
-- If there's silence or the user seems confused, then introduce yourself: "Hi, this is Sarah from LPT Realty. I was calling to see if you were interested in selling your home."
-
-DISCOVERY & RAPPORT BUILDING FRAMEWORK:
-
-Phase 1 - Initial Engagement:
-- Quickly introduce yourself and give the reason why you are calling
-- Build rapport through genuine curiosity about their situation
-
-Phase 2 - Discovery Questions (Ask these naturally in conversation):
-- "What's got you thinking about potentially selling?"
-- "How long have you been in your current home?"
-- "What's your timeline looking like? No rush at all, just curious."
-- "Have you had your home valued recently?"
-
-Phase 3 - Value Building:
-- Share relevant market insights: "Homes in your area have been moving really well lately"
-- Position yourself as helpful: "I'd love to get you a no-obligation market analysis"
-- Create urgency gently: "The market conditions right now are pretty favorable for sellers"
-
-Communication Style:
-- Speak like a helpful neighbor, not a pushy salesperson
-- Use "we" language: "we could explore options" instead of "you should"
-- Listen actively and respond to their specific concerns
-- Keep it conversational - ask follow-up questions based on their answers
-- If they object, acknowledge and redirect: "I totally get that. A lot of people feel that way initially..."
-
-CRITICAL - NATURAL SPEECH DELIVERY:
-- Speak at a natural, slightly faster conversational pace (not slow and deliberate)
-- Use natural pauses and rhythm like you're talking to a friend over coffee
-- Vary your pace - speed up when excited, slow down for important points
-- Include natural speech patterns: "um", "you know", "so", "actually"
-- Don't enunciate every word perfectly - speak naturally and casually
-- Use contractions: "don't", "can't", "I'm", "we're" instead of formal speech
-- Let sentences flow together naturally rather than pausing after each one
-- Sound energetic and enthusiastic but not overly polished
-
-Goal: Qualify their interest, build trust, and schedule a callback or appointment. Don't try to close anything on this call - just build rapport and gather information.`,
-
+              instructions: promptInstructions,
               modalities: ["text", "audio"],
               temperature: 0.9, // Higher temperature for more natural, varied responses
             },
           };
 
           console.log("📤 Sending session configuration to OpenAI");
+          if (leadData?.context) {
+            console.log(
+              `🎯 Including lead context in AI prompt: ${leadData.context.substring(
+                0,
+                100
+              )}...`
+            );
+          }
           openaiWs.send(JSON.stringify(sessionUpdate));
         }, 100); // 100ms delay
       });
@@ -441,6 +466,13 @@ Goal: Qualify their interest, build trust, and schedule a callback or appointmen
     try {
       if (callId === "unknown") return;
 
+      // Get call data first to extract lead_id
+      const { data: call, error: callError } = await supabase
+        .from("calls")
+        .select("lead_id")
+        .eq("id", callId)
+        .single();
+
       const { error } = await supabase
         .from("calls")
         .update({
@@ -453,6 +485,31 @@ Goal: Qualify their interest, build trust, and schedule a callback or appointmen
         console.error("Error updating call status:", error);
       } else {
         console.log(`Updated call ${callId} status to ${status}`);
+
+        // Update lead scores and status after call completion/failure
+        if (call?.lead_id && (status === "completed" || status === "failed")) {
+          try {
+            await calculateLeadScores(call.lead_id);
+            console.log(
+              `✅ Updated lead scores for lead ${call.lead_id} after call ${status}`
+            );
+
+            // Update lead status based on all communication attempts
+            const { updateLeadStatusBasedOnCommunications } = await import(
+              "./leadService.ts"
+            );
+            await updateLeadStatusBasedOnCommunications(call.lead_id);
+            console.log(
+              `✅ Updated lead status for lead ${call.lead_id} after call ${status}`
+            );
+          } catch (scoringError) {
+            console.error(
+              `❌ Error updating lead scores/status for lead ${call.lead_id}:`,
+              scoringError
+            );
+            // Don't throw to prevent disrupting the call flow
+          }
+        }
       }
     } catch (error) {
       console.error("Error updating call status:", error);
@@ -593,8 +650,15 @@ Goal: Qualify their interest, build trust, and schedule a callback or appointmen
           parseInt(callId),
           analysis
         );
+
+        // Create notifications for urgent action items
+        await callRecordingService.createActionItemNotifications(
+          parseInt(callId),
+          analysis
+        );
+
         console.log(
-          `🤖 AI analysis completed for call ${callId} - summary stored in call record`
+          `🤖 AI analysis completed for call ${callId} - summary stored in call record and notifications created`
         );
       } catch (analysisError) {
         console.error(

@@ -44,8 +44,6 @@ const Settings: React.FC = () => {
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const [voiceTestResult, setVoiceTestResult] = useState<string | null>(null);
-  const [callingStats, setCallingStats] = useState<any>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   const sidebarMenuItems: SidebarMenuItem[] = [
     {
@@ -162,8 +160,10 @@ const Settings: React.FC = () => {
   const fetchAvailableVoices = useCallback(async () => {
     try {
       setIsLoadingVoices(true);
-      const voices = await callApi.getAvailableVoices();
-      setAvailableVoices(voices);
+      // TODO: Implement getAvailableVoices in callApi
+      // const voices = await callApi.getAvailableVoices();
+      // setAvailableVoices(voices);
+      setAvailableVoices([]);
     } catch (err: any) {
       console.error("fetchAvailableVoices: Error", err);
     } finally {
@@ -171,28 +171,18 @@ const Settings: React.FC = () => {
     }
   }, []);
 
-  const fetchCallingStats = useCallback(async () => {
-    try {
-      setIsLoadingStats(true);
-      const stats = await callApi.getCallingStats();
-      setCallingStats(stats);
-    } catch (err: any) {
-      console.error("fetchCallingStats: Error", err);
-    } finally {
-      setIsLoadingStats(false);
-    }
-  }, []);
-
   const handleTestVoice = async (voiceId: string) => {
     try {
       setIsTestingVoice(true);
       setVoiceTestResult(null);
-      const result = await callApi.testVoice(voiceId);
-      if (result.success) {
-        setVoiceTestResult("Voice test successful! ✓");
-      } else {
-        setVoiceTestResult(`Voice test failed: ${result.error}`);
-      }
+      // TODO: Implement testVoice in callApi
+      // const result = await callApi.testVoice(voiceId);
+      // if (result.success) {
+      //   setVoiceTestResult("Voice test successful! ✓");
+      // } else {
+      //   setVoiceTestResult(`Voice test failed: ${result.error}`);
+      // }
+      setVoiceTestResult("Voice testing coming soon! ✓");
       setTimeout(() => setVoiceTestResult(null), 3000);
     } catch (err: any) {
       setVoiceTestResult("Voice test failed: Network error");
@@ -288,10 +278,16 @@ const Settings: React.FC = () => {
     const loadData = async () => {
       await fetchSettings();
       await fetchSubscriptionData();
-      await fetchCallingStats();
     };
     loadData();
-  }, [fetchSettings, fetchSubscriptionData, fetchCallingStats]);
+  }, [fetchSettings, fetchSubscriptionData]);
+
+  // Load voice-related data when voice tab is selected
+  useEffect(() => {
+    if (activeSection === "voice") {
+      fetchAvailableVoices();
+    }
+  }, [activeSection, fetchAvailableVoices]);
 
   if (isLoading) {
     return (
@@ -328,8 +324,6 @@ const Settings: React.FC = () => {
             isLoadingVoices={isLoadingVoices}
             isTestingVoice={isTestingVoice}
             voiceTestResult={voiceTestResult}
-            callingStats={callingStats}
-            isLoadingStats={isLoadingStats}
             handleTestVoice={handleTestVoice}
           />
         );
@@ -359,7 +353,7 @@ const Settings: React.FC = () => {
             <p className="text-gray-500 mt-1">Manage your preferences</p>
           </div>
 
-          <nav className="mt-6">
+          <nav>
             {sidebarMenuItems.map((item) => (
               <button
                 key={item.id}

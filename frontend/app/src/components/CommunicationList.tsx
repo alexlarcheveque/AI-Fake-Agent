@@ -285,6 +285,9 @@ const MessageItem: React.FC<{ message: MessageRow }> = ({ message }) => {
   const isFromLead = message.sender === "lead";
   const isScheduled = message.delivery_status === "scheduled";
   const isAiGenerated = message.is_ai_generated;
+  const isFailed =
+    message.delivery_status === "failed" ||
+    message.delivery_status === "undelivered";
 
   return (
     <div
@@ -295,6 +298,8 @@ const MessageItem: React.FC<{ message: MessageRow }> = ({ message }) => {
           isFromAgent
             ? isScheduled
               ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+              : isFailed
+              ? "bg-red-100 text-red-800 border border-red-200"
               : isAiGenerated
               ? "bg-green-100 text-green-800 border border-green-200"
               : "bg-blue-500 text-white"
@@ -317,7 +322,14 @@ const MessageItem: React.FC<{ message: MessageRow }> = ({ message }) => {
           {isScheduled && (
             <span className="text-xs font-medium">Scheduled</span>
           )}
-          {isAiGenerated && <span className="text-xs font-medium">AI</span>}
+          {isFailed && (
+            <span className="text-xs font-medium text-red-600">
+              Message failed
+            </span>
+          )}
+          {isAiGenerated && !isFailed && !isScheduled && (
+            <span className="text-xs font-medium">AI</span>
+          )}
         </div>
       </div>
     </div>

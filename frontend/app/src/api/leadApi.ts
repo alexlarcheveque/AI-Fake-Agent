@@ -20,7 +20,12 @@ const leadApi = {
   },
 
   // Get lead limit info for the current user
-  async getLeadLimitInfo(): Promise<LeadRow> {
+  async getLeadLimitInfo(): Promise<{
+    canCreateLead: boolean;
+    currentCount: number;
+    limit: number;
+    subscriptionPlan: string;
+  }> {
     try {
       return await apiClient.get("/leads/limit");
     } catch (error) {

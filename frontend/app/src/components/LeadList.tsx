@@ -2,7 +2,7 @@ import { useState } from "react";
 import leadApi from "../api/leadApi";
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { LeadRow } from "../../../../backend/models/Lead";
+import { LeadRow, formatLeadPhone } from "../../../../backend/models/Lead";
 import { LeadStatus } from "./SingleLeadForm";
 
 interface LeadListProps {
@@ -43,6 +43,32 @@ const formatStatusText = (status: string | null | undefined): string => {
     .join(" ");
 };
 
+// Helper function to get score color classes based on score value
+const getScoreColorClasses = (score: number | null | undefined): string => {
+  if (!score && score !== 0) return "text-gray-400"; // No score
+
+  if (score >= 80) return "text-green-600 font-semibold"; // High score
+  if (score >= 60) return "text-yellow-600 font-medium"; // Medium score
+  if (score >= 40) return "text-orange-600"; // Low-medium score
+  return "text-red-600"; // Low score
+};
+
+// Helper function to get score badge classes
+const getScoreBadgeClasses = (score: number | null | undefined): string => {
+  if (!score && score !== 0) return "bg-gray-100 text-gray-500"; // No score
+
+  if (score >= 80) return "bg-green-100 text-green-800"; // High score
+  if (score >= 60) return "bg-yellow-100 text-yellow-800"; // Medium score
+  if (score >= 40) return "bg-orange-100 text-orange-800"; // Low-medium score
+  return "bg-red-100 text-red-800"; // Low score
+};
+
+// Helper function to format score display
+const formatScore = (score: number | null | undefined): string => {
+  if (!score && score !== 0) return "—";
+  return `${Math.round(score)}`;
+};
+
 const LeadList: React.FC<LeadListProps> = ({
   leads = [],
   isLoading,
@@ -78,6 +104,7 @@ const LeadList: React.FC<LeadListProps> = ({
         phone_number: editingLead.phone_number,
         status: editingLead.status,
         is_ai_enabled: editingLead.is_ai_enabled,
+        context: editingLead.context,
       };
 
       // If we're turning off AI assistant, clear the next scheduled message
@@ -162,30 +189,47 @@ const LeadList: React.FC<LeadListProps> = ({
         </div>
       )}
 
-      {leads.length === 0 ? (
-        <p className="text-gray-500 text-center py-4">No leads found</p>
+      {isLoading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-gray-500 text-lg mt-4">Loading leads...</p>
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">No leads found.</p>
+        </div>
       ) : (
-        <div className="relative rounded-lg border border-gray-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 table-fixed">
-              <thead className="bg-gray-50">
+        <div className="relative rounded-lg border border-gray-200 overflow-hidden shadow-sm bg-white">
+          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 relative">
+            <div className="absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50 lg:hidden"></div>
+            <table
+              className="min-w-full divide-y divide-gray-200"
+              style={{ minWidth: "980px" }}
+            >
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px] border-r border-gray-200">
+                    Score
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] border-r border-gray-200">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] border-r border-gray-200">
                     Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px] border-r border-gray-200">
                     Email
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] border-r border-gray-200">
                     Phone
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">
-                    AI Enabled
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px] border-r border-gray-200">
+                    Context
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[60px] border-r border-gray-200">
+                    AI
+                  </th>
+                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">
                     Actions
                   </th>
                 </tr>
@@ -205,7 +249,18 @@ const LeadList: React.FC<LeadListProps> = ({
                     {editingLead?.id === lead.id ? (
                       // Edit mode
                       <>
-                        <td className="px-6 h-[52px]">
+                        <td className="px-3 py-2 align-top border-r border-gray-100">
+                          <div className="py-2 text-center">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getScoreBadgeClasses(
+                                lead.overall_score
+                              )}`}
+                            >
+                              {formatScore(lead.overall_score)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 align-top border-r border-gray-100">
                           <div className="py-2">
                             <select
                               value={editingLead?.status || ""}
@@ -215,7 +270,7 @@ const LeadList: React.FC<LeadListProps> = ({
                                   status: e.target.value,
                                 })
                               }
-                              className="w-full h-8 px-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm appearance-none"
+                              className="w-full h-8 px-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-xs"
                               disabled={updateLoading === lead.id}
                             >
                               <option value={LeadStatus.NEW}>
@@ -233,7 +288,7 @@ const LeadList: React.FC<LeadListProps> = ({
                             </select>
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
+                        <td className="px-4 py-2 align-top border-r border-gray-100">
                           <div className="py-2">
                             <input
                               type="text"
@@ -249,7 +304,7 @@ const LeadList: React.FC<LeadListProps> = ({
                             />
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
+                        <td className="px-4 py-2 align-top border-r border-gray-100">
                           <div className="py-2">
                             <input
                               type="email"
@@ -265,7 +320,7 @@ const LeadList: React.FC<LeadListProps> = ({
                             />
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
+                        <td className="px-4 py-2 align-top border-r border-gray-100">
                           <div className="py-2">
                             <input
                               type="tel"
@@ -273,7 +328,9 @@ const LeadList: React.FC<LeadListProps> = ({
                               onChange={(e) =>
                                 setEditingLead({
                                   ...editingLead,
-                                  phone_number: parseInt(e.target.value),
+                                  phone_number: e.target.value
+                                    ? parseInt(e.target.value) || 0
+                                    : 0,
                                 })
                               }
                               className="w-full h-8 px-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
@@ -281,7 +338,23 @@ const LeadList: React.FC<LeadListProps> = ({
                             />
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
+                        <td className="px-4 py-2 border-r border-gray-100">
+                          <div className="py-2">
+                            <textarea
+                              value={editingLead.context || ""}
+                              onChange={(e) =>
+                                setEditingLead({
+                                  ...editingLead,
+                                  context: e.target.value,
+                                })
+                              }
+                              className="w-full min-h-[32px] max-h-32 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm resize-none"
+                              disabled={updateLoading === lead.id}
+                              rows={2}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 align-top border-r border-gray-100">
                           <div className="py-2 flex justify-center">
                             <button
                               type="button"
@@ -296,21 +369,21 @@ const LeadList: React.FC<LeadListProps> = ({
                                 editingLead.is_ai_enabled
                                   ? "bg-blue-600"
                                   : "bg-gray-200"
-                              } relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                              } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
                               disabled={updateLoading === lead.id}
                             >
                               <span
                                 className={`${
                                   editingLead.is_ai_enabled
-                                    ? "translate-x-5"
+                                    ? "translate-x-4"
                                     : "translate-x-0"
-                                } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                                } pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
                               />
                             </button>
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2 flex justify-center space-x-2">
+                        <td className="px-3 py-2 align-top">
+                          <div className="py-2 flex justify-center space-x-1">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -325,7 +398,7 @@ const LeadList: React.FC<LeadListProps> = ({
                               title="Save"
                             >
                               <svg
-                                className="w-5 h-5"
+                                className="w-4 h-4"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -348,7 +421,7 @@ const LeadList: React.FC<LeadListProps> = ({
                               title="Cancel"
                             >
                               <svg
-                                className="w-5 h-5"
+                                className="w-4 h-4"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -365,68 +438,72 @@ const LeadList: React.FC<LeadListProps> = ({
                         </td>
                       </>
                     ) : (
+                      // View mode
                       <>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2">
+                        <td className="px-3 py-4 whitespace-nowrap align-top border-r border-gray-100">
+                          <div className="text-center">
                             <span
-                              className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColorClasses(
-                                lead.status
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getScoreBadgeClasses(
+                                lead.overall_score
+                              )}`}
+                              title={`Interest: ${formatScore(
+                                lead.interest_score
+                              )} | Sentiment: ${formatScore(
+                                lead.sentiment_score
                               )}`}
                             >
-                              {formatStatusText(lead.status)}
+                              {formatScore(lead.overall_score)}
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2">
-                            <div className="text-sm text-gray-900 leading-8">
-                              {lead.name}
-                            </div>
+                        <td className="px-3 py-4 whitespace-nowrap align-top border-r border-gray-100">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColorClasses(
+                              lead.status
+                            )}`}
+                          >
+                            {formatStatusText(lead.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 align-top border-r border-gray-100">
+                          <div className="truncate">{lead.name}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 align-top border-r border-gray-100">
+                          <div className="truncate">{lead.email || "—"}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 align-top border-r border-gray-100">
+                          <div className="truncate">
+                            {lead.phone_number ? formatLeadPhone(lead) : "—"}
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2">
-                            <div className="text-sm text-gray-900 leading-8">
-                              {lead.email}
-                            </div>
+                        <td className="px-4 py-4 text-sm text-gray-500 align-top border-r border-gray-100">
+                          <div className="whitespace-pre-wrap break-words">
+                            {lead.context || "—"}
                           </div>
                         </td>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2">
-                            <div className="text-sm text-gray-900 leading-8">
-                              {lead.phone_number}
-                            </div>
-                          </div>
+                        <td className="px-3 py-4 whitespace-nowrap text-center align-top border-r border-gray-100">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              lead.is_ai_enabled
+                                ? "bg-green-100 text-green-800"
+                                : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {lead.is_ai_enabled ? "On" : "Off"}
+                          </span>
                         </td>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2 flex justify-center">
-                            <div className="flex flex-col space-y-1">
-                              <span
-                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  lead.is_ai_enabled
-                                    ? "bg-purple-100 text-purple-800"
-                                    : "bg-gray-100 text-gray-600"
-                                }`}
-                              >
-                                AI:{" "}
-                                {lead.is_ai_enabled ? "Enabled" : "Disabled"}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 h-[52px]">
-                          <div className="py-2 flex justify-center space-x-2">
+                        <td className="px-3 py-4 whitespace-nowrap text-center align-top">
+                          <div className="flex justify-center space-x-1">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleEdit(lead);
                               }}
                               className="p-1 rounded-full hover:bg-blue-100 text-blue-600"
-                              disabled={isLoading}
                               title="Edit"
                             >
                               <svg
-                                className="w-5 h-5"
+                                className="w-4 h-4"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"
@@ -435,7 +512,7 @@ const LeadList: React.FC<LeadListProps> = ({
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth="2"
-                                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                                 />
                               </svg>
                             </button>
@@ -445,11 +522,10 @@ const LeadList: React.FC<LeadListProps> = ({
                                 handleDelete(lead.id);
                               }}
                               className="p-1 rounded-full hover:bg-red-100 text-red-600"
-                              disabled={isLoading}
                               title="Delete"
                             >
                               <svg
-                                className="w-5 h-5"
+                                className="w-4 h-4"
                                 fill="none"
                                 stroke="currentColor"
                                 viewBox="0 0 24 24"

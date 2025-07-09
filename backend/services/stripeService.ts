@@ -1,11 +1,12 @@
 import Stripe from "stripe";
 import supabase from "../config/supabase.ts";
 import { getUserSettings, updateUserSettings } from "./userSettingsService.ts";
+import { handleSubscriptionDowngrade } from "./subscriptionDowngradeService.ts";
 import logger from "../utils/logger.ts";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2025-05-28.basil",
+  apiVersion: "2023-10-16",
 });
 
 // Subscription plans configuration
@@ -20,13 +21,13 @@ export const SUBSCRIPTION_PLANS = {
     name: "Pro",
     priceId: process.env.STRIPE_PRO_PRICE_ID as string,
     leadLimit: 1000,
-    price: 49 * 12, // $49/month * 12 months = $588/year
+    price: 588, // $588/year ($49/month equivalent, billed annually)
   },
   UNLIMITED: {
     name: "Unlimited",
     priceId: process.env.STRIPE_UNLIMITED_PRICE_ID as string,
     leadLimit: Infinity,
-    price: 99 * 12, // $99/month * 12 months = $1188/year
+    price: 1188, // $1188/year ($99/month equivalent, billed annually)
   },
 };
 
@@ -84,8 +85,13 @@ export const createCheckoutSession = async (
 
     const plan = SUBSCRIPTION_PLANS[planType];
     if (!plan.priceId) {
+      logger.error(
+        `Missing price ID for plan type: ${planType}. Check STRIPE_${planType}_PRICE_ID environment variable.`
+      );
       throw new Error(`Invalid plan type: ${planType}`);
     }
+
+    logger.info(`Using price ID ${plan.priceId} for plan ${planType}`);
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -108,7 +114,14 @@ export const createCheckoutSession = async (
     logger.info(
       `Created checkout session ${session.id} for user ${userId} plan ${planType}`
     );
-    return session.url as string;
+
+    if (!session.url) {
+      logger.error(`Stripe checkout session ${session.id} returned null URL`);
+      throw new Error("Stripe checkout session returned null URL");
+    }
+
+    logger.info(`Checkout URL: ${session.url}`);
+    return session.url;
   } catch (error) {
     logger.error(`Error creating checkout session: ${error.message}`);
     throw new Error(`Failed to create checkout session: ${error.message}`);
@@ -157,7 +170,7 @@ export const handleSubscriptionUpdate = async (
     // Find user by Stripe customer ID
     const { data: userSettings, error } = await supabase
       .from("user_settings")
-      .select("uuid")
+      .select("uuid, subscription_plan")
       .eq("stripe_customer_id", customerId)
       .single();
 
@@ -167,7 +180,11 @@ export const handleSubscriptionUpdate = async (
     }
 
     const userId = userSettings.uuid;
-    let planType = "FREE";
+    const oldPlan = (userSettings.subscription_plan || "FREE") as
+      | "FREE"
+      | "PRO"
+      | "UNLIMITED";
+    let newPlan: "FREE" | "PRO" | "UNLIMITED" = "FREE";
 
     // Determine plan type based on subscription status and price
     if (
@@ -177,21 +194,42 @@ export const handleSubscriptionUpdate = async (
       const priceId = subscription.items.data[0]?.price?.id;
 
       if (priceId === SUBSCRIPTION_PLANS.PRO.priceId) {
-        planType = "PRO";
+        newPlan = "PRO";
       } else if (priceId === SUBSCRIPTION_PLANS.UNLIMITED.priceId) {
-        planType = "UNLIMITED";
+        newPlan = "UNLIMITED";
+      }
+    }
+
+    // Handle downgrade logic if plan changed
+    if (oldPlan !== newPlan) {
+      logger.info(
+        `Plan change detected for user ${userId}: ${oldPlan} → ${newPlan}`
+      );
+
+      try {
+        const downgradeResult = await handleSubscriptionDowngrade(
+          userId,
+          newPlan,
+          oldPlan
+        );
+        logger.info(
+          `Downgrade handling result: ${JSON.stringify(downgradeResult)}`
+        );
+      } catch (downgradeError) {
+        logger.error(`Error handling downgrade: ${downgradeError.message}`);
+        // Continue with basic plan update even if downgrade logic fails
       }
     }
 
     // Update user subscription in database
     await updateUserSettings(userId, {
-      subscription_plan: planType,
+      subscription_plan: newPlan,
       stripe_subscription_id: subscriptionId,
       subscription_status: subscription.status,
     });
 
     logger.info(
-      `Updated subscription for user ${userId}: plan=${planType}, status=${subscription.status}`
+      `Updated subscription for user ${userId}: plan=${newPlan}, status=${subscription.status}`
     );
   } catch (error) {
     logger.error(`Error handling subscription update: ${error.message}`);

@@ -22,7 +22,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   success,
 }) => {
   return (
-    <div className="max-w-2xl">
+    <div className="w-full">
       <div className="mb-6">
         <h2 className="text-2xl font-semibold text-gray-900">
           Profile Settings
@@ -44,98 +44,71 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({
         </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white rounded-lg border border-gray-200 p-6"
-      >
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Agent Name
-                <span className="text-red-500 ml-1">*</span>
-              </label>
-              <input
-                type="text"
-                name="agentName"
-                value={settings?.agent_name || ""}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter your full name"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                This name will be used in all communications with leads
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Company Name
-                <span className="text-red-500 ml-1">*</span>
-              </label>
-              <input
-                type="text"
-                name="companyName"
-                value={settings?.company_name || ""}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter your company name"
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Your real estate company or brokerage name
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              State
-              <span className="text-red-500 ml-1">*</span>
-            </label>
-            <input
-              type="text"
-              name="agentState"
-              value={settings?.agent_state || ""}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 max-w-xs"
-              placeholder="e.g., California"
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              The state where you primarily operate
-            </p>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-            <div className="flex">
-              <svg
-                className="h-5 w-5 text-blue-400 mt-0.5 mr-3"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                  clipRule="evenodd"
-                />
-              </svg>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div>
-                <h3 className="text-sm font-medium text-blue-900">
-                  Profile Information
-                </h3>
-                <p className="mt-1 text-sm text-blue-700">
-                  Your profile information is used to personalize communications
-                  with leads and ensure compliance with local real estate
-                  regulations.
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Agent Name
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="agentName"
+                  value={settings?.agent_name || ""}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter your full name"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This name will be used in all communications with leads
                 </p>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Company Name
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="companyName"
+                  value={settings?.company_name || ""}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter your company name"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Your real estate company or brokerage name
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                State
+                <span className="text-red-500 ml-1">*</span>
+              </label>
+              <input
+                type="text"
+                name="agentState"
+                value={settings?.agent_state || ""}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 max-w-xs"
+                placeholder="e.g., California"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                The state where you primarily operate
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
+        <div className="flex justify-end">
           <button
             type="submit"
             disabled={isSaving}

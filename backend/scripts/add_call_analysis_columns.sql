@@ -54,4 +54,42 @@ SELECT
     viewname,
     definition
 FROM pg_views 
-WHERE viewname LIKE '%call%' OR viewname LIKE '%conversation%'; 
+WHERE viewname LIKE '%call%' OR viewname LIKE '%conversation%';
+
+-- Add action items and commitment tracking columns to calls table
+-- This migration adds fields for storing detailed call analysis results
+
+-- Add action_items as a JSON array to store urgent action items
+ALTER TABLE calls 
+ADD COLUMN IF NOT EXISTS action_items JSONB DEFAULT '[]'::jsonb;
+
+-- Add customer interest level to track lead engagement
+ALTER TABLE calls 
+ADD COLUMN IF NOT EXISTS customer_interest_level TEXT DEFAULT 'medium' 
+CHECK (customer_interest_level IN ('low', 'medium', 'high'));
+
+-- Add commitment details to track specific commitments made during calls
+ALTER TABLE calls 
+ADD COLUMN IF NOT EXISTS commitment_details TEXT DEFAULT '';
+
+-- Create an index on action_items for better query performance
+CREATE INDEX IF NOT EXISTS idx_calls_action_items ON calls USING GIN (action_items);
+
+-- Create an index on customer_interest_level for filtering
+CREATE INDEX IF NOT EXISTS idx_calls_interest_level ON calls (customer_interest_level);
+
+-- Add a comment to document these fields
+COMMENT ON COLUMN calls.action_items IS 'Array of urgent action items extracted from call analysis';
+COMMENT ON COLUMN calls.customer_interest_level IS 'Customer engagement level: low, medium, or high';
+COMMENT ON COLUMN calls.commitment_details IS 'Specific commitments made by the customer during the call';
+
+-- Update existing calls to have default values
+UPDATE calls 
+SET 
+  action_items = '[]'::jsonb,
+  customer_interest_level = 'medium',
+  commitment_details = ''
+WHERE 
+  action_items IS NULL 
+  OR customer_interest_level IS NULL 
+  OR commitment_details IS NULL; 

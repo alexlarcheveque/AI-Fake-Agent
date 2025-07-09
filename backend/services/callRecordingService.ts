@@ -1,6 +1,11 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { CallRow } from "../models/Call.ts";
+import { createMessage } from "./messageService.ts";
+import { calculateLeadScores } from "./leadScoringService.ts";
+import { createNotification } from "./notificationService.ts";
+import logger from "../utils/logger.ts";
 
 // Ensure environment variables are loaded
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
@@ -86,9 +91,12 @@ export class CallRecordingService {
 
         // Step 3: Update call record with analysis
         await this.updateCallWithAnalysis(callId, analysis);
+
+        // Step 4: Create notifications for urgent action items
+        await this.createActionItemNotifications(callId, analysis);
       }
 
-      // Step 4: Create call recording record (always do this for playback)
+      // Step 5: Create call recording record (always do this for playback)
       await this.createRecordingRecord(
         callId,
         recordingUrl,
@@ -96,7 +104,7 @@ export class CallRecordingService {
         transcription
       );
 
-      // Step 5: Skip message creation - call summary is shown in the call record itself
+      // Step 6: Skip message creation - call summary is shown in the call record itself
       console.log(
         `⏭️ Skipping message creation - call summary shown in call record for call ${callId}`
       );
@@ -166,7 +174,7 @@ ${transcription}
 
 Please provide a JSON response with the following structure:
 {
-  "summary": "• Brief overview of call purpose and outcome\n• Key topics discussed or main interest areas\n• Overall assessment of lead quality and engagement level",
+  "summary": "Brief overview of call purpose and outcome, key topics discussed, and overall assessment of lead quality and engagement level",
   "highlights": [
     {
       "timestamp": "MM:SS format if available, or 'early/mid/late call'",
@@ -176,28 +184,46 @@ Please provide a JSON response with the following structure:
       "importance": "high|medium|low"
     }
   ],
-  "sentiment_score": 0.85,
-
-  "action_items": ["Send MLS listings for 3BR homes under $500K in Downtown area", "Email pre-approval letter requirements and lender contacts", "Schedule property showing for this Saturday at 2pm", "Call back within 48 hours to discuss showing feedback", "Send comparative market analysis for Jefferson Park neighborhood", "Follow up on pre-approval status by end of week"],
-  "customer_interest_level": "high",
-  "commitment_details": "Agreed to property showing this Saturday at 2pm and committed to getting pre-approval by end of week"
+  "sentiment_score": 0.5,
+  "action_items": [],
+  "customer_interest_level": "medium",
+  "commitment_details": ""
 }
 
-ANALYSIS GUIDELINES:
-1. **summary**: A single string with bullet points separated by newlines (\\n), each starting with "• ", focusing on call outcome and lead quality
-2. **sentiment_score**: 0-1 scale (0=very negative, 0.5=neutral, 1=very positive) based on customer tone and engagement
+CRITICAL ANALYSIS GUIDELINES:
+1. **Only generate action items if they are ACTUALLY warranted by the call content**
+   - For introductory calls/greetings with no substantive discussion: action_items should be empty []
+   - For calls with specific requests/needs: generate relevant action items based on what was discussed
+   - Do NOT generate generic or template action items
 
-3. **action_items**: All actionable tasks including immediate actions and future steps with concrete details and timelines (not generic "follow up")
-4. **customer_interest_level**: "high" (actively looking, ready to move), "medium" (interested but slower timeline), "low" (just browsing/early stage)
-5. **commitment_details**: Specific commitments made by customer like "Agreed to property showing Saturday 2pm" or "Committed to get pre-approval by Friday" (empty string if no commitments)
+2. **summary**: Focus on what actually happened in the call, not what might happen in future calls
 
-REAL ESTATE FOCUS AREAS:
+3. **sentiment_score**: 0-1 scale (0=very negative, 0.5=neutral, 1=very positive) based on customer tone and engagement
+
+4. **action_items**: ONLY include specific actionable tasks that were discussed or requested in the call
+   - For short greeting calls: use empty array []
+   - For detailed conversations: include specific tasks like "Send listings for 3BR homes under $400K in downtown area"
+   - Must be based on ACTUAL call content, not assumptions
+
+5. **customer_interest_level**: 
+   - "high" (actively looking, ready to move, asking specific questions)
+   - "medium" (interested but slower timeline, general inquiry)
+   - "low" (just browsing/early stage, minimal engagement)
+
+6. **commitment_details**: Only include if customer made SPECIFIC commitments in the call
+   - Use empty string "" if no commitments were made
+   - Be specific: "Agreed to property showing Saturday 2pm" 
+   - Do NOT assume or infer commitments not explicitly stated
+
+REAL ESTATE FOCUS AREAS TO LOOK FOR:
 - Property requirements: bedrooms, bathrooms, price range, neighborhoods, special features
 - Financial readiness: pre-approval status, down payment, budget flexibility, financing concerns
 - Timeline urgency: when they need to move, lease expiration, job relocation, life events
 - Motivation drivers: family growth, downsizing, investment, first-time buyer, relocation
 - Market concerns: pricing, competition, interest rates, inventory levels
-- Commitment indicators: willingness to view properties, provide financial info, make offers`;
+- Commitment indicators: willingness to view properties, provide financial info, make offers
+
+IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. Do not generate action items or commitments that weren't explicitly mentioned or requested.`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini", // Use GPT-4o-mini which supports JSON mode and is faster/cheaper
@@ -272,6 +298,17 @@ REAL ESTATE FOCUS AREAS:
     analysis: CallAnalysis
   ): Promise<void> {
     try {
+      // Get call data to extract lead_id
+      const { data: call, error: callError } = await supabase
+        .from("calls")
+        .select("lead_id")
+        .eq("id", callId)
+        .single();
+
+      if (callError) {
+        throw callError;
+      }
+
       const { error } = await supabase
         .from("calls")
         .update({
@@ -295,6 +332,22 @@ REAL ESTATE FOCUS AREAS:
         interestLevel: analysis.customer_interest_level,
         commitmentDetails: !!analysis.commitment_details,
       });
+
+      // Update lead scores after call analysis
+      if (call?.lead_id) {
+        try {
+          await calculateLeadScores(call.lead_id);
+          console.log(
+            `✅ Updated lead scores for lead ${call.lead_id} after call analysis`
+          );
+        } catch (scoringError) {
+          console.error(
+            `❌ Error updating lead scores for lead ${call.lead_id}:`,
+            scoringError
+          );
+          // Don't throw to prevent disrupting the main workflow
+        }
+      }
     } catch (error) {
       console.error("❌ Error updating call with analysis:", error);
       throw error;
@@ -493,7 +546,7 @@ REAL ESTATE FOCUS AREAS:
     const percentage = Math.round(score * 100);
     if (percentage >= 70) return `Very Positive (${percentage}%)`;
     if (percentage >= 40) return `Neutral (${percentage}%)`;
-    return `Needs Attention (${percentage}%)`;
+    return `Poor (${percentage}%)`;
   }
 
   /**
@@ -556,6 +609,98 @@ REAL ESTATE FOCUS AREAS:
     } catch (error) {
       console.error("❌ Error getting recordings for lead:", error);
       throw error;
+    }
+  }
+
+  /**
+   * Create notifications for action items and commitments from call analysis
+   */
+  public async createActionItemNotifications(
+    callId: number,
+    analysis: CallAnalysis
+  ): Promise<void> {
+    try {
+      // Get call details to extract user_uuid and lead info
+      const { data: callData, error: callError } = await supabase
+        .from("calls")
+        .select(
+          `
+          id,
+          lead_id,
+          started_at,
+          leads (
+            id,
+            name,
+            user_uuid
+          )
+        `
+        )
+        .eq("id", callId)
+        .single();
+
+      if (callError || !callData?.leads) {
+        console.error(
+          `❌ Error getting call data for notifications:`,
+          callError
+        );
+        return;
+      }
+
+      const lead = Array.isArray(callData.leads)
+        ? callData.leads[0]
+        : callData.leads;
+      const userUuid = lead?.user_uuid;
+
+      if (!userUuid || !lead) {
+        console.log(
+          `⚠️ No user_uuid or lead found for call ${callId}, skipping notifications`
+        );
+        return;
+      }
+
+      // Create notification for action items (if any exist)
+      if (analysis.action_items && analysis.action_items.length > 0) {
+        await createNotification({
+          user_uuid: userUuid,
+          lead_id: lead.id,
+          type: "action_item",
+          title: `Action Items from Call: ${lead.name}`,
+          message: `${analysis.action_items.length} action item${
+            analysis.action_items.length > 1 ? "s" : ""
+          } identified from recent call. Review call details to prioritize follow-up.`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        });
+
+        console.log(
+          `📋 Created action items notification for call ${callId} (${analysis.action_items.length} items)`
+        );
+      }
+
+      // Create notification for commitments made during the call
+      if (analysis.commitment_details && analysis.commitment_details.trim()) {
+        await createNotification({
+          user_uuid: userUuid,
+          lead_id: lead.id,
+          type: "commitment",
+          title: `Commitment Made: ${lead.name}`,
+          message: `Client made commitments during the call. Review call details for specific commitments and follow-up actions.`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        });
+
+        console.log(`🤝 Created commitment notification for call ${callId}`);
+      }
+
+      console.log(
+        `✅ Call notification processing completed for call ${callId}`
+      );
+    } catch (error) {
+      console.error(
+        `❌ Error creating call notifications for call ${callId}:`,
+        error
+      );
+      // Don't throw error to avoid disrupting the main call processing flow
     }
   }
 }

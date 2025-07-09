@@ -462,6 +462,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       console.log("🔄 Refreshing communications after call ended");
       refreshCommunications();
     }, 3000);
+
+    // Dispatch call completion event for global listeners (like LeadManagement)
+    console.log("📢 Dispatching call-completed event from MessageThread");
+    window.dispatchEvent(new CustomEvent("call-completed"));
   };
 
   // Format scheduled date for display

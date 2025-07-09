@@ -2,6 +2,7 @@ import supabase from "../config/supabase.ts";
 import { LeadInsert, LeadRow, LeadUpdate } from "../models/Lead.ts";
 import { createMessage } from "./messageService.ts";
 import { getUserSettings } from "./userSettingsService.ts";
+import { calculateLeadScores } from "./leadScoringService.ts";
 import logger from "../utils/logger.ts";
 
 // Define the enum locally
@@ -125,7 +126,9 @@ export const getLeadsByUserId = async (userId: string): Promise<LeadRow[]> => {
     .from("leads")
     .select("*")
     .eq("user_uuid", userId)
-    .eq("is_archived", false);
+    .eq("is_archived", false)
+    .neq("status", LeadStatus.CONVERTED)
+    .order("overall_score", { ascending: false });
 
   if (error) throw new Error(error.message);
   return data;
@@ -225,14 +228,14 @@ export const searchLeads = async (
 };
 
 /**
- * Updates the lead status based on message history
- * - "In Conversation": Lead has responded to at least one message
- * - "Inactive": Lead hasn't responded to at least 10 messages
+ * Updates the lead status based on both message and call history
+ * - "In Conversation": Lead has responded to at least one message/call
+ * - "Inactive": Lead hasn't responded to 10+ messages/calls OR 10+ messages/calls failed in a row
  *
  * @param leadId The ID of the lead to update
  * @returns Updated lead data
  */
-export const updateLeadStatusBasedOnMessages = async (
+export const updateLeadStatusBasedOnCommunications = async (
   leadId: number
 ): Promise<LeadRow> => {
   try {
@@ -244,6 +247,15 @@ export const updateLeadStatusBasedOnMessages = async (
       .order("created_at", { ascending: true });
 
     if (messagesError) throw new Error(messagesError.message);
+
+    // Get all calls for this lead
+    const { data: calls, error: callsError } = await supabase
+      .from("calls")
+      .select("*")
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: true });
+
+    if (callsError) throw new Error(callsError.message);
 
     // Get current lead data
     const lead = await getLeadById(leadId);
@@ -257,64 +269,167 @@ export const updateLeadStatusBasedOnMessages = async (
       return lead;
     }
 
-    // Count messages from lead (user responses)
-    const leadMessages = messages.filter((msg) => msg.sender === "lead");
-
-    // Count consecutive messages from agent with no response
-    const agentMessages = messages.filter(
-      (msg) => msg.sender === "agent" && msg.delivery_status === "delivered"
+    // Combine messages and calls into a single chronological array
+    const communications = [
+      ...messages.map((msg) => ({
+        type: "message" as const,
+        created_at: msg.created_at,
+        sender: msg.sender,
+        delivery_status: msg.delivery_status,
+        data: msg,
+      })),
+      ...calls.map((call) => ({
+        type: "call" as const,
+        created_at: call.created_at,
+        sender: call.direction === "outbound" ? "agent" : "lead",
+        delivery_status: call.status,
+        data: call,
+      })),
+    ].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
-    let consecutiveAgentMessages = 0;
-    let lastLeadMessageIndex = -1;
+    // Count responses from lead
+    const leadResponses = communications.filter(
+      (comm) => comm.sender === "lead"
+    );
 
-    // Find the last message from the lead
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].sender === "lead") {
-        lastLeadMessageIndex = i;
+    // Analyze consecutive attempts and failures from the end of the timeline
+    let consecutiveNoResponse = 0;
+    let consecutiveFailures = 0;
+    let lastLeadResponseIndex = -1;
+
+    // Find the last response from the lead
+    for (let i = communications.length - 1; i >= 0; i--) {
+      if (communications[i].sender === "lead") {
+        lastLeadResponseIndex = i;
         break;
       }
     }
 
-    // Count how many consecutive agent messages there have been since the last lead message
-    if (lastLeadMessageIndex >= 0) {
-      consecutiveAgentMessages = messages.length - lastLeadMessageIndex - 1;
+    // Count consecutive agent attempts without response since last lead response
+    if (lastLeadResponseIndex >= 0) {
+      consecutiveNoResponse = communications.length - lastLeadResponseIndex - 1;
     } else {
-      // If the lead has never sent a message, count all agent messages
-      consecutiveAgentMessages = agentMessages.length;
+      // If lead has never responded, count all agent attempts
+      consecutiveNoResponse = communications.filter(
+        (comm) => comm.sender === "agent"
+      ).length;
+    }
+
+    // Count consecutive failures from the end
+    for (let i = communications.length - 1; i >= 0; i--) {
+      const comm = communications[i];
+
+      // Only count agent attempts for consecutive failures
+      if (comm.sender !== "agent") break;
+
+      // Check if this communication failed
+      const isFailed = isCommunicationFailed(comm);
+
+      if (isFailed) {
+        consecutiveFailures++;
+      } else {
+        // If we hit a successful attempt, stop counting consecutive failures
+        break;
+      }
     }
 
     let newStatus = lead.status;
 
-    // Update status based on message history
-    if (leadMessages.length > 0) {
+    // Update status based on communication history
+    if (leadResponses.length > 0) {
       // If lead has ever responded, they're "in conversation"
       newStatus = LeadStatus.IN_CONVERSATION;
 
-      // But if they haven't responded to 10+ consecutive messages, mark as inactive
-      if (consecutiveAgentMessages >= 10) {
+      // But if they haven't responded to 10+ consecutive attempts OR 10+ consecutive failures, mark as inactive
+      if (consecutiveNoResponse >= 10 || consecutiveFailures >= 10) {
         newStatus = LeadStatus.INACTIVE;
+
+        const reason =
+          consecutiveFailures >= 10
+            ? `${consecutiveFailures} consecutive communication failures`
+            : `${consecutiveNoResponse} consecutive attempts without response`;
+
+        logger.info(`Marking lead ${leadId} as inactive due to: ${reason}`);
       }
     } else {
-      // If lead has never responded, keep them as new
-      newStatus = LeadStatus.NEW;
+      // If lead has never responded but we have 10+ consecutive failures, mark as inactive
+      if (consecutiveFailures >= 10) {
+        newStatus = LeadStatus.INACTIVE;
+        logger.info(
+          `Marking lead ${leadId} as inactive due to ${consecutiveFailures} consecutive communication failures (no prior responses)`
+        );
+      } else {
+        // If lead has never responded and no consecutive failures, keep them as new
+        newStatus = LeadStatus.NEW;
+      }
     }
+
+    let updatedLead = lead;
 
     // Only update if status has changed
     if (newStatus !== lead.status) {
-      const updatedLead = await updateLead(leadId, { status: newStatus });
+      updatedLead = await updateLead(leadId, { status: newStatus });
 
       // Schedule a follow-up based on new status
       await scheduleNextFollowUp(leadId);
-
-      return updatedLead;
     }
 
-    return lead;
+    // Update lead scores after any interaction
+    try {
+      await calculateLeadScores(leadId);
+      logger.info(
+        `Updated lead scores for lead ${leadId} after communication interaction`
+      );
+    } catch (scoringError) {
+      logger.error(
+        `Error updating lead scores for lead ${leadId}: ${scoringError.message}`
+      );
+      // Don't throw to prevent disrupting the main workflow
+    }
+
+    return updatedLead;
   } catch (error) {
     console.error(`Error updating lead status: ${error.message}`);
     throw error;
   }
+};
+
+/**
+ * Helper function to determine if a communication attempt failed
+ */
+const isCommunicationFailed = (communication: any): boolean => {
+  if (communication.type === "message") {
+    // Message failures: "failed" status or specific error conditions
+    return communication.delivery_status === "failed";
+  } else if (communication.type === "call") {
+    // Call failures: "failed", "busy", "no-answer", "canceled" statuses
+    return ["failed", "busy", "no-answer", "canceled"].includes(
+      communication.delivery_status
+    );
+  }
+  return false;
+};
+
+/**
+ * Updates the lead status based on message history
+ * - "In Conversation": Lead has responded to at least one message
+ * - "Inactive": Lead hasn't responded to at least 10 messages
+ *
+ * @param leadId The ID of the lead to update
+ * @returns Updated lead data
+ * @deprecated Use updateLeadStatusBasedOnCommunications instead for more comprehensive tracking
+ */
+export const updateLeadStatusBasedOnMessages = async (
+  leadId: number
+): Promise<LeadRow> => {
+  // For backwards compatibility, delegate to the new comprehensive function
+  logger.info(
+    `updateLeadStatusBasedOnMessages called for lead ${leadId}, delegating to updateLeadStatusBasedOnCommunications`
+  );
+  return updateLeadStatusBasedOnCommunications(leadId);
 };
 
 /**

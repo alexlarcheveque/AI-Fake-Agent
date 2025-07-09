@@ -7,7 +7,7 @@ import {
   receiveIncomingMessage as receiveIncomingMessageService,
   getNextScheduledMessageForLead as getNextScheduledMessageForLeadService,
 } from "../services/messageService.ts";
-import { updateLeadStatusBasedOnMessages } from "../services/leadService.ts";
+import { updateLeadStatusBasedOnCommunications } from "../services/leadService.ts";
 import logger from "../utils/logger.ts";
 import supabase from "../config/supabase.ts";
 
@@ -198,7 +198,7 @@ export const statusCallback = async (req, res) => {
       if (MessageStatus === "delivered" && messageToUpdate.lead_id) {
         try {
           // Update lead status based on message history
-          await updateLeadStatusBasedOnMessages(messageToUpdate.lead_id);
+          await updateLeadStatusBasedOnCommunications(messageToUpdate.lead_id);
           logger.info(
             `Updated lead status for lead ${messageToUpdate.lead_id} after message delivery status update`
           );

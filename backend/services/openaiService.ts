@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import logger from "../utils/logger.ts";
 import { format, addDays, addHours } from "date-fns";
-import generateBuyerLeadPrompt from "./prompts/buyerPrompt.ts";
+import { generateBuyerPrompt } from "./prompts/buyerPrompt.ts";
+import { generateSellerPrompt } from "./prompts/sellerPrompt.ts";
 import { getMessagesByLeadIdDescending } from "./messageService.ts";
 import { getUserSettings } from "./userSettingsService.ts";
 import { getLeadById } from "./leadService.ts";
@@ -20,7 +21,10 @@ interface OpenAIMessage {
   content: string;
 }
 
-export const generateResponse = async (leadId: number): Promise<string> => {
+export const generateResponse = async (
+  leadId: number,
+  messageId?: number
+): Promise<string> => {
   try {
     // get current date and tomorrow's date
     const currentDate = new Date();
@@ -30,6 +34,23 @@ export const generateResponse = async (leadId: number): Promise<string> => {
     const leadContext = await getLeadById(leadId);
     if (!leadContext.id) {
       throw new Error(`Lead with ID ${leadId} not found`);
+    }
+
+    // Check if this is a call fallback message
+    let isCallFallback = false;
+    let callFallbackType = null;
+
+    if (messageId) {
+      const { data: message } = await supabase
+        .from("messages")
+        .select("call_fallback_type")
+        .eq("id", messageId)
+        .single();
+
+      if (message?.call_fallback_type) {
+        isCallFallback = true;
+        callFallbackType = message.call_fallback_type;
+      }
     }
 
     // Convert previous messages to OpenAI format
@@ -49,12 +70,24 @@ export const generateResponse = async (leadId: number): Promise<string> => {
 
     const agentContext = await getUserSettings(leadContext.user_uuid);
 
-    const systemPrompt = await generateBuyerLeadPrompt(
-      agentContext,
-      leadContext,
-      formattedCurrentDate,
-      currentDayName
-    );
+    // Determine which prompt to use based on lead type
+    let systemPrompt = "";
+    const leadType = leadContext.lead_type?.toLowerCase();
+
+    if (leadType === "buyer") {
+      systemPrompt = generateBuyerPrompt(leadContext);
+    } else if (leadType === "seller") {
+      systemPrompt = generateSellerPrompt(leadContext);
+    } else {
+      // Default to seller prompt if lead type is unclear
+      systemPrompt = generateSellerPrompt(leadContext);
+    }
+
+    // Add call fallback context if this is a fallback message
+    if (isCallFallback) {
+      const callFallbackContext = getCallFallbackContext(callFallbackType);
+      systemPrompt += `\n\n${callFallbackContext}`;
+    }
 
     logger.info("Generating AI response for lead");
 
@@ -287,3 +320,31 @@ const sanitizeResponse = async (responseContent: string) => {
     .replace(/\s{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n");
 };
+
+/**
+ * Get additional context for call fallback messages
+ */
+function getCallFallbackContext(fallbackType: string): string {
+  switch (fallbackType) {
+    case "voicemail_followup":
+      return `
+IMPORTANT: This is a follow-up text message after leaving a voicemail. 
+- Reference that you just left a voicemail
+- Keep it brief and friendly
+- Provide your contact info for easy response
+- Example: "Hey [Name], just left you a quick voicemail about your [home search/home value/etc.]. Feel free to text me back when you have a moment!"
+      `;
+
+    case "missed_call":
+      return `
+IMPORTANT: This is a follow-up text message after two missed calls (no voicemail left).
+- Reference that you tried calling
+- Keep it brief and friendly  
+- Provide your contact info for easy response
+- Example: "Hey [Name], tried calling you a couple times about your [home search/home value/etc.]. No worries if you're busy - feel free to text me back when convenient!"
+      `;
+
+    default:
+      return "";
+  }
+}

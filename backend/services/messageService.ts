@@ -1,6 +1,6 @@
 import supabase from "../config/supabase.ts";
 import { MessageInsert, MessageRow } from "../models/Message.ts";
-import { updateLeadStatusBasedOnMessages } from "./leadService.ts";
+import { updateLeadStatusBasedOnCommunications } from "./leadService.ts";
 import logger from "../utils/logger.ts";
 
 // Utility function to clean phone numbers
@@ -239,7 +239,7 @@ export const receiveIncomingMessage = async (messageData): Promise<void> => {
 
   // Update lead status based on message history
   try {
-    await updateLeadStatusBasedOnMessages(lead.id);
+    await updateLeadStatusBasedOnCommunications(lead.id);
     logger.info(
       `Successfully updated status for lead ${lead.id} after receiving message`
     );

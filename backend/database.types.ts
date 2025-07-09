@@ -70,6 +70,11 @@ export type Database = {
           call_type: string | null;
           attempt_number: number | null;
           is_voicemail: boolean | null;
+          action_items: Json | null;
+          customer_interest_level: string | null;
+          commitment_details: string | null;
+          call_mode: string | null;
+          scheduled_at: string | null;
           created_at: string;
           updated_at: string | null;
         };
@@ -89,6 +94,11 @@ export type Database = {
           call_type?: string | null;
           attempt_number?: number | null;
           is_voicemail?: boolean | null;
+          action_items?: Json | null;
+          customer_interest_level?: string | null;
+          commitment_details?: string | null;
+          call_mode?: string | null;
+          scheduled_at?: string | null;
           created_at?: string;
           updated_at?: string | null;
         };
@@ -108,6 +118,11 @@ export type Database = {
           call_type?: string | null;
           attempt_number?: number | null;
           is_voicemail?: boolean | null;
+          action_items?: Json | null;
+          customer_interest_level?: string | null;
+          commitment_details?: string | null;
+          call_mode?: string | null;
+          scheduled_at?: string | null;
           created_at?: string;
           updated_at?: string | null;
         };
@@ -184,6 +199,12 @@ export type Database = {
           user_uuid: string | null;
           last_call_attempt: string | null;
           voice_calling_enabled: boolean | null;
+          interest_score: number | null;
+          sentiment_score: number | null;
+          overall_score: number | null;
+          last_score_update: string | null;
+          archived_reason: string | null;
+          archived_at: string | null;
         };
         Insert: {
           context?: string | null;
@@ -200,6 +221,12 @@ export type Database = {
           user_uuid?: string | null;
           last_call_attempt?: string | null;
           voice_calling_enabled?: boolean | null;
+          interest_score?: number | null;
+          sentiment_score?: number | null;
+          overall_score?: number | null;
+          last_score_update?: string | null;
+          archived_reason?: string | null;
+          archived_at?: string | null;
         };
         Update: {
           context?: string | null;
@@ -216,6 +243,12 @@ export type Database = {
           user_uuid?: string | null;
           last_call_attempt?: string | null;
           voice_calling_enabled?: boolean | null;
+          interest_score?: number | null;
+          sentiment_score?: number | null;
+          overall_score?: number | null;
+          last_score_update?: string | null;
+          archived_reason?: string | null;
+          archived_at?: string | null;
         };
         Relationships: [];
       };
@@ -233,6 +266,7 @@ export type Database = {
           text: string | null;
           twilio_sid: string | null;
           updated_at: string | null;
+          call_fallback_type: string | null;
         };
         Insert: {
           created_at?: string | null;
@@ -247,6 +281,7 @@ export type Database = {
           text?: string | null;
           twilio_sid?: string | null;
           updated_at?: string | null;
+          call_fallback_type?: string | null;
         };
         Update: {
           created_at?: string | null;
@@ -261,6 +296,7 @@ export type Database = {
           text?: string | null;
           twilio_sid?: string | null;
           updated_at?: string | null;
+          call_fallback_type?: string | null;
         };
         Relationships: [
           {
@@ -394,6 +430,9 @@ export type Database = {
           elevenlabs_voice_id: string | null;
           call_retry_attempts: number | null;
           quarterly_call_limit: number | null;
+          voice_follow_up_interval_new: number | null;
+          voice_follow_up_interval_inactive: number | null;
+          downgrade_grace_period_until: string | null;
         };
         Insert: {
           agent_name?: string | null;
@@ -416,6 +455,9 @@ export type Database = {
           elevenlabs_voice_id?: string | null;
           call_retry_attempts?: number | null;
           quarterly_call_limit?: number | null;
+          voice_follow_up_interval_new?: number | null;
+          voice_follow_up_interval_inactive?: number | null;
+          downgrade_grace_period_until?: string | null;
         };
         Update: {
           agent_name?: string | null;
@@ -438,6 +480,48 @@ export type Database = {
           elevenlabs_voice_id?: string | null;
           call_retry_attempts?: number | null;
           quarterly_call_limit?: number | null;
+          voice_follow_up_interval_new?: number | null;
+          voice_follow_up_interval_inactive?: number | null;
+          downgrade_grace_period_until?: string | null;
+        };
+        Relationships: [];
+      };
+      scheduled_tasks: {
+        Row: {
+          id: number;
+          user_id: string;
+          task_type: string;
+          scheduled_for: string;
+          parameters: Json | null;
+          status: string;
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: number;
+          user_id: string;
+          task_type: string;
+          scheduled_for: string;
+          parameters?: Json | null;
+          status?: string;
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: number;
+          user_id?: string;
+          task_type?: string;
+          scheduled_for?: string;
+          parameters?: Json | null;
+          status?: string;
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
         };
         Relationships: [];
       };

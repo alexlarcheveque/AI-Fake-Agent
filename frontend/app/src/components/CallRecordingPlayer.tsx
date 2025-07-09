@@ -242,7 +242,7 @@ export const CallRecordingPlayer: React.FC<CallRecordingPlayerProps> = ({
     if (!score) return "Unknown";
     if (score > 0.7) return "Positive";
     if (score > 0.4) return "Neutral";
-    return "Needs Attention";
+    return "Poor";
   };
 
   const getHighlightIcon = (type: string) => {

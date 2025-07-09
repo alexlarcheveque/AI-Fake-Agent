@@ -1,4 +1,5 @@
 import { Device, Call } from "@twilio/voice-sdk";
+import apiClient from "../api/apiClient";
 
 export type CallMode = "ai" | "manual";
 
@@ -65,31 +66,10 @@ class WebRTCVoiceService {
         console.log(
           `🔄 Initializing Twilio Device (attempt ${attempt}/${maxRetries})...`
         );
-        console.log(
-          `📍 Making request to: ${window.location.origin}/api/voice/token`
-        );
+        console.log(`📍 Making request to: /voice/token`);
 
-        // Get access token from backend
-        const response = await fetch("/api/voice/token", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        console.log(
-          `📡 Response status: ${response.status} ${response.statusText}`
-        );
-
-        if (!response.ok) {
-          const responseText = await response.text();
-          console.error(`❌ Token response error: ${responseText}`);
-          throw new Error(
-            `Failed to get access token: ${response.status} ${response.statusText}`
-          );
-        }
-
-        const responseData = await response.json();
+        // Get access token from backend using apiClient
+        const responseData = await apiClient.post("/voice/token", {});
         console.log(
           "🔑 Access token received, length:",
           responseData.token?.length
@@ -387,6 +367,10 @@ class WebRTCVoiceService {
 
     // Notify subscribers
     this.subscribers.forEach((sub) => sub.onCallEnded?.());
+
+    // Dispatch call completion event for global listeners (like LeadManagement)
+    console.log("📢 Dispatching call-completed event");
+    window.dispatchEvent(new CustomEvent("call-completed"));
   }
 
   private startDurationTimer() {
