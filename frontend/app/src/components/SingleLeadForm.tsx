@@ -3,12 +3,10 @@ import leadApi from "../api/leadApi";
 import { LeadInsert, LeadRow } from "../../../../backend/models/Lead";
 
 export enum LeadStatus {
-  NEW = "New",
-  IN_CONVERSATION = "In Conversation",
-  QUALIFIED = "Qualified",
-  APPOINTMENT_SET = "Appointment Set",
-  CONVERTED = "Converted",
-  INACTIVE = "Inactive",
+  NEW = "new",
+  IN_CONVERSATION = "in_conversation",
+  CONVERTED = "converted",
+  INACTIVE = "inactive",
 }
 
 export enum LeadType {
@@ -45,13 +43,11 @@ const VALIDATION_RULES = {
   },
   STATUS: {
     VALID_VALUES: [
-      "New",
-      "In Conversation",
-      "Qualified",
-      "Appointment Set",
-      "Converted",
-      "Inactive",
-    ] as LeadStatus[],
+      LeadStatus.NEW,
+      LeadStatus.IN_CONVERSATION,
+      LeadStatus.CONVERTED,
+      LeadStatus.INACTIVE,
+    ],
   },
   LEAD_TYPE: {
     VALID_VALUES: ["buyer", "seller"] as LeadType[],
@@ -83,7 +79,7 @@ const initialFormData: LeadInsert = {
   name: "",
   email: "",
   phone_number: 0,
-  status: "New",
+  status: LeadStatus.NEW,
   is_ai_enabled: true,
   lead_type: "buyer",
   context: "",
@@ -127,16 +123,39 @@ const validateEmail = (email: string): ValidationError | undefined => {
 const validatePhone = (phone: string): ValidationError | undefined => {
   if (!phone)
     return { field: "phone_number", message: "Phone number is required" };
+
   const cleanPhone = phone.replace(/\D/g, "");
-  if (
-    cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
-    cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
-  ) {
+
+  // Provide specific error messages for different cases
+  if (cleanPhone.length < 7) {
     return {
       field: "phone_number",
-      message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits`,
+      message: "Phone number is too short",
+    };
+  } else if (cleanPhone.length === 7) {
+    return {
+      field: "phone_number",
+      message: "Please include area code (e.g., 909-569-7757)",
+    };
+  } else if (cleanPhone.length === 10) {
+    // Valid US number with area code
+    return undefined;
+  } else if (cleanPhone.length === 11 && cleanPhone.startsWith("1")) {
+    // Valid US number with country code
+    return undefined;
+  } else if (cleanPhone.length > 15) {
+    return {
+      field: "phone_number",
+      message: "Phone number is too long",
     };
   }
+
+  // For international numbers (length 8-15, not starting with 1)
+  if (cleanPhone.length >= 8 && cleanPhone.length <= 15) {
+    return undefined;
+  }
+
+  // Pattern validation as fallback
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
     return {
       field: "phone_number",
@@ -369,11 +388,11 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           }`}
           disabled={isLoading}
         />
-        {errors.phoneNumber && touchedFields.has("phoneNumber") && (
+        {errors.phone_number && touchedFields.has("phoneNumber") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.phoneNumber === "string"
-              ? errors.phoneNumber
-              : errors.phoneNumber.message}
+            {typeof errors.phone_number === "string"
+              ? errors.phone_number
+              : errors.phone_number.message}
           </p>
         )}
       </div>
@@ -425,7 +444,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
           onChange={handleChange}
           onBlur={handleBlur}
           className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.leadType ? "border-red-500 ring-red-100" : "border-gray-300"
+            errors.lead_type ? "border-red-500 ring-red-100" : "border-gray-300"
           }`}
           disabled={isLoading}
         >
@@ -435,11 +454,11 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
             </option>
           ))}
         </select>
-        {errors.leadType && touchedFields.has("leadType") && (
+        {errors.lead_type && touchedFields.has("leadType") && (
           <p className="mt-1 text-sm text-red-600">
-            {typeof errors.leadType === "string"
-              ? errors.leadType
-              : errors.leadType.message}
+            {typeof errors.lead_type === "string"
+              ? errors.lead_type
+              : errors.lead_type.message}
           </p>
         )}
       </div>
@@ -498,7 +517,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         {formData.is_ai_enabled && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              When to send first message
+              When to send first contact (calls + messages)
             </label>
             <select
               name="first_message"

@@ -1,26 +1,10 @@
 import supabase from "../config/supabase.ts";
 import { MessageInsert, MessageRow } from "../models/Message.ts";
-import { updateLeadStatusBasedOnMessages } from "./leadService.ts";
+import { updateLeadStatusBasedOnCommunications } from "./leadService.ts";
 import logger from "../utils/logger.ts";
 
-// Utility function to clean phone numbers
-const cleanPhoneNumber = (phoneNumber: string): string => {
-  // Remove all non-digit characters
-  const digitsOnly = phoneNumber.replace(/\D/g, "");
-
-  // If the number starts with '1' and is 11 digits, remove the '1'
-  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
-    return digitsOnly.slice(1);
-  }
-
-  // If it's already 10 digits, return as is
-  if (digitsOnly.length === 10) {
-    return digitsOnly;
-  }
-
-  // If we can't clean it properly, return the original digits
-  return digitsOnly;
-};
+// Import the consistent phone normalization function
+import { normalizePhoneToNumeric } from "../utils/phoneUtils.ts";
 
 export const createMessage = async (
   settings: MessageInsert
@@ -92,6 +76,8 @@ export const getNextScheduledMessageForLead = async (
     .from("messages")
     .select("*")
     .eq("lead_id", leadId)
+    .eq("delivery_status", "scheduled")
+    .gt("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -159,6 +145,8 @@ export const updateMessage = async (
 };
 
 export const deleteMessage = async (messageId: number): Promise<void> => {
+  console.log("delete message", messageId);
+
   const { error } = await supabase
     .from("messages")
     .delete()
@@ -168,8 +156,8 @@ export const deleteMessage = async (messageId: number): Promise<void> => {
 };
 
 export const receiveIncomingMessage = async (messageData): Promise<void> => {
-  const to = cleanPhoneNumber(messageData.To);
-  const from = cleanPhoneNumber(messageData.From);
+  const to = normalizePhoneToNumeric(messageData.To);
+  const from = normalizePhoneToNumeric(messageData.From);
   const text = messageData.Body;
   const twilio_sid = messageData.MessageSid;
 
@@ -235,7 +223,7 @@ export const receiveIncomingMessage = async (messageData): Promise<void> => {
 
   // Update lead status based on message history
   try {
-    await updateLeadStatusBasedOnMessages(lead.id);
+    await updateLeadStatusBasedOnCommunications(lead.id);
     logger.info(
       `Successfully updated status for lead ${lead.id} after receiving message`
     );
@@ -248,13 +236,23 @@ export const receiveIncomingMessage = async (messageData): Promise<void> => {
 
   // respond to the lead
   if (lead.is_ai_enabled) {
-    // Schedule immediate response
+    // Schedule debounced response (wait 5 seconds for potential follow-up messages)
+    const debounceDelaySeconds = 15;
+    const responseTime = new Date();
+    responseTime.setSeconds(responseTime.getSeconds() + debounceDelaySeconds);
+
+    logger.info(
+      `Scheduling debounced response for lead ${
+        lead.id
+      } at ${responseTime.toISOString()}`
+    );
+
     await createMessage({
       lead_id: lead.id,
       sender: "agent",
       is_ai_generated: true,
       delivery_status: "scheduled",
-      scheduled_at: new Date().toISOString(), // Schedule for immediate processing
+      scheduled_at: responseTime.toISOString(), // Schedule for 10 seconds from now
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });

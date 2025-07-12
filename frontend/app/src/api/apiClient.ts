@@ -1,10 +1,10 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
 import supabase from "../config/supabase";
 
-// Use Vite's environment variable syntax
+// Use Vite's environment variable syntax with fallbacks
 const BASE_URL = import.meta.env.DEV
-  ? import.meta.env.VITE_API_URL_DEV
-  : import.meta.env.VITE_API_URL;
+  ? import.meta.env.VITE_API_URL_DEV || "/api" // Use proxy in development
+  : import.meta.env.VITE_API_URL || "https://real-nurture-backend.fly.dev/api";
 
 class ApiClient {
   private api: AxiosInstance;

@@ -7,13 +7,13 @@ import {
   receiveIncomingMessage as receiveIncomingMessageService,
   getNextScheduledMessageForLead as getNextScheduledMessageForLeadService,
 } from "../services/messageService.ts";
-import { updateLeadStatusBasedOnMessages } from "../services/leadService.ts";
+import { updateLeadStatusBasedOnCommunications } from "../services/leadService.ts";
 import logger from "../utils/logger.ts";
 import supabase from "../config/supabase.ts";
 
 export const createOutgoingMessage = async (req, res) => {
   try {
-    const { lead_id, text, is_ai_generated } = req.body;
+    const { lead_id, text, is_ai_generated = true } = req.body;
 
     const messageData = {
       lead_id,
@@ -23,13 +23,17 @@ export const createOutgoingMessage = async (req, res) => {
 
     console.log("messageData", messageData);
 
+    // For manual messages (not AI generated), send immediately
+    // For AI generated messages, schedule for processing
+    const deliveryStatus = is_ai_generated ? "scheduled" : "sent";
+
     const message = await createMessageService({
       lead_id,
       text,
-      delivery_status: "scheduled",
+      delivery_status: deliveryStatus,
       error_code: null,
       error_message: null,
-      is_ai_generated: false,
+      is_ai_generated,
       created_at: new Date().toISOString(),
       scheduled_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -37,6 +41,30 @@ export const createOutgoingMessage = async (req, res) => {
     });
 
     console.log("message to send", message);
+
+    // If it's a manual message, send it immediately via Twilio
+    if (!is_ai_generated) {
+      console.log("Sending manual message immediately to Twilio");
+      // Import and use the message orchestrator to send the message
+      const { sendTwilioMessage } = await import(
+        "../services/orchestrator/messagingOrchestrator.ts"
+      );
+
+      // Send the message immediately (don't wait for cron)
+      try {
+        await sendTwilioMessage(message[0].id, lead_id);
+        console.log("Manual message sent successfully");
+      } catch (sendError) {
+        console.error("Error sending manual message:", sendError);
+        // Update message status to failed
+        const { updateMessage } = await import("../services/messageService.ts");
+        await updateMessage(message[0].id, {
+          delivery_status: "failed",
+          error_code: "SEND_ERROR",
+          error_message: sendError.message,
+        });
+      }
+    }
 
     res.status(201).json(message);
   } catch (error) {
@@ -62,7 +90,8 @@ export const updateMessage = async (req, res) => {
 
 export const deleteMessage = async (req, res) => {
   try {
-    const { message_id } = req.body;
+    console.log("deleteMessage", req.params);
+    const message_id = req.params.id;
     await deleteMessageService(message_id);
     res.json({ success: true });
   } catch (error) {
@@ -197,7 +226,7 @@ export const statusCallback = async (req, res) => {
       if (MessageStatus === "delivered" && messageToUpdate.lead_id) {
         try {
           // Update lead status based on message history
-          await updateLeadStatusBasedOnMessages(messageToUpdate.lead_id);
+          await updateLeadStatusBasedOnCommunications(messageToUpdate.lead_id);
           logger.info(
             `Updated lead status for lead ${messageToUpdate.lead_id} after message delivery status update`
           );

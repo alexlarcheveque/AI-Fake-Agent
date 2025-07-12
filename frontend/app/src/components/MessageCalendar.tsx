@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { LeadRow } from "../../../../backend/models/Lead";
 import { MessageRow } from "../../../../backend/models/Message";
+import { Call } from "../api/callApi";
 import leadApi from "../api/leadApi";
 import messageApi from "../api/messageApi";
+import callApi from "../api/callApi";
 import {
   format,
   startOfMonth,
@@ -19,23 +21,31 @@ interface MessageCalendarProps {
   onLeadSelect?: (leadId: number) => void;
 }
 
-interface CalendarEvent {
-  id: number;
+interface ActivityEvent {
+  id: string;
   leadId: number;
-  name: string;
-  messageType: "first" | "followup";
-  messageCount: number;
+  leadName: string;
+  type: "message" | "call";
   scheduledAt: string;
   isPast: boolean;
   status: string;
+  count: number; // Number indicating multiple activities for same lead on same day
+}
+
+interface DayActivity {
+  leadId: number;
+  leadName: string;
+  activities: ActivityEvent[];
 }
 
 const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [dayActivities, setDayActivities] = useState<
+    Map<string, DayActivity[]>
+  >(new Map());
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch leads and their messages
+  // Fetch leads, messages, and calls
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -48,52 +58,104 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
 
         // Fetch all leads owned by the user
         const leads = await leadApi.getLeadsByUserId();
+        console.log(`📊 Calendar: Found ${leads?.length || 0} leads`, leads);
 
         if (!leads || leads.length === 0) {
-          setCalendarEvents([]);
+          setDayActivities(new Map());
           return;
         }
 
-        // Collect all messages for all leads
-        const allEvents: CalendarEvent[] = [];
+        // Fetch calls for the current user in the month range
+        const calls = await callApi.getCallsForUser(monthStartStr, monthEndStr);
+        console.log(
+          `📞 Calendar: Found ${
+            calls?.length || 0
+          } calls for date range ${monthStartStr} to ${monthEndStr}`,
+          calls
+        );
 
-        // Process each lead
+        // Collect all activities
+        const allActivities: ActivityEvent[] = [];
+
+        // Process each lead for messages
         for (const lead of leads) {
           try {
             // Get all messages for this lead
             const messages = await messageApi.getMessagesByLeadIdDescending(
               lead.id
             );
+            console.log(
+              `💬 Calendar: Lead ${lead.name} (${lead.id}) has ${
+                messages?.length || 0
+              } messages`,
+              messages
+            );
 
-            if (!messages || messages.length === 0) continue;
+            if (messages && messages.length > 0) {
+              // Log scheduled messages specifically
+              const scheduledMessages = messages.filter(
+                (m) => m.delivery_status === "scheduled"
+              );
+              console.log(
+                `⏰ Calendar: Lead ${lead.name} has ${scheduledMessages.length} scheduled messages`,
+                scheduledMessages
+              );
 
-            // Process messages to create calendar events
-            messages.forEach((message, index) => {
-              // Only include messages with scheduled_at date and that are in the current month
-              if (message.scheduled_at) {
-                const messageDate = new Date(message.scheduled_at);
-                const isInRange =
-                  messageDate >= monthStart && messageDate <= monthEnd;
+              // Process messages to create calendar events
+              messages.forEach((message) => {
+                // Only include messages with scheduled_at date and that are in the current month
+                if (message.scheduled_at) {
+                  // Properly handle timezone for message timestamps
+                  let messageTimestamp = message.scheduled_at;
 
-                if (isInRange) {
-                  // Determine if this is a first message or followup
-                  const messageType = index === 0 ? "first" : "followup";
+                  // Ensure the timestamp is treated as UTC if no timezone info is present
+                  if (
+                    !messageTimestamp.includes("Z") &&
+                    !messageTimestamp.includes("+") &&
+                    !messageTimestamp.includes("-", 10)
+                  ) {
+                    messageTimestamp = messageTimestamp.replace(
+                      /(\.\d{3})?$/,
+                      "Z"
+                    );
+                  }
 
-                  allEvents.push({
-                    id: message.id,
-                    leadId: lead.id,
-                    name: lead.name,
-                    messageType: messageType,
-                    messageCount: messages.length - index, // Count from the end
-                    scheduledAt: message.scheduled_at,
-                    isPast:
-                      new Date(message.scheduled_at) < new Date() &&
-                      message.delivery_status !== "scheduled",
-                    status: message.delivery_status || "scheduled",
-                  });
+                  const messageDate = new Date(messageTimestamp);
+                  // Check if the message date (in local time) falls within the current month
+                  const isInRange =
+                    messageDate >= monthStart && messageDate <= monthEnd;
+
+                  console.log(
+                    `📅 Calendar: Message ${message.id} scheduled for ${message.scheduled_at}, isInRange: ${isInRange}, status: ${message.delivery_status}`
+                  );
+
+                  if (isInRange) {
+                    // Check if the message is in the past (in local time)
+                    const isPast = messageDate < new Date();
+                    const status = message.delivery_status || "scheduled";
+
+                    // Only include if:
+                    // 1. Future activity (regardless of status)
+                    // 2. Past activity that was actually completed/failed (not still "scheduled")
+                    const shouldInclude =
+                      !isPast || (isPast && status !== "scheduled");
+
+                    if (shouldInclude) {
+                      allActivities.push({
+                        id: `message-${message.id}`,
+                        leadId: lead.id,
+                        leadName: lead.name,
+                        type: "message",
+                        scheduledAt: messageTimestamp, // Use the corrected timestamp
+                        isPast,
+                        status,
+                        count: 1, // Will be updated later when grouping
+                      });
+                    }
+                  }
                 }
-              }
-            });
+              });
+            }
           } catch (error) {
             console.error(
               `Error fetching messages for lead ${lead.id}:`,
@@ -102,17 +164,133 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
           }
         }
 
-        // Sort all events by timestamp (ascending)
-        allEvents.sort((a, b) => {
-          const dateA = new Date(a.scheduledAt || 0);
-          const dateB = new Date(b.scheduledAt || 0);
-          return dateA.getTime() - dateB.getTime();
+        // Process calls
+        if (calls && calls.length > 0) {
+          calls.forEach((call) => {
+            if (call.created_at || call.started_at) {
+              // Properly handle timezone for call timestamps
+              let callTimestamp = call.started_at || call.created_at;
+
+              // Ensure the timestamp is treated as UTC if no timezone info is present
+              if (
+                !callTimestamp.includes("Z") &&
+                !callTimestamp.includes("+") &&
+                !callTimestamp.includes("-", 10)
+              ) {
+                callTimestamp = callTimestamp.replace(/(\.\d{3})?$/, "Z");
+              }
+
+              const callDate = new Date(callTimestamp);
+              // Check if the call date (in local time) falls within the current month
+              const isInRange = callDate >= monthStart && callDate <= monthEnd;
+
+              if (isInRange) {
+                // Check if the call is in the past (in local time)
+                const isPast = callDate < new Date();
+                const status = call.status;
+
+                // Only include if:
+                // 1. Future activity (regardless of status)
+                // 2. Past activity that was actually completed/failed (not incomplete statuses)
+                const completedStatuses = [
+                  "completed",
+                  "failed",
+                  "busy",
+                  "no-answer",
+                  "canceled",
+                ];
+                const shouldInclude =
+                  !isPast || (isPast && completedStatuses.includes(status));
+
+                if (shouldInclude) {
+                  allActivities.push({
+                    id: `call-${call.id}`,
+                    leadId: call.lead_id,
+                    leadName: call.leads?.name || "Unknown Lead",
+                    type: "call",
+                    scheduledAt: callTimestamp, // Use the corrected timestamp
+                    isPast,
+                    status,
+                    count: 1, // Will be updated later when grouping
+                  });
+                }
+              }
+            }
+          });
+        }
+
+        console.log(
+          `🎯 Calendar: Total activities collected: ${allActivities.length}`,
+          allActivities
+        );
+
+        // Group activities by day and lead
+        const dayActivityMap = new Map<string, DayActivity[]>();
+
+        allActivities.forEach((activity) => {
+          // Ensure proper timezone handling when creating day key
+          let activityTimestamp = activity.scheduledAt;
+
+          // Ensure the timestamp is treated as UTC if no timezone info is present
+          if (
+            !activityTimestamp.includes("Z") &&
+            !activityTimestamp.includes("+") &&
+            !activityTimestamp.includes("-", 10)
+          ) {
+            activityTimestamp = activityTimestamp.replace(/(\.\d{3})?$/, "Z");
+          }
+
+          // Parse as UTC, then format in local timezone for grouping
+          const activityDate = new Date(activityTimestamp);
+          // format() automatically converts to local timezone, ensuring activities are grouped by local day
+          const dayKey = format(activityDate, "yyyy-MM-dd");
+
+          if (!dayActivityMap.has(dayKey)) {
+            dayActivityMap.set(dayKey, []);
+          }
+
+          const dayActivities = dayActivityMap.get(dayKey)!;
+          let leadActivity = dayActivities.find(
+            (da) => da.leadId === activity.leadId
+          );
+
+          if (!leadActivity) {
+            leadActivity = {
+              leadId: activity.leadId,
+              leadName: activity.leadName,
+              activities: [],
+            };
+            dayActivities.push(leadActivity);
+          }
+
+          leadActivity.activities.push(activity);
         });
 
-        setCalendarEvents(allEvents);
+        // Update count for each activity group
+        dayActivityMap.forEach((dayActivitiesList) => {
+          dayActivitiesList.forEach((leadActivity) => {
+            leadActivity.activities.forEach((activity, index) => {
+              activity.count =
+                leadActivity.activities.length > 1 ? index + 1 : 0;
+            });
+            // Sort activities by time within each lead group
+            leadActivity.activities.sort((a, b) => {
+              const dateA = new Date(a.scheduledAt);
+              const dateB = new Date(b.scheduledAt);
+              return dateA.getTime() - dateB.getTime();
+            });
+          });
+        });
+
+        console.log(
+          `📊 Calendar: Final day activities map:`,
+          Array.from(dayActivityMap.entries())
+        );
+
+        setDayActivities(dayActivityMap);
       } catch (error) {
         console.error("Error fetching calendar data:", error);
-        setCalendarEvents([]);
+        setDayActivities(new Map());
       } finally {
         setIsLoading(false);
       }
@@ -136,20 +314,40 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
 
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  // Get all events for a specific day
-  const getEventsForDay = (day: Date) => {
-    // Filter events for this day
-    const events = calendarEvents.filter((event) => {
-      if (!event.scheduledAt) return false;
-      const eventDate = new Date(event.scheduledAt);
-      return isSameDay(eventDate, day);
-    });
+  // Calculate empty cells needed before the first day of the month
+  const firstDayOfMonth = startOfMonth(currentMonth);
+  const startingDayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const emptyDaysAtStart = startingDayOfWeek;
 
-    // Sort events by time (ascending)
-    return events.sort((a, b) => {
-      const dateA = new Date(a.scheduledAt || 0);
-      const dateB = new Date(b.scheduledAt || 0);
-      return dateA.getTime() - dateB.getTime();
+  // Calculate empty cells needed after the last day of the month to complete the grid
+  const totalCells = emptyDaysAtStart + daysInMonth.length;
+  const remainingCells = totalCells % 7;
+  const emptyDaysAtEnd = remainingCells === 0 ? 0 : 7 - remainingCells;
+
+  // Get all activities for a specific day
+  const getActivitiesForDay = (day: Date): DayActivity[] => {
+    const dayKey = format(day, "yyyy-MM-dd");
+    return dayActivities.get(dayKey) || [];
+  };
+
+  const formatTimeToLocal = (utcTime: string): string => {
+    // Ensure the timestamp is treated as UTC
+    let dateString = utcTime;
+
+    // If the timestamp doesn't end with 'Z' and doesn't have timezone info, append 'Z' to treat as UTC
+    if (
+      !dateString.includes("Z") &&
+      !dateString.includes("+") &&
+      !dateString.includes("-", 10)
+    ) {
+      dateString = dateString.replace(/(\.\d{3})?$/, "Z");
+    }
+
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     });
   };
 
@@ -215,8 +413,19 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
           ))}
 
           {/* Calendar days */}
+          {/* Empty cells at the start of the month */}
+          {Array.from({ length: emptyDaysAtStart }, (_, index) => (
+            <div
+              key={`empty-start-${index}`}
+              className="min-h-[100px] border p-1 bg-gray-50 opacity-50"
+            >
+              {/* Empty cell */}
+            </div>
+          ))}
+
+          {/* Actual days in the month */}
           {daysInMonth.map((day) => {
-            const dayEvents = getEventsForDay(day);
+            const dayActivities = getActivitiesForDay(day);
             const isCurrentDay = isToday(day);
             const isPastDay = isBefore(day, new Date()) && !isCurrentDay;
 
@@ -242,41 +451,123 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                 </div>
 
                 <div className="mt-1 space-y-1">
-                  {dayEvents.map((event) => (
-                    <div
-                      key={`${event.id}-${event.messageType}`}
-                      onClick={() => onLeadSelect && onLeadSelect(event.leadId)}
-                      className={`text-xs p-1 rounded truncate cursor-pointer ${
-                        event.isPast
-                          ? event.status === "sent" ||
-                            event.status === "delivered"
-                            ? "bg-green-50 text-green-800 border border-green-200"
-                            : event.status === "failed"
-                            ? "bg-red-50 text-red-800 border border-red-200"
-                            : "bg-gray-50 text-gray-800 border border-gray-200"
-                          : event.messageType === "first"
-                          ? "bg-green-100 text-green-800 hover:bg-green-200"
-                          : "bg-blue-100 text-blue-800 hover:bg-blue-200"
-                      }`}
-                      title={`${event.name} - ${
-                        event.messageType === "first"
-                          ? "First message"
-                          : `Follow-up #${event.messageCount}`
-                      } (${event.status})`}
-                    >
-                      <div className="font-medium">{event.name}</div>
-                      <div>
-                        {format(new Date(event.scheduledAt), "h:mm a")}
-                        {event.isPast && (
-                          <span className="ml-1 text-xs">({event.status})</span>
-                        )}
+                  {dayActivities.map((leadActivity) => {
+                    const messageCount = leadActivity.activities.filter(
+                      (a) => a.type === "message"
+                    ).length;
+                    const callCount = leadActivity.activities.filter(
+                      (a) => a.type === "call"
+                    ).length;
+                    const totalActivities = leadActivity.activities.length;
+
+                    // Determine the primary status for the lead's activities
+                    const hasSuccessful = leadActivity.activities.some(
+                      (a) =>
+                        a.status === "sent" ||
+                        a.status === "delivered" ||
+                        a.status === "completed"
+                    );
+                    const hasFailed = leadActivity.activities.some(
+                      (a) => a.status === "failed"
+                    );
+                    const hasScheduled = leadActivity.activities.some(
+                      (a) => !a.isPast
+                    );
+
+                    // Determine card color based on status priority
+                    let cardColor = "";
+                    if (hasScheduled) {
+                      // Future activities - use distinct blue background for scheduled
+                      cardColor = "bg-blue-100 border-blue-300 text-blue-800";
+                    } else if (hasSuccessful && !hasFailed) {
+                      cardColor = "bg-green-50 border-green-200 text-green-700";
+                    } else if (hasFailed) {
+                      // Failed activities - use distinct red background
+                      cardColor = "bg-red-100 border-red-300 text-red-800";
+                    } else {
+                      cardColor = "bg-gray-50 border-gray-200 text-gray-700";
+                    }
+
+                    return (
+                      <div
+                        key={`lead-${leadActivity.leadId}`}
+                        onClick={() =>
+                          onLeadSelect && onLeadSelect(leadActivity.leadId)
+                        }
+                        className={`p-2 rounded border cursor-pointer hover:shadow-sm transition-shadow h-16 flex flex-col ${cardColor}`}
+                        title={`${leadActivity.leadName} - ${totalActivities} activities (${messageCount} messages, ${callCount} calls)`}
+                      >
+                        {/* Lead name */}
+                        <div className="font-medium text-sm truncate flex-shrink-0">
+                          {leadActivity.leadName}
+                        </div>
+
+                        {/* Middle row with activity indicators and status */}
+                        <div className="flex items-center justify-between text-xs flex-shrink-0">
+                          <div className="flex items-center space-x-2">
+                            {messageCount > 0 && (
+                              <span className="flex items-center">
+                                💬 {messageCount}
+                              </span>
+                            )}
+                            {callCount > 0 && (
+                              <span className="flex items-center">
+                                📞 {callCount}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Status indicator */}
+                          <div className="flex items-center">
+                            {hasScheduled && (
+                              <span className="text-blue-600 font-medium">
+                                ⏰
+                              </span>
+                            )}
+                            {hasSuccessful && !hasScheduled && (
+                              <span className="text-green-600 font-medium">
+                                ✓
+                              </span>
+                            )}
+                            {hasFailed && (
+                              <span className="text-red-600 font-medium">
+                                ✗
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Time range - bottom row */}
+                        <div className="text-xs opacity-75 truncate flex-shrink-0 mt-auto">
+                          {leadActivity.activities.length === 1
+                            ? formatTimeToLocal(
+                                leadActivity.activities[0].scheduledAt
+                              )
+                            : `${formatTimeToLocal(
+                                leadActivity.activities[0].scheduledAt
+                              )} - ${formatTimeToLocal(
+                                leadActivity.activities[
+                                  leadActivity.activities.length - 1
+                                ].scheduledAt
+                              )}`}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
           })}
+
+          {/* Empty cells at the end of the month to complete the grid */}
+          {Array.from({ length: emptyDaysAtEnd }, (_, index) => (
+            <div
+              key={`empty-end-${index}`}
+              className="min-h-[100px] border p-1 bg-gray-50 opacity-50"
+            >
+              {/* Empty cell */}
+            </div>
+          ))}
         </div>
       )}
     </div>

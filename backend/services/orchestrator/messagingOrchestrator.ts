@@ -1,6 +1,6 @@
 import {
   getLeadById,
-  updateLeadStatusBasedOnMessages,
+  updateLeadStatusBasedOnCommunications,
 } from "../leadService.ts";
 import { getMessageById, updateMessage } from "../messageService.ts";
 import { generateResponse } from "../openaiService.ts";
@@ -64,7 +64,8 @@ export const craftAndSendMessage = async (messageId, leadId) => {
 
     await getMessageById(messageId);
 
-    const generatedText = await generateResponse(leadId);
+    // Pass messageId to generateResponse so it can check for call fallback context
+    const generatedText = await generateResponse(leadId, messageId);
     logger.info("generatedText", generatedText);
 
     await updateMessage(messageId, {
@@ -89,7 +90,7 @@ export const craftAndSendMessage = async (messageId, leadId) => {
         );
 
         // Update lead status after sending message
-        await updateLeadStatusBasedOnMessages(leadId);
+        await updateLeadStatusBasedOnCommunications(leadId);
       }
 
       logger.info(`Successfully processed message ${messageId}`);

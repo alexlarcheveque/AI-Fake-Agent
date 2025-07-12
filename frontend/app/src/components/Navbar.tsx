@@ -373,6 +373,14 @@ const Navbar: React.FC = () => {
                     <p className="text-sm text-gray-500 truncate">
                       {userSettings?.company_name || ""}
                     </p>
+                    <div className="border-t border-gray-100 mt-2 pt-2">
+                      <span className="block text-xs text-gray-500">
+                        Your Phone Number
+                      </span>
+                      <span className="block text-sm text-gray-900">
+                        (213) 415-2761
+                      </span>
+                    </div>
                   </div>
                   <Link
                     to="/settings"

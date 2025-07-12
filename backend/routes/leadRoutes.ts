@@ -6,7 +6,9 @@ import {
   deleteLead,
   getLeadsByUserId,
   getLeadLimitInfo,
+  scheduleNextFollowUp,
 } from "../controllers/leadController.ts";
+import { generateLeadContext } from "../controllers/callController.ts";
 import asyncHandler from "express-async-handler";
 import protect from "../middleware/authMiddleware.ts";
 
@@ -37,6 +39,18 @@ router.get(
 router.post(
   "/",
   asyncHandler((req, res) => createLeadAndScheduleMessage(req, res))
+);
+
+// Schedule next follow-up message for a lead
+router.post(
+  "/schedule-follow-up/:id",
+  asyncHandler((req, res) => scheduleNextFollowUp(req, res))
+);
+
+// Generate context for pre-call preparation
+router.post(
+  "/context",
+  asyncHandler((req, res) => generateLeadContext(req, res))
 );
 
 // Update a lead

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import supabase from "../config/supabase";
 
 const ResetPassword: React.FC = () => {
   const [password, setPassword] = useState("");
@@ -10,9 +11,11 @@ const ResetPassword: React.FC = () => {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
 
+  console.log(token);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate passwords match
     if (password !== confirmPassword) {
       setError("Passwords do not match");
@@ -29,22 +32,17 @@ const ResetPassword: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ token, password }),
+      // Use updateUser to set a new password
+      const { data, error: updateError } = await supabase.auth.updateUser({
+        password: password,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to reset password");
+      if (updateError) {
+        throw new Error(updateError.message || "Failed to reset password");
       }
 
       setSuccess(true);
-      
+
       // Redirect to login after 3 seconds
       setTimeout(() => {
         navigate("/login");
@@ -64,7 +62,8 @@ const ResetPassword: React.FC = () => {
             Password reset successful!
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Your password has been reset successfully. You will be redirected to the login page in a few seconds.
+            Your password has been reset successfully. You will be redirected to
+            the login page in a few seconds.
           </p>
           <div className="mt-4 text-center">
             <Link
@@ -183,4 +182,4 @@ const ResetPassword: React.FC = () => {
   );
 };
 
-export default ResetPassword; 
+export default ResetPassword;

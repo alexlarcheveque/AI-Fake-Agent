@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import React, { useState } from "react";
 import "./index.css";
 
@@ -287,7 +288,7 @@ function App() {
               </div>
               <div className="bg-gray-100 rounded-xl overflow-hidden w-full aspect-video mx-auto shadow-md border border-gray-200">
                 <video
-                  src="/videos/automated-client-chats.mov"
+                  src="/videos/appointment-generation.mov"
                   className="object-cover h-full w-full"
                   autoPlay
                   loop
@@ -528,8 +529,8 @@ function App() {
                   Pro
                 </h3>
                 <div className="mt-4 flex justify-center items-baseline">
-                  <span className="text-4xl font-bold text-gray-900">$49</span>
-                  <span className="ml-1 text-lg text-gray-500">/month</span>
+                  <span className="text-4xl font-bold text-gray-900">$588</span>
+                  <span className="ml-1 text-lg text-gray-500">/year</span>
                 </div>
                 <p className="mt-4 text-gray-600 text-center text-sm">
                   Everything you need to grow your business
@@ -633,8 +634,10 @@ function App() {
                   Unlimited
                 </h3>
                 <div className="mt-4 flex justify-center items-baseline">
-                  <span className="text-4xl font-bold text-gray-900">$99</span>
-                  <span className="ml-1 text-lg text-gray-500">/month</span>
+                  <span className="text-4xl font-bold text-gray-900">
+                    $1188
+                  </span>
+                  <span className="ml-1 text-lg text-gray-500">/year</span>
                 </div>
                 <p className="mt-4 text-gray-600 text-center text-sm">
                   Premium features for power users
@@ -763,6 +766,7 @@ function App() {
           </div>
         </div>
       </footer>
+      <Analytics />
     </div>
   );
 }

@@ -58,7 +58,14 @@ export const createUserSettings = async (
       follow_up_interval_new: settings?.follow_up_interval_new || 2,
       follow_up_interval_in_converesation:
         settings?.follow_up_interval_in_converesation || 5,
-      follow_up_interval_inactive: settings?.follow_up_interval_inactive || 30,
+      follow_up_interval_inactive: settings?.follow_up_interval_inactive || 180,
+      enable_voice_calls: settings?.enable_voice_calls ?? true,
+      voice_follow_up_interval_warm:
+        settings?.voice_follow_up_interval_warm ?? 30,
+      voice_follow_up_interval_cold:
+        settings?.voice_follow_up_interval_cold ?? 60,
+      voice_follow_up_interval_inactive:
+        settings?.voice_follow_up_interval_inactive ?? 180,
     };
 
     logger.info(`Inserting settings data: ${JSON.stringify(userSettingsData)}`);
@@ -113,6 +120,10 @@ export const updateUserSettings = async (
       follow_up_interval_in_converesation:
         updatedSettings.follow_up_interval_in_converesation,
       follow_up_interval_inactive: updatedSettings.follow_up_interval_inactive,
+      subscription_plan: updatedSettings.subscription_plan,
+      stripe_customer_id: updatedSettings.stripe_customer_id,
+      stripe_subscription_id: updatedSettings.stripe_subscription_id,
+      subscription_status: updatedSettings.subscription_status,
     };
     logger.info(`Settings to update: ${JSON.stringify(settingsToInsert)}`);
 
