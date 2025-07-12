@@ -114,7 +114,18 @@ const useCommunicationFetching = (leadId: number) => {
       ...calls.map((call) => ({
         id: `call-${call.id}`,
         type: "call" as const,
-        timestamp: call.created_at,
+        timestamp: (() => {
+          const rawTimestamp = call.started_at || call.created_at;
+          // If timestamp lacks timezone info, treat it as UTC by adding 'Z'
+          if (
+            rawTimestamp &&
+            !rawTimestamp.includes("+") &&
+            !rawTimestamp.endsWith("Z")
+          ) {
+            return rawTimestamp + "Z";
+          }
+          return rawTimestamp;
+        })(),
         data: call,
       })),
     ].sort(
@@ -122,10 +133,22 @@ const useCommunicationFetching = (leadId: number) => {
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
-    console.log(`📋 Timeline created:`, {
+    // Debug logging to understand timestamp issues
+    console.log(`📋 Timeline created with timestamps:`, {
       totalItems: items.length,
       callItems: items.filter((i) => i.type === "call").length,
       messageItems: items.filter((i) => i.type === "message").length,
+      timestampBreakdown: items.map((item) => ({
+        id: item.id,
+        type: item.type,
+        timestamp: item.timestamp,
+        timestampDate: new Date(item.timestamp).toLocaleString(),
+        ...(item.type === "call" && {
+          call_started_at: (item.data as any).started_at,
+          call_created_at: (item.data as any).created_at,
+          call_status: (item.data as any).status,
+        }),
+      })),
     });
 
     return items;
@@ -392,14 +415,11 @@ const MessageThread: React.FC<MessageThreadProps> = ({
         throw new Error("Invalid lead ID");
       }
 
-      const messageData = {
-        lead_id: numericLeadId,
-        message_text: text,
-        direction: "outbound" as const,
-        delivery_status: "sent" as const,
-      };
-
-      const sentMessage = await messageApi.sendMessage(messageData);
+      const sentMessage = await messageApi.sendMessage(
+        numericLeadId,
+        text,
+        false
+      );
 
       // Update local state immediately
       setMessages((prevMessages) => [sentMessage, ...prevMessages]);
@@ -870,8 +890,9 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       {/* Message input */}
       <div className="border-t border-gray-200 p-3">
         <MessageInput
+          leadId={leadId}
           onSendMessage={handleSendMessage}
-          disabled={isSending}
+          isDisabled={isSending}
           placeholder={
             isSending
               ? "Sending message..."
@@ -883,18 +904,10 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       {/* Modals */}
       {showAppointmentModal && (
         <AppointmentModal
-          leadId={leadId}
-          leadName={leadName}
+          lead_id={leadId}
+          isOpen={showAppointmentModal}
           onClose={() => setShowAppointmentModal(false)}
-          onAppointmentCreated={() => {
-            refreshCommunications();
-            fetchUpcomingActivities();
-          }}
-          onAppointmentUpdated={() => {
-            refreshCommunications();
-            fetchUpcomingActivities();
-          }}
-          onAppointmentDeleted={() => {
+          onSuccess={() => {
             refreshCommunications();
             fetchUpcomingActivities();
           }}
@@ -904,7 +917,7 @@ const MessageThread: React.FC<MessageThreadProps> = ({
       {showSearchCriteriaModal && (
         <SearchCriteriaModal
           leadId={leadId}
-          leadName={leadName}
+          isOpen={showSearchCriteriaModal}
           onClose={() => setShowSearchCriteriaModal(false)}
         />
       )}

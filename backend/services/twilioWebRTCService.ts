@@ -61,7 +61,7 @@ export const makeWebRTCCall = async (
     const baseUrl =
       process.env.NODE_ENV === "production"
         ? process.env.BACKEND_URL
-        : "https://wanted-husky-scarcely.ngrok-free.app";
+        : process.env.NGROK_URL;
 
     // Determine webhook URL based on AI mode
     const webhookUrl = useRealtimeAI
@@ -122,7 +122,8 @@ export const handleIncomingCall = async (
     const baseUrl =
       process.env.NODE_ENV === "production"
         ? process.env.BACKEND_URL
-        : "https://wanted-husky-scarcely.ngrok-free.app";
+        : process.env.NGROK_URL ||
+          "https://wanted-husky-scarcely.ngrok-free.app";
 
     // Create TwiML to connect caller with AI
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -195,7 +196,8 @@ export const generateVoiceTwiML = async (callId: number): Promise<string> => {
       <Gather numDigits="1" timeout="15" action="${
         process.env.NODE_ENV === "production"
           ? process.env.BACKEND_URL
-          : "https://wanted-husky-scarcely.ngrok-free.app"
+          : process.env.NGROK_URL ||
+            "https://wanted-husky-scarcely.ngrok-free.app"
       }/api/webrtc/gather-response?callId=${callId}">
         <Say voice="Polly.Matthew-Neural" language="en-US">
           If you're interested in learning more, please press 1. 
@@ -243,7 +245,8 @@ export const generateRealtimeTwiML = async (
     const baseUrl =
       process.env.NODE_ENV === "production"
         ? process.env.BACKEND_URL
-        : "https://wanted-husky-scarcely.ngrok-free.app";
+        : process.env.NGROK_URL ||
+          "https://wanted-husky-scarcely.ngrok-free.app";
 
     // For WebRTC + Realtime AI, connect directly to Media Streams without intro
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>

@@ -4,6 +4,7 @@ import { realtimeVoiceService } from "../services/realtimeVoiceService.ts";
 import { calculateLeadScores } from "../services/leadScoringService.ts";
 import { createClient } from "@supabase/supabase-js";
 import { handleCallCompletion } from "../services/callService.ts";
+import { normalizePhoneToNumeric } from "../utils/phoneUtils.js";
 import fs from "fs";
 import path from "path";
 const { VoiceResponse } = twilio.twiml;
@@ -53,12 +54,46 @@ export const handleIncomingCall = async (req: Request, res: Response) => {
     });
 
     // Determine call direction and numbers
-    const isOutbound = !!outboundTo;
+    // For true outbound calls, we should have leadId or mode parameters from our system
+    // For inbound calls, To will be our Twilio number and From will be the caller
+    const isOutbound =
+      !!(leadId || mode) && To !== process.env.TWILIO_PHONE_NUMBER;
     const direction = isOutbound ? "outbound" : "inbound";
     const fromNumber = isOutbound ? process.env.TWILIO_PHONE_NUMBER : From;
-    const toNumber = isOutbound ? outboundTo : To;
+    const toNumber = isOutbound ? To : To;
 
     let call: any = null;
+    let foundLeadId = leadId ? parseInt(leadId) : null;
+
+    // For inbound calls, try to find the lead by phone number
+    if (To === process.env.TWILIO_PHONE_NUMBER && From && !foundLeadId) {
+      console.log(`🔍 Looking up lead for inbound call from ${From}`);
+      try {
+        // Normalize phone number to numeric format for lookup
+        const normalizedPhone = normalizePhoneToNumeric(From);
+        console.log(`📞 Normalized phone ${From} to ${normalizedPhone}`);
+
+        // Try to find a lead with the normalized phone number
+        const { data: leadData, error: leadError } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("phone_number", normalizedPhone)
+          .single();
+
+        if (!leadError && leadData) {
+          foundLeadId = leadData.id;
+          console.log(
+            `✅ Found lead ${foundLeadId} (${leadData.name}) for inbound call from ${From} (normalized: ${normalizedPhone})`
+          );
+        } else {
+          console.log(
+            `⚠️ No lead found for inbound call from ${From} (normalized: ${normalizedPhone})`
+          );
+        }
+      } catch (error) {
+        console.error(`❌ Error looking up lead for ${From}:`, error);
+      }
+    }
 
     // First, check if a call with this Twilio SID already exists
     const { data: existingCallBySid, error: sidError } = await supabase
@@ -121,7 +156,7 @@ export const handleIncomingCall = async (req: Request, res: Response) => {
         from_number: fromNumber,
         to_number: toNumber,
         started_at: new Date().toISOString(),
-        lead_id: leadId ? parseInt(leadId) : null,
+        lead_id: foundLeadId,
         call_type: "follow_up", // Use valid call_type value
         call_mode: mode === "manual" ? "manual" : "ai", // Track whether it's manual or AI
       };
@@ -156,54 +191,81 @@ export const handleIncomingCall = async (req: Request, res: Response) => {
  * Generate TwiML for Realtime voice calls
  */
 function generateRealtimeTwiML(req: Request, callId?: number): string {
-  // Check if this is an outbound call (has To parameter)
   const toNumber = req.body.To || req.query.To;
-  const mode = req.body.mode || req.query.mode; // Get the call mode (ai or manual)
+  const mode = req.body.mode || req.query.mode; // Get the call mode (ai, manual, first-call, voicemail)
+  const leadId = req.body.leadId || req.query.leadId;
+  const fromNumber = req.body.From || req.query.From; // For inbound calls
+  const answeredBy = req.body.AnsweredBy || req.query.AnsweredBy; // Twilio's machine detection result
+
+  // Determine if this is truly an outbound call
+  // Inbound: someone calls our Twilio number (To = our number)
+  // Outbound: we call someone (To = their number)
+  const isOutbound = toNumber !== process.env.TWILIO_PHONE_NUMBER;
 
   console.log(
-    `🔧 Generating TwiML - Mode: ${mode}, To: ${toNumber}, CallId: ${callId}`
+    `🔧 Generating TwiML - Mode: ${mode}, To: ${toNumber}, From: ${fromNumber}, CallId: ${callId}, LeadId: ${leadId}, AnsweredBy: ${answeredBy}, IsOutbound: ${isOutbound}`
   );
 
   // Use ngrok URL for WebSocket connection so Twilio can reach it
   const ngrokUrl =
-    process.env.NGROK_URL || "wanted-husky-scarcely.ngrok-free.app";
-  const websocketUrl = `wss://${ngrokUrl}/api/voice/realtime`;
+    process.env.NGROK_URL || "https://wanted-husky-scarcely.ngrok-free.app";
+  const websocketUrl =
+    ngrokUrl.replace("https://", "wss://") + "/twilio-websocket";
 
-  if (toNumber) {
+  console.log(`🔗 WEBSOCKET URL DEBUG: ${websocketUrl}`);
+
+  if (isOutbound) {
     // Outbound call
     if (mode === "manual") {
       // For manual calls, dial the lead directly and connect the WebRTC user
       console.log(`📞 Manual call: Dialing ${toNumber} directly`);
       return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${process.env.TWILIO_PHONE_NUMBER}" record="true" recordingStatusCallback="https://${ngrokUrl}/api/recordings/callback" recordingStatusCallbackMethod="POST">
+  <Dial callerId="${process.env.TWILIO_PHONE_NUMBER}" record="true" recordingStatusCallback="${ngrokUrl}/api/recordings/callback" recordingStatusCallbackMethod="POST">
     <Number>${toNumber}</Number>
   </Dial>
 </Response>`;
+    } else if (
+      answeredBy &&
+      (answeredBy.includes("machine") || answeredBy === "fax")
+    ) {
+      // VOICEMAIL DETECTED: Just hang up (no voicemail left)
+      console.log(
+        `📞 Voicemail detected (${answeredBy}): Hanging up immediately`
+      );
+      return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Hangup/>
+</Response>`;
     } else {
-      // For AI calls, connect to AI WebSocket stream
-      console.log(`🤖 AI call: Connecting to AI stream for ${toNumber}`);
+      // For AI calls with human answer, connect to AI WebSocket stream
+      console.log(
+        `🤖 AI call: Connecting to AI stream for ${toNumber} (mode: ${mode}, answeredBy: ${answeredBy})`
+      );
       return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
     <Stream url="${websocketUrl}">
       <Parameter name="callId" value="${callId || "unknown"}" />
       <Parameter name="leadPhone" value="${toNumber}" />
+      <Parameter name="leadId" value="${leadId || "unknown"}" />
       <Parameter name="isOutbound" value="true" />
-      <Parameter name="mode" value="ai" />
+      <Parameter name="mode" value="${mode}" />
     </Stream>
   </Connect>
 </Response>`;
     }
   } else {
-    // Inbound call - always connect to AI stream
-    console.log(`📞 Inbound call: Connecting to AI stream`);
+    // Inbound call - connect directly to AI stream with proactive greeting
+    console.log(`📞 Inbound call: Connecting to AI stream from ${fromNumber}`);
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Hi! I'm your AI real estate assistant. Let me connect you now.</Say>
   <Connect>
     <Stream url="${websocketUrl}">
       <Parameter name="callId" value="${callId || "unknown"}" />
+      <Parameter name="leadPhone" value="${fromNumber}" />
+      <Parameter name="leadId" value="${leadId || "unknown"}" />
+      <Parameter name="isOutbound" value="false" />
       <Parameter name="mode" value="ai" />
     </Stream>
   </Connect>
@@ -220,6 +282,7 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
   let callId: string = "unknown";
   let leadId: number = 0;
   let leadData: any = null;
+  let callMode: string = "ai";
 
   // Handle WebSocket messages
   ws.on("message", async (message: string) => {
@@ -228,10 +291,19 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
 
       // Extract call parameters from Twilio stream start event
       if (data.event === "start") {
+        console.log(
+          `🔍 WEBSOCKET DEBUG: Received start event:`,
+          JSON.stringify(data.start, null, 2)
+        );
+
         const parameters = data.start.customParameters || {};
         callId = parameters.callId || "unknown";
+        leadId = parseInt(parameters.leadId) || 0;
+        callMode = parameters.mode || "ai";
 
-        console.log(`WebSocket stream started for call ${callId}`);
+        console.log(
+          `🚀 WEBSOCKET: Stream started for call ${callId} with mode: ${callMode}, leadId: ${leadId}`
+        );
 
         // Look up call record to get lead information
         if (callId !== "unknown") {
@@ -242,14 +314,14 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
             .single();
 
           if (!error && call) {
-            leadId = call.lead_id;
+            leadId = call.lead_id || leadId;
 
             // If no lead_id, try to find lead by phone number
             if (!leadId && call.from_number) {
               const { data: lead } = await supabase
                 .from("leads")
-                .select("id, first_name, last_name, phone")
-                .eq("phone", call.from_number)
+                .select("id, name, phone_number")
+                .eq("phone_number", call.from_number)
                 .single();
 
               if (lead) {
@@ -266,7 +338,7 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
               // Get lead data
               const { data: lead } = await supabase
                 .from("leads")
-                .select("id, first_name, last_name, phone, email")
+                .select("id, name, phone_number, email")
                 .eq("id", leadId)
                 .single();
 
@@ -277,22 +349,50 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
           }
         }
 
+        // Also try to find lead by leadPhone parameter (for inbound calls)
+        if (!leadId && parameters.leadPhone) {
+          console.log(`🔍 Looking up lead by phone: ${parameters.leadPhone}`);
+
+          // Normalize phone number to numeric format for lookup
+          const normalizedPhone = normalizePhoneToNumeric(parameters.leadPhone);
+          console.log(
+            `📞 Normalized phone ${parameters.leadPhone} to ${normalizedPhone}`
+          );
+
+          const { data: lead } = await supabase
+            .from("leads")
+            .select("id, name, phone_number, email, lead_type, context")
+            .eq("phone_number", normalizedPhone)
+            .single();
+
+          if (lead) {
+            leadId = lead.id;
+            leadData = lead;
+            console.log(
+              `✅ Found lead ${leadId} (${lead.name}) for phone ${parameters.leadPhone} (normalized: ${normalizedPhone})`
+            );
+          } else {
+            console.log(
+              `⚠️ No lead found for phone ${parameters.leadPhone} (normalized: ${normalizedPhone})`
+            );
+          }
+        }
+
         console.log(
           `Starting Realtime voice call for lead ${leadId} (${
-            leadData?.first_name || "Unknown"
-          })`
+            leadData?.name || "Unknown"
+          }) with mode: ${callMode}`
         );
 
         // Start the Realtime voice service with stream info
         await realtimeVoiceService.handleWebSocketConnection(ws, {
           callId,
           leadId,
-          leadName: leadData
-            ? `${leadData.first_name} ${leadData.last_name}`
-            : undefined,
-          leadPhone: leadData?.phone,
+          leadName: leadData?.name,
+          leadPhone: leadData?.phone_number,
           streamSid: data.start.streamSid,
           initialStreamData: data.start,
+          callMode: callMode, // Pass the call mode
         });
       }
     } catch (error) {
@@ -314,7 +414,7 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
  */
 export const initiateAICall = async (req: Request, res: Response) => {
   try {
-    const { leadId, isVoicemailCall = false } = req.body;
+    const { leadId } = req.body;
 
     if (!leadId) {
       const message = "Lead ID is required";
@@ -323,11 +423,7 @@ export const initiateAICall = async (req: Request, res: Response) => {
       return;
     }
 
-    console.log(
-      `📞 Initiating AI call for lead ${leadId}${
-        isVoicemailCall ? " (voicemail)" : ""
-      }`
-    );
+    console.log(`📞 Initiating AI call for lead ${leadId}`);
 
     // Get lead information
     const { data: lead, error: leadError } = await supabase
@@ -350,132 +446,94 @@ export const initiateAICall = async (req: Request, res: Response) => {
       return;
     }
 
-    console.log(`📞 Found lead: ${lead.name} (${lead.phone_number})`);
-
-    // Create or find the call record
-    let callRecord = null;
-
-    if (isVoicemailCall) {
-      // For voicemail calls, find the most recent call record for this lead
-      const { data: recentCall } = await supabase
-        .from("calls")
-        .select("*")
-        .eq("lead_id", leadId)
-        .eq("is_voicemail", true)
-        .eq("status", "queued")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      callRecord = recentCall;
-    } else {
-      // For regular calls, find the most recent scheduled call
-      const { data: scheduledCall } = await supabase
-        .from("calls")
-        .select("*")
-        .eq("lead_id", leadId)
-        .eq("status", "queued")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      callRecord = scheduledCall;
+    if (!lead.is_ai_enabled) {
+      const message = `Lead ${leadId} does not have AI calling enabled`;
+      console.error(`❌ ${message}`);
+      if (res) return res.status(400).json({ error: message });
+      return;
     }
 
-    if (!callRecord) {
-      console.log(`⚠️ No call record found for lead ${leadId}, creating one`);
+    // Get the call record to find the call ID
+    const { data: callRecord, error: callError } = await supabase
+      .from("calls")
+      .select("*")
+      .eq("lead_id", leadId)
+      .eq("status", "queued")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
 
-      const { data: newCall } = await supabase
-        .from("calls")
-        .insert({
-          lead_id: leadId,
-          direction: "outbound",
-          status: "queued",
-          to_number: lead.phone_number,
-          from_number: process.env.TWILIO_PHONE_NUMBER,
-          call_type: "new_lead",
-          call_mode: "ai",
-          attempt_number: isVoicemailCall ? 3 : 1,
-          is_voicemail: isVoicemailCall,
-          scheduled_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      callRecord = newCall;
+    if (callError || !callRecord) {
+      const message = `No queued call found for lead ${leadId}`;
+      console.error(`❌ ${message}:`, callError);
+      if (res) return res.status(404).json({ error: message });
+      return;
     }
 
-    // Initialize Twilio call with appropriate configuration
-    const twilioConfig = {
-      to: lead.phone_number,
+    const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
+
+    if (!baseUrl) {
+      const message =
+        "NGROK_URL or BACKEND_URL environment variable is required";
+      console.error(`❌ ${message}`);
+      if (res) return res.status(500).json({ error: message });
+      return;
+    }
+
+    // Update call status to 'ringing'
+    await supabase
+      .from("calls")
+      .update({ status: "ringing", started_at: new Date().toISOString() })
+      .eq("id", callRecord.id);
+
+    // Create the call using Twilio API with machine detection
+    const call = await twilioClient.calls.create({
+      to: lead.phone_number.toString(),
       from: process.env.TWILIO_PHONE_NUMBER,
-      // Use different endpoints for voicemail vs conversation calls
-      url: isVoicemailCall
-        ? `${process.env.BASE_URL}/api/calls/voice-voicemail/${leadId}`
-        : `${process.env.BASE_URL}/api/calls/voice/${leadId}`,
-      statusCallback: `${process.env.BASE_URL}/api/calls/status`,
-      statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
+      url: `${baseUrl}/api/voice/incoming?leadId=${leadId}&mode=ai`,
+      method: "POST",
+      statusCallback: `${baseUrl}/api/voice/status-callback`,
       statusCallbackMethod: "POST",
+      statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
+      machineDetection: "Enable", // Faster machine detection (vs DetectMessageEnd)
+      machineDetectionTimeout: 10, // Reduced from 30 seconds
+      machineDetectionSpeechThreshold: 1200, // Reduced from 2400ms (how long to wait for speech)
+      machineDetectionSpeechEndThreshold: 800, // Reduced from 1200ms (silence after speech to confirm machine)
+      machineDetectionSilenceTimeout: 3000, // Reduced from 5000ms (total silence before giving up)
       record: true,
-      recordingStatusCallback: `${process.env.BASE_URL}/api/calls/recording`,
+      recordingStatusCallback: `${baseUrl}/api/recordings/callback`,
       recordingStatusCallbackMethod: "POST",
-      machineDetection: "DetectMessageEnd", // Enable voicemail detection
-      timeout: 30,
-    };
-
-    console.log(`📞 Making Twilio call with config:`, {
-      ...twilioConfig,
-      url: twilioConfig.url,
-      isVoicemail: isVoicemailCall,
     });
-
-    const call = await twilioClient.calls.create(twilioConfig);
-
-    console.log(`✅ Twilio call initiated: ${call.sid}`);
 
     // Update call record with Twilio SID
     await supabase
       .from("calls")
-      .update({
-        twilio_call_sid: call.sid,
-        status: "ringing",
-        started_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update({ twilio_call_sid: call.sid })
       .eq("id", callRecord.id);
 
-    const response = {
-      success: true,
-      callSid: call.sid,
-      leadId: leadId,
-      callType: isVoicemailCall ? "voicemail" : "conversation",
-      message: isVoicemailCall
-        ? "Voicemail call initiated successfully"
-        : "AI call initiated successfully",
-    };
-
-    console.log(`✅ Call response:`, response);
+    console.log(
+      `✅ Call initiated successfully for lead ${leadId}: ${call.sid}`
+    );
 
     if (res) {
-      return res.status(200).json(response);
+      return res.status(200).json({
+        success: true,
+        message: `Call initiated for lead ${leadId}`,
+        callSid: call.sid,
+      });
     }
-
-    return response;
   } catch (error) {
-    console.error("❌ Error initiating AI call:", error);
-
-    const errorResponse = {
-      success: false,
-      error: error.message || "Failed to initiate call",
-    };
+    const message = `Failed to initiate call: ${
+      error instanceof Error ? error.message : "Unknown error"
+    }`;
+    console.error(`❌ ${message}`, error);
 
     if (res) {
-      return res.status(500).json(errorResponse);
+      return res.status(500).json({
+        success: false,
+        error: message,
+      });
     }
-
-    throw error;
   }
 };
 
@@ -999,13 +1057,15 @@ function detectVoicemail(
   callDuration: string | undefined,
   answeredBy: string | undefined
 ): boolean {
-  // If Twilio explicitly detected machine/voicemail
+  // If Twilio explicitly detected machine/voicemail or fax
   if (
     answeredBy === "machine_start" ||
     answeredBy === "machine_end_beep" ||
-    answeredBy === "machine_end_silence"
+    answeredBy === "machine_end_silence" ||
+    answeredBy === "machine_end_other" ||
+    answeredBy === "fax"
   ) {
-    console.log(`🤖 Twilio detected voicemail: ${answeredBy}`);
+    console.log(`🤖 Twilio detected voicemail/machine: ${answeredBy}`);
     return true;
   }
 
@@ -1150,175 +1210,4 @@ export const testVoice = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Handle voicemail-only calls (leaves message and hangs up)
- */
-export const handleVoicemailCall = async (req: Request, res: Response) => {
-  try {
-    const { leadId } = req.params;
-
-    if (!leadId) {
-      console.error("❌ No leadId provided for voicemail call");
-      return res.status(400).send("Lead ID is required");
-    }
-
-    console.log(`📞 Handling voicemail call for lead ${leadId}`);
-
-    // Get lead information
-    const { data: lead, error: leadError } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("id", leadId)
-      .single();
-
-    if (leadError || !lead) {
-      console.error(`❌ Lead ${leadId} not found for voicemail:`, leadError);
-      return res.status(404).send("Lead not found");
-    }
-
-    // Get user settings for personalization
-    const { data: userSettings } = await supabase
-      .from("user_settings")
-      .select("*")
-      .eq("uuid", lead.user_uuid)
-      .single();
-
-    const agentName = userSettings?.agent_name || "your real estate agent";
-    const companyName = userSettings?.company_name || "our team";
-
-    // Create tailored voicemail message based on lead type
-    const leadType = lead.lead_type?.toLowerCase();
-    let voicemailMessage = "";
-
-    if (leadType === "buyer") {
-      voicemailMessage =
-        `Hi ${lead.name}, this is ${agentName} from ${companyName}. ` +
-        `I was trying to reach you about your home search. ` +
-        `I have some exciting new listings that just came on the market that match what you're looking for. ` +
-        `There are also some great opportunities in your price range that I'd love to share with you. ` +
-        `Please give me a call back at ${process.env.TWILIO_PHONE_NUMBER} or feel free to text me. ` +
-        `I don't want you to miss out on these properties. Talk to you soon!`;
-    } else if (leadType === "seller") {
-      voicemailMessage =
-        `Hi ${lead.name}, this is ${agentName} from ${companyName}. ` +
-        `I was trying to reach you about your home value inquiry. ` +
-        `I've prepared a detailed market analysis for your property and have some exciting news about current market conditions. ` +
-        `Home values in your area have been performing really well, and I'd love to share the specifics with you. ` +
-        `Please give me a call back at ${process.env.TWILIO_PHONE_NUMBER} or feel free to text me. ` +
-        `I think you'll be pleasantly surprised by what I found. Have a great day!`;
-    } else {
-      // Generic fallback for unclear lead types
-      voicemailMessage =
-        `Hi ${lead.name}, this is ${agentName} from ${companyName}. ` +
-        `I was trying to reach you about your real estate inquiry. ` +
-        `I have some great information to share with you about current market opportunities in your area. ` +
-        `Whether you're looking to buy or sell, I'd love to help you navigate the market. ` +
-        `Please give me a call back at ${process.env.TWILIO_PHONE_NUMBER} or feel free to text me. ` +
-        `I look forward to hearing from you soon. Have a great day!`;
-    }
-
-    console.log(
-      `📝 Generated ${leadType || "generic"} voicemail for lead ${leadId}: ${
-        lead.name
-      }`
-    );
-
-    try {
-      console.log(`🎤 Generating OpenAI voicemail audio for lead ${leadId}`);
-
-      // Use OpenAI TTS API to generate audio with the same voice as live calls
-      const speech = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "tts-1",
-          voice: "alloy", // Same voice as the Realtime API calls
-          input: voicemailMessage,
-          response_format: "mp3",
-        }),
-      });
-
-      if (!speech.ok) {
-        throw new Error(`OpenAI TTS failed: ${speech.statusText}`);
-      }
-
-      // Get the audio buffer
-      const audioBuffer = await speech.arrayBuffer();
-
-      // Save to temporary file
-      const tempDir = path.join(process.cwd(), "backend", "temp", "audio");
-      await fs.promises.mkdir(tempDir, { recursive: true });
-
-      const fileName = `voicemail-${leadId}-${Date.now()}.mp3`;
-      const filePath = path.join(tempDir, fileName);
-
-      await fs.promises.writeFile(filePath, Buffer.from(audioBuffer));
-
-      console.log(`✅ Saved OpenAI voicemail audio: ${filePath}`);
-
-      // Create public URL for the audio file
-      const audioUrl = `${process.env.BASE_URL}/api/calls/voicemail-audio/${fileName}`;
-
-      // Create TwiML that plays the OpenAI-generated audio
-      const twiml = new VoiceResponse();
-
-      // Play the OpenAI-generated voicemail
-      twiml.play(audioUrl);
-
-      // Hang up after playing the voicemail
-      twiml.hangup();
-
-      console.log(
-        `📞 Generated OpenAI voicemail TwiML for lead ${leadId}: ${lead.name}`
-      );
-
-      res.type("text/xml");
-      res.send(twiml.toString());
-
-      // Clean up the file after a delay (5 minutes)
-      setTimeout(async () => {
-        try {
-          await fs.promises.unlink(filePath);
-          console.log(`🧹 Cleaned up voicemail file: ${fileName}`);
-        } catch (cleanupError) {
-          console.warn(
-            `⚠️ Could not clean up voicemail file: ${fileName}`,
-            cleanupError
-          );
-        }
-      }, 5 * 60 * 1000); // 5 minutes
-    } catch (openaiError) {
-      console.error(
-        "❌ OpenAI TTS failed, falling back to Twilio voice:",
-        openaiError
-      );
-
-      // Fallback to Twilio's built-in voice if OpenAI fails
-      const twiml = new VoiceResponse();
-
-      twiml.say(
-        {
-          voice: "alice",
-        },
-        voicemailMessage
-      );
-
-      twiml.hangup();
-
-      res.type("text/xml");
-      res.send(twiml.toString());
-    }
-  } catch (error) {
-    console.error("❌ Error handling voicemail call:", error);
-
-    const twiml = new VoiceResponse();
-    twiml.say("Sorry, there was an error. Goodbye.");
-    twiml.hangup();
-
-    res.type("text/xml");
-    res.send(twiml.toString());
-  }
-};
+// Removed handleVoicemailCall function - no longer leaving voicemails

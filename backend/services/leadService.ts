@@ -3,6 +3,7 @@ import { LeadInsert, LeadRow, LeadUpdate } from "../models/Lead.ts";
 import { createMessage } from "./messageService.ts";
 import { getUserSettings } from "./userSettingsService.ts";
 import { calculateLeadScores } from "./leadScoringService.ts";
+import { normalizePhoneToNumeric } from "../utils/phoneUtils.js";
 import logger from "../utils/logger.ts";
 
 // Define the enum locally
@@ -95,13 +96,24 @@ export const createLead = async (user, settings: LeadRow): Promise<LeadRow> => {
     );
   }
 
+  // Normalize phone number to numeric format for database storage
+  let normalizedPhone = phone_number;
+  if (phone_number) {
+    const numericPhone = normalizePhoneToNumeric(phone_number.toString());
+    normalizedPhone = parseInt(numericPhone);
+  }
+
+  console.log(
+    `📞 Normalizing phone number: ${phone_number} → DB: ${normalizedPhone}`
+  );
+
   const { data, error } = await supabase
     .from("leads")
     .insert([
       {
         name,
         email,
-        phone_number,
+        phone_number: normalizedPhone,
         status: status || LeadStatus.NEW, // Default to "new" status if not provided
         lead_type,
         is_ai_enabled,
@@ -154,7 +166,19 @@ export const updateLead = async (
   settings: Partial<LeadRow>
 ): Promise<LeadRow> => {
   // Convert to database format
-  const updateData = settings;
+  const updateData = { ...settings };
+
+  // Normalize phone number if it's being updated
+  if (updateData.phone_number) {
+    const numericPhone = normalizePhoneToNumeric(
+      updateData.phone_number.toString()
+    );
+    const normalizedPhone = parseInt(numericPhone);
+    console.log(
+      `📞 Updating phone number: ${updateData.phone_number} → DB: ${normalizedPhone}`
+    );
+    updateData.phone_number = normalizedPhone;
+  }
 
   const { data, error } = await supabase
     .from("leads")

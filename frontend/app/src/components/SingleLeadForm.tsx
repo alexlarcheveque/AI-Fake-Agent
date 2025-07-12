@@ -123,16 +123,39 @@ const validateEmail = (email: string): ValidationError | undefined => {
 const validatePhone = (phone: string): ValidationError | undefined => {
   if (!phone)
     return { field: "phone_number", message: "Phone number is required" };
+
   const cleanPhone = phone.replace(/\D/g, "");
-  if (
-    cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
-    cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
-  ) {
+
+  // Provide specific error messages for different cases
+  if (cleanPhone.length < 7) {
     return {
       field: "phone_number",
-      message: `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits`,
+      message: "Phone number is too short",
+    };
+  } else if (cleanPhone.length === 7) {
+    return {
+      field: "phone_number",
+      message: "Please include area code (e.g., 909-569-7757)",
+    };
+  } else if (cleanPhone.length === 10) {
+    // Valid US number with area code
+    return undefined;
+  } else if (cleanPhone.length === 11 && cleanPhone.startsWith("1")) {
+    // Valid US number with country code
+    return undefined;
+  } else if (cleanPhone.length > 15) {
+    return {
+      field: "phone_number",
+      message: "Phone number is too long",
     };
   }
+
+  // For international numbers (length 8-15, not starting with 1)
+  if (cleanPhone.length >= 8 && cleanPhone.length <= 15) {
+    return undefined;
+  }
+
+  // Pattern validation as fallback
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
     return {
       field: "phone_number",
@@ -494,7 +517,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ onLeadCreated }) => {
         {formData.is_ai_enabled && (
           <div className="mt-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              When to send first message
+              When to send first contact (calls + messages)
             </label>
             <select
               name="first_message"

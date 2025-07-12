@@ -252,13 +252,23 @@ export const receiveIncomingMessage = async (messageData): Promise<void> => {
 
   // respond to the lead
   if (lead.is_ai_enabled) {
-    // Schedule immediate response
+    // Schedule debounced response (wait 5 seconds for potential follow-up messages)
+    const debounceDelaySeconds = 15;
+    const responseTime = new Date();
+    responseTime.setSeconds(responseTime.getSeconds() + debounceDelaySeconds);
+
+    logger.info(
+      `Scheduling debounced response for lead ${
+        lead.id
+      } at ${responseTime.toISOString()}`
+    );
+
     await createMessage({
       lead_id: lead.id,
       sender: "agent",
       is_ai_generated: true,
       delivery_status: "scheduled",
-      scheduled_at: new Date().toISOString(), // Schedule for immediate processing
+      scheduled_at: responseTime.toISOString(), // Schedule for 10 seconds from now
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });

@@ -175,26 +175,27 @@ export const handleCallCompletion = async (
       return;
     }
 
-    // For new lead calls, immediately trigger Call #2 if Call #1 failed
+    // For new lead calls, immediately trigger Call #2 if Call #1 failed (voicemail or no answer)
     if (call.call_type === "new_lead" && call.attempt_number === 1) {
       logger.info(
-        `Call #1 failed for lead ${call.lead_id}, immediately making Call #2`
+        `Call #1 failed for lead ${call.lead_id} (${
+          isVoicemail ? "voicemail detected" : "no answer"
+        }), immediately making Call #2`
       );
       await makeImmediateCall(call.lead_id, 2);
       return;
     }
 
-    // If this was Call #2, ALWAYS leave voicemail AND send text (per playbook)
+    // If this was Call #2, we're done with calls - schedule fallback text
     if (call.attempt_number === 2) {
       logger.info(
-        `Call #2 completed for lead ${call.lead_id}, leaving voicemail AND sending text`
+        `Call #2 completed for lead ${call.lead_id} (${
+          isVoicemail ? "voicemail detected" : "no answer"
+        }), scheduling fallback text`
       );
 
-      // First: Leave a voicemail (always, regardless of call outcome)
-      await leaveVoicemail(call.lead_id);
-
-      // Then: Schedule fallback text message
-      await scheduleFallbackText(call.lead_id, true); // Always treat as voicemail since we're leaving one
+      // Schedule fallback text message
+      await scheduleFallbackText(call.lead_id, isVoicemail);
     }
 
     // Update lead status based on all communication attempts (messages + calls)
@@ -215,67 +216,16 @@ export const handleCallCompletion = async (
 };
 
 /**
- * Leave a voicemail for the lead
- */
-export const leaveVoicemail = async (leadId: number): Promise<void> => {
-  try {
-    const lead = await getLeadById(leadId);
-    if (!lead || !lead.phone_number) {
-      logger.error(
-        `Cannot leave voicemail for lead ${leadId}: missing phone number`
-      );
-      return;
-    }
-
-    // Create a special voicemail call record
-    const voicemailCall = await createCall({
-      lead_id: leadId,
-      direction: "outbound",
-      status: "queued",
-      to_number: lead.phone_number.toString(),
-      from_number: process.env.TWILIO_PHONE_NUMBER!,
-      call_type: "new_lead",
-      call_mode: "ai",
-      attempt_number: 3, // Mark as attempt #3 (voicemail)
-      scheduled_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      is_voicemail: true, // Mark this as intentionally leaving voicemail
-    });
-
-    // Import the initiateAICall function dynamically to avoid circular imports
-    const { initiateAICall } = await import("../controllers/callController.ts");
-
-    // Make the voicemail call immediately
-    logger.info(
-      `Leaving voicemail for lead ${leadId} (call ${voicemailCall.id})`
-    );
-
-    // Create a mock request object for the initiateAICall function
-    const mockReq = {
-      body: {
-        leadId: leadId,
-        isVoicemailCall: true, // Special flag to indicate this should leave voicemail
-      },
-    } as any;
-
-    await initiateAICall(mockReq, null as any);
-
-    logger.info(`Successfully initiated voicemail call for lead ${leadId}`);
-  } catch (error) {
-    logger.error(`Error leaving voicemail for lead ${leadId}:`, error);
-  }
-};
-
-/**
  * Schedule fallback text message after both calls fail
  */
 export const scheduleFallbackText = async (
   leadId: number,
-  leftVoicemail: boolean
+  detectedVoicemail: boolean
 ): Promise<void> => {
   try {
-    const messageType = leftVoicemail ? "voicemail_followup" : "missed_call";
+    const messageType = detectedVoicemail
+      ? "voicemail_2calls"
+      : "missed_2calls";
 
     // Schedule immediate text message
     await createMessage({
@@ -286,7 +236,7 @@ export const scheduleFallbackText = async (
       scheduled_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      // Add metadata to indicate this is a fallback after calls
+      // Add metadata to indicate this is a fallback after call
       call_fallback_type: messageType,
     });
 
@@ -441,12 +391,16 @@ export const makeImmediateCall = async (
 
     // Create a mock request object for the initiateAICall function
     const mockReq = {
-      body: { leadId: leadId },
+      body: {
+        leadId: leadId,
+      },
     } as any;
 
     await initiateAICall(mockReq, null as any);
 
-    logger.info(`Successfully initiated immediate call for lead ${leadId}`);
+    logger.info(
+      `Successfully initiated immediate call for lead ${leadId} (attempt #${attemptNumber})`
+    );
   } catch (error) {
     logger.error(`Error making immediate call for lead ${leadId}:`, error);
   }

@@ -105,7 +105,23 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
               messages.forEach((message) => {
                 // Only include messages with scheduled_at date and that are in the current month
                 if (message.scheduled_at) {
-                  const messageDate = new Date(message.scheduled_at);
+                  // Properly handle timezone for message timestamps
+                  let messageTimestamp = message.scheduled_at;
+
+                  // Ensure the timestamp is treated as UTC if no timezone info is present
+                  if (
+                    !messageTimestamp.includes("Z") &&
+                    !messageTimestamp.includes("+") &&
+                    !messageTimestamp.includes("-", 10)
+                  ) {
+                    messageTimestamp = messageTimestamp.replace(
+                      /(\.\d{3})?$/,
+                      "Z"
+                    );
+                  }
+
+                  const messageDate = new Date(messageTimestamp);
+                  // Check if the message date (in local time) falls within the current month
                   const isInRange =
                     messageDate >= monthStart && messageDate <= monthEnd;
 
@@ -114,6 +130,7 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                   );
 
                   if (isInRange) {
+                    // Check if the message is in the past (in local time)
                     const isPast = messageDate < new Date();
                     const status = message.delivery_status || "scheduled";
 
@@ -129,7 +146,7 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                         leadId: lead.id,
                         leadName: lead.name,
                         type: "message",
-                        scheduledAt: message.scheduled_at,
+                        scheduledAt: messageTimestamp, // Use the corrected timestamp
                         isPast,
                         status,
                         count: 1, // Will be updated later when grouping
@@ -151,10 +168,24 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
         if (calls && calls.length > 0) {
           calls.forEach((call) => {
             if (call.created_at || call.started_at) {
-              const callDate = new Date(call.started_at || call.created_at);
+              // Properly handle timezone for call timestamps
+              let callTimestamp = call.started_at || call.created_at;
+
+              // Ensure the timestamp is treated as UTC if no timezone info is present
+              if (
+                !callTimestamp.includes("Z") &&
+                !callTimestamp.includes("+") &&
+                !callTimestamp.includes("-", 10)
+              ) {
+                callTimestamp = callTimestamp.replace(/(\.\d{3})?$/, "Z");
+              }
+
+              const callDate = new Date(callTimestamp);
+              // Check if the call date (in local time) falls within the current month
               const isInRange = callDate >= monthStart && callDate <= monthEnd;
 
               if (isInRange) {
+                // Check if the call is in the past (in local time)
                 const isPast = callDate < new Date();
                 const status = call.status;
 
@@ -177,7 +208,7 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
                     leadId: call.lead_id,
                     leadName: call.leads?.name || "Unknown Lead",
                     type: "call",
-                    scheduledAt: call.started_at || call.created_at,
+                    scheduledAt: callTimestamp, // Use the corrected timestamp
                     isPast,
                     status,
                     count: 1, // Will be updated later when grouping
@@ -197,7 +228,22 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
         const dayActivityMap = new Map<string, DayActivity[]>();
 
         allActivities.forEach((activity) => {
-          const dayKey = format(new Date(activity.scheduledAt), "yyyy-MM-dd");
+          // Ensure proper timezone handling when creating day key
+          let activityTimestamp = activity.scheduledAt;
+
+          // Ensure the timestamp is treated as UTC if no timezone info is present
+          if (
+            !activityTimestamp.includes("Z") &&
+            !activityTimestamp.includes("+") &&
+            !activityTimestamp.includes("-", 10)
+          ) {
+            activityTimestamp = activityTimestamp.replace(/(\.\d{3})?$/, "Z");
+          }
+
+          // Parse as UTC, then format in local timezone for grouping
+          const activityDate = new Date(activityTimestamp);
+          // format() automatically converts to local timezone, ensuring activities are grouped by local day
+          const dayKey = format(activityDate, "yyyy-MM-dd");
 
           if (!dayActivityMap.has(dayKey)) {
             dayActivityMap.set(dayKey, []);
@@ -267,6 +313,16 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
   });
 
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Calculate empty cells needed before the first day of the month
+  const firstDayOfMonth = startOfMonth(currentMonth);
+  const startingDayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const emptyDaysAtStart = startingDayOfWeek;
+
+  // Calculate empty cells needed after the last day of the month to complete the grid
+  const totalCells = emptyDaysAtStart + daysInMonth.length;
+  const remainingCells = totalCells % 7;
+  const emptyDaysAtEnd = remainingCells === 0 ? 0 : 7 - remainingCells;
 
   // Get all activities for a specific day
   const getActivitiesForDay = (day: Date): DayActivity[] => {
@@ -357,6 +413,17 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
           ))}
 
           {/* Calendar days */}
+          {/* Empty cells at the start of the month */}
+          {Array.from({ length: emptyDaysAtStart }, (_, index) => (
+            <div
+              key={`empty-start-${index}`}
+              className="min-h-[100px] border p-1 bg-gray-50 opacity-50"
+            >
+              {/* Empty cell */}
+            </div>
+          ))}
+
+          {/* Actual days in the month */}
           {daysInMonth.map((day) => {
             const dayActivities = getActivitiesForDay(day);
             const isCurrentDay = isToday(day);
@@ -491,6 +558,16 @@ const MessageCalendar: React.FC<MessageCalendarProps> = ({ onLeadSelect }) => {
               </div>
             );
           })}
+
+          {/* Empty cells at the end of the month to complete the grid */}
+          {Array.from({ length: emptyDaysAtEnd }, (_, index) => (
+            <div
+              key={`empty-end-${index}`}
+              className="min-h-[100px] border p-1 bg-gray-50 opacity-50"
+            >
+              {/* Empty cell */}
+            </div>
+          ))}
         </div>
       )}
     </div>

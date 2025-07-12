@@ -97,13 +97,30 @@ const validateEmail = (email: string): string | undefined => {
 
 const validatePhone = (phone: string): string | undefined => {
   if (!phone) return "Phone number is required";
+
   const cleanPhone = phone.replace(/\D/g, "");
-  if (
-    cleanPhone.length < VALIDATION_RULES.PHONE.MIN_DIGITS ||
-    cleanPhone.length > VALIDATION_RULES.PHONE.MAX_DIGITS
-  ) {
-    return `Phone number must be between ${VALIDATION_RULES.PHONE.MIN_DIGITS} and ${VALIDATION_RULES.PHONE.MAX_DIGITS} digits`;
+
+  // Provide specific error messages for different cases
+  if (cleanPhone.length < 7) {
+    return "Phone number is too short";
+  } else if (cleanPhone.length === 7) {
+    return "Please include area code (e.g., 909-569-7757)";
+  } else if (cleanPhone.length === 10) {
+    // Valid US number with area code
+    return undefined;
+  } else if (cleanPhone.length === 11 && cleanPhone.startsWith("1")) {
+    // Valid US number with country code
+    return undefined;
+  } else if (cleanPhone.length > 15) {
+    return "Phone number is too long";
   }
+
+  // For international numbers (length 8-15, not starting with 1)
+  if (cleanPhone.length >= 8 && cleanPhone.length <= 15) {
+    return undefined;
+  }
+
+  // Pattern validation as fallback
   if (!VALIDATION_RULES.PHONE.PATTERN.test(phone)) {
     return VALIDATION_RULES.PHONE.PATTERN_MESSAGE;
   }
@@ -406,7 +423,7 @@ const BulkLeadForm: React.FC<BulkLeadFormProps> = ({ onLeadsCreated }) => {
                     Yes
                   </td>
                   <td className="border border-gray-300 px-4 py-2">
-                    Lead's contact phone (can include country code)
+                    Lead's contact phone (include area code, e.g., 909-569-7757)
                   </td>
                 </tr>
                 <tr>

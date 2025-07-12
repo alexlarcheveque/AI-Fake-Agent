@@ -24,7 +24,33 @@ const app = express();
 const server = http.createServer(app);
 
 // Enable WebSocket support
-expressWs(app, server);
+const wsInstance = expressWs(app, server);
+console.log("🔌 WebSocket support enabled on server");
+
+// Import WebSocket handler
+import { handleRealtimeWebSocket } from "./controllers/callController.ts";
+
+// Add WebSocket route directly to app (bypasses route-level authentication)
+wsInstance.app.ws("/api/voice/realtime", (ws, req) => {
+  console.log(
+    "🚀 WEBSOCKET: Twilio connecting to /api/voice/realtime (direct app route)"
+  );
+  console.log(
+    "🔍 WEBSOCKET: Connection headers:",
+    JSON.stringify(req.headers, null, 2)
+  );
+  handleRealtimeWebSocket(ws, req);
+});
+
+// NUCLEAR OPTION: Completely separate WebSocket endpoint for Twilio
+wsInstance.app.ws("/twilio-websocket", (ws, req) => {
+  console.log("🚀 TWILIO WEBSOCKET: Direct connection to /twilio-websocket");
+  console.log(
+    "🔍 TWILIO WEBSOCKET: Headers:",
+    JSON.stringify(req.headers, null, 2)
+  );
+  handleRealtimeWebSocket(ws, req);
+});
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -93,6 +119,9 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/search-criteria", searchCriteriaRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/voice", callRoutes);
+console.log(
+  "📞 Call routes mounted at /api/voice (includes WebSocket at /api/voice/realtime)"
+);
 app.use("/api/recordings", recordingRoutes);
 
 // ===== Server Initialization =====

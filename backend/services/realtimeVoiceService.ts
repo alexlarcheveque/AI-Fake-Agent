@@ -22,6 +22,7 @@ interface VoiceCallOptions {
   userSettings?: any;
   streamSid?: string;
   initialStreamData?: any;
+  callMode?: string; // Add call mode parameter
 }
 
 interface CallTranscript {
@@ -38,7 +39,11 @@ export class RealtimeVoiceService {
    */
   async handleWebSocketConnection(twilioWs: any, options: VoiceCallOptions) {
     try {
-      console.log(`Starting Realtime voice call for lead ${options.leadId}`);
+      console.log(
+        `Starting Realtime voice call for lead ${options.leadId} with mode: ${
+          options.callMode || "ai"
+        }`
+      );
 
       // Fetch lead data including context from database
       let leadData: LeadRow | null = null;
@@ -78,16 +83,29 @@ export class RealtimeVoiceService {
 
       // Connection state
       let streamSid: string | null = options.streamSid || null;
+      let callSid: string | null = null; // Store Twilio call SID for ending call
       let latestMediaTimestamp = 0;
       let lastAssistantItem: string | null = null;
       let markQueue: string[] = [];
       let responseStartTimestamp: number | null = null;
       let userHasSpoken = false; // Track if user has started speaking
 
+      // Buffer for initial audio packets while OpenAI is setting up
+      let audioBuffer: Array<{ timestamp: number; payload: string }> = [];
+      let isOpenAIReady = false;
+      const maxBufferSize = 100; // Increase buffer to 100 packets (~2 seconds)
+      const maxBufferTimeMs = 3000; // Max 3 seconds of buffering
+      let firstAudioTimestamp: number | null = null;
+      let openaiReadyDelay = false; // Track if we need to wait after OpenAI becomes ready
+
       console.log(
         `🚀 STREAM STARTED: Using stream ID ${streamSid} from options`
       );
       if (options.initialStreamData) {
+        callSid = options.initialStreamData.callSid; // Capture call SID from initial data
+        console.log(
+          `🆔 CALL SID: Captured ${callSid} from initial stream data`
+        );
         console.log(
           `📋 STREAM DETAILS:`,
           JSON.stringify(options.initialStreamData, null, 2)
@@ -99,68 +117,75 @@ export class RealtimeVoiceService {
         console.log("🔗 OpenAI Realtime WebSocket connected");
         console.log("🔧 Configuring OpenAI session...");
 
-        // Small delay to ensure connection is fully established
-        setTimeout(() => {
-          // Determine which prompt to use based on lead type
-          let promptInstructions = "";
-          if (leadData) {
-            const leadType = leadData.lead_type?.toLowerCase();
+        // Send session configuration immediately - no delay to minimize audio loss
+        // Determine which prompt to use based on lead type
+        let promptInstructions = "";
+        if (leadData) {
+          const leadType = leadData.lead_type?.toLowerCase();
 
-            if (leadType === "buyer") {
-              promptInstructions = generateBuyerTestPrompt(leadData);
-              console.log(`🏠 Using BUYER prompt for lead ${leadData.name}`);
-            } else if (leadType === "seller") {
-              promptInstructions = generateSellerPrompt(leadData);
-              console.log(`🏡 Using SELLER prompt for lead ${leadData.name}`);
-            } else {
-              // Default to seller prompt if lead type is unclear
-              promptInstructions = generateSellerPrompt(leadData);
-              console.log(
-                `🏡 Using SELLER prompt (default) for lead ${leadData.name} with type: ${leadType}`
-              );
-            }
+          if (leadType === "buyer") {
+            promptInstructions = generateBuyerTestPrompt(leadData);
+            console.log(`🏠 Using BUYER prompt for lead ${leadData.name}`);
+          } else if (leadType === "seller") {
+            promptInstructions = generateSellerPrompt(leadData);
+            console.log(`🏡 Using SELLER prompt for lead ${leadData.name}`);
           } else {
-            // Fallback if no lead data available
-            promptInstructions = generateSellerPrompt(null);
+            // Default to seller prompt if lead type is unclear
+            promptInstructions = generateSellerPrompt(leadData);
             console.log(
-              `⚠️ Using SELLER prompt (fallback) - no lead data available`
+              `🏡 Using SELLER prompt (default) for lead ${leadData.name} with type: ${leadType}`
             );
           }
+        } else {
+          // Fallback if no lead data available
+          promptInstructions = generateSellerPrompt(null);
+          console.log(
+            `⚠️ Using SELLER prompt (fallback) - no lead data available`
+          );
+        }
 
-          // Send session configuration - Pure Speech-to-Speech approach
-          const sessionUpdate = {
-            type: "session.update",
-            session: {
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.5,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 200,
-              },
-              input_audio_format: "g711_ulaw",
-              output_audio_format: "g711_ulaw",
-              input_audio_transcription: {
-                model: "whisper-1",
-              },
-              voice: "alloy", // Nova is brighter and more conversational than alloy
-              model: "gpt-4o-realtime-preview",
-              instructions: promptInstructions,
-              modalities: ["text", "audio"],
-              temperature: 0.9, // Higher temperature for more natural, varied responses
+        // Add instructions based on call mode
+        const callMode = options.callMode || "ai";
+        // No special voicemail handling - all calls are live conversations
+
+        // Send session configuration - Pure Speech-to-Speech approach
+        const sessionUpdate = {
+          type: "session.update",
+          session: {
+            turn_detection: {
+              type: "server_vad",
+              threshold: 0.35, // Slightly more sensitive for better detection
+              prefix_padding_ms: 200, // Increase padding to capture more speech start
+              silence_duration_ms: 700, // Slightly shorter to be more responsive
             },
-          };
+            input_audio_format: "g711_ulaw",
+            output_audio_format: "g711_ulaw",
+            input_audio_transcription: {
+              model: "whisper-1",
+            },
+            voice: "alloy", // Nova is brighter and more conversational than alloy
+            model: "gpt-4o-realtime-preview",
+            instructions: promptInstructions,
+            modalities: ["text", "audio"],
+            temperature: 0.9, // Higher temperature for more natural, varied responses
+          },
+        };
 
-          console.log("📤 Sending session configuration to OpenAI");
-          if (leadData?.context) {
-            console.log(
-              `🎯 Including lead context in AI prompt: ${leadData.context.substring(
-                0,
-                100
-              )}...`
-            );
-          }
-          openaiWs.send(JSON.stringify(sessionUpdate));
-        }, 100); // 100ms delay
+        console.log("📤 Sending session configuration to OpenAI");
+        console.log("🎙️ VAD Settings:", {
+          threshold: 0.4,
+          prefix_padding_ms: 150,
+          silence_duration_ms: 800,
+        });
+        if (leadData?.context) {
+          console.log(
+            `🎯 Including lead context in AI prompt: ${leadData.context.substring(
+              0,
+              100
+            )}...`
+          );
+        }
+        openaiWs.send(JSON.stringify(sessionUpdate));
       });
 
       // Handle messages from Twilio
@@ -172,24 +197,72 @@ export class RealtimeVoiceService {
             data.event === "media" &&
             openaiWs.readyState === WebSocket.OPEN
           ) {
-            console.log(
-              `🎤 AUDIO INPUT: Received ${data.media.payload.length} bytes of audio from Twilio (timestamp: ${data.media.timestamp})`
-            );
+            // Process audio and log first few packets for debugging
             latestMediaTimestamp = parseInt(data.media.timestamp);
-            const audioAppend = {
-              type: "input_audio_buffer.append",
-              audio: data.media.payload,
-            };
-            openaiWs.send(JSON.stringify(audioAppend));
-            console.log(
-              `🔄 AUDIO FORWARDED: Sent audio to OpenAI (${data.media.payload.length} bytes)`
-            );
+
+            // Log first few audio packets for debugging
+            if (latestMediaTimestamp < 4000) {
+              console.log(
+                `🎵 Audio packet received: timestamp ${latestMediaTimestamp}, payload length: ${
+                  data.media.payload?.length || 0
+                }, OpenAI ready: ${isOpenAIReady}`
+              );
+            }
+
+            if (isOpenAIReady) {
+              // OpenAI is ready, send audio directly
+              const audioAppend = {
+                type: "input_audio_buffer.append",
+                audio: data.media.payload,
+              };
+              openaiWs.send(JSON.stringify(audioAppend));
+            } else {
+              // OpenAI not ready yet, buffer the audio
+              if (firstAudioTimestamp === null) {
+                firstAudioTimestamp = latestMediaTimestamp;
+              }
+
+              // Check if we've been buffering too long
+              const bufferDuration = latestMediaTimestamp - firstAudioTimestamp;
+              if (bufferDuration > maxBufferTimeMs) {
+                console.log(
+                  `⚠️ OpenAI taking too long (${bufferDuration}ms), marking as ready and processing audio directly`
+                );
+                isOpenAIReady = true;
+
+                // Process this packet and future ones directly
+                const audioAppend = {
+                  type: "input_audio_buffer.append",
+                  audio: data.media.payload,
+                };
+                openaiWs.send(JSON.stringify(audioAppend));
+              } else {
+                // Buffer the audio packet
+                audioBuffer.push({
+                  timestamp: latestMediaTimestamp,
+                  payload: data.media.payload,
+                });
+
+                // Prevent buffer overflow
+                if (audioBuffer.length > maxBufferSize) {
+                  audioBuffer.shift(); // Remove oldest packet
+                }
+
+                if (audioBuffer.length <= 10) {
+                  console.log(
+                    `📦 Buffering audio packet #${audioBuffer.length}, waiting for OpenAI...`
+                  );
+                }
+              }
+            }
           } else if (data.event === "start") {
             if (!streamSid) {
               streamSid = data.start.streamSid;
+              callSid = data.start.callSid; // Capture the call SID
               console.log(
                 `🚀 STREAM STARTED: Twilio stream ${streamSid} (fallback)`
               );
+              console.log(`🆔 CALL SID: Captured ${callSid} from start event`);
               console.log(
                 `📋 STREAM DETAILS:`,
                 JSON.stringify(data.start, null, 2)
@@ -203,11 +276,12 @@ export class RealtimeVoiceService {
             latestMediaTimestamp = 0;
             lastAssistantItem = null;
           } else if (data.event === "mark") {
-            console.log(`✅ MARK RECEIVED: ${JSON.stringify(data.mark)}`);
+            // Mark received silently - removed verbose logs
             if (markQueue.length > 0) {
               markQueue.shift();
             }
-          } else {
+          } else if (data.event !== "media") {
+            // Log non-media events (start, stop, mark, etc.) but not media packets
             console.log(
               `📨 TWILIO EVENT: ${data.event}`,
               JSON.stringify(data, null, 2)
@@ -224,10 +298,6 @@ export class RealtimeVoiceService {
           const response = JSON.parse(message.toString());
 
           if (response.type === "response.audio.delta" && response.delta) {
-            console.log(
-              `🤖 AI AUDIO: Generated ${response.delta.length} bytes of audio (item: ${response.item_id})`
-            );
-
             // Forward audio to Twilio - response.delta is already base64 encoded
             const audioDelta = {
               event: "media",
@@ -239,9 +309,7 @@ export class RealtimeVoiceService {
 
             if (twilioWs.readyState === WebSocket.OPEN) {
               twilioWs.send(JSON.stringify(audioDelta));
-              console.log(
-                `🔊 AUDIO OUTPUT: Sent ${response.delta.length} bytes to Twilio stream ${streamSid}`
-              );
+              // Audio sent silently - removed verbose logs
             } else {
               console.log(
                 `❌ AUDIO FAILED: Twilio WebSocket not open (state: ${twilioWs.readyState})`
@@ -259,7 +327,7 @@ export class RealtimeVoiceService {
               lastAssistantItem = response.item_id;
             }
 
-            // Send mark to track message delivery
+            // Send mark to track message delivery (silently)
             await this.sendMark(twilioWs, streamSid);
           }
 
@@ -292,9 +360,51 @@ export class RealtimeVoiceService {
             console.log("🔗 OpenAI session created:", response.session.id);
           } else if (response.type === "session.updated") {
             console.log("🔧 OpenAI session updated successfully");
-            console.log(
-              "🎯 Ready for user speech - NOT auto-generating greeting"
-            );
+
+            // Mark OpenAI as ready and replay buffered audio
+            if (!isOpenAIReady) {
+              console.log(
+                `🎬 OpenAI ready! Replaying ${audioBuffer.length} buffered audio packets...`
+              );
+
+              // Replay all buffered audio packets
+              for (const bufferedAudio of audioBuffer) {
+                const audioAppend = {
+                  type: "input_audio_buffer.append",
+                  audio: bufferedAudio.payload,
+                };
+                openaiWs.send(JSON.stringify(audioAppend));
+              }
+
+              if (audioBuffer.length > 0) {
+                console.log(
+                  `✅ Replayed ${audioBuffer.length} audio packets from buffer`
+                );
+              }
+
+              // Clear the buffer
+              audioBuffer = [];
+
+              // Add a small delay before marking as ready to ensure OpenAI is fully processing
+              setTimeout(() => {
+                isOpenAIReady = true;
+                console.log("🎯 OpenAI fully ready for speech processing");
+              }, 100); // 100ms delay
+            }
+
+            // Check if this is an inbound call and send proactive greeting only for inbound calls
+            const isInbound =
+              options.initialStreamData?.customParameters?.isOutbound ===
+              "false";
+
+            if (isInbound) {
+              console.log("👋 Sending proactive greeting for inbound call");
+              this.sendProactiveGreeting(openaiWs, leadData);
+            } else {
+              console.log(
+                "🎯 Outbound call - waiting for AI to follow prompt instructions"
+              );
+            }
           } else if (response.type === "response.created") {
             console.log("🎯 AI response created:", response.response.id);
           } else if (response.type === "response.done") {
@@ -318,14 +428,23 @@ export class RealtimeVoiceService {
             );
             // Save transcript after each customer message
             await this.saveTranscriptToDatabase(options.callId);
-          } else if (response.type === "response.audio_transcript.done") {
-            console.log("🤖 AI said:", response.transcript);
-            this.appendToTranscript(
-              options.callId,
-              `AI: ${response.transcript}`
-            );
-            // Save transcript after each AI response
-            await this.saveTranscriptToDatabase(options.callId);
+          } else if (response.type === "response.content_part.done") {
+            // Only handle audio content parts for voicemail termination
+            if (
+              response.part &&
+              response.part.type === "audio" &&
+              response.part.transcript
+            ) {
+              console.log("🤖 AI said:", response.part.transcript);
+              this.appendToTranscript(
+                options.callId,
+                `AI: ${response.part.transcript}`
+              );
+              // Save transcript after each AI response
+              await this.saveTranscriptToDatabase(options.callId);
+
+              // Transcript saved for all call types
+            }
           } else if (response.type === "input_audio_buffer.speech_started") {
             console.log("🎙️ USER SPEECH START: User began speaking");
             if (!userHasSpoken) {
@@ -353,6 +472,7 @@ export class RealtimeVoiceService {
       // Handle disconnections
       twilioWs.on("close", async () => {
         console.log("🔌 Twilio WebSocket closed");
+
         if (openaiWs.readyState === WebSocket.OPEN) {
           openaiWs.close();
         }
@@ -411,13 +531,9 @@ export class RealtimeVoiceService {
         mark: { name: "responsePart" },
       };
       twilioWs.send(JSON.stringify(markEvent));
-      console.log(
-        `📍 MARK SENT: Tracking audio delivery for stream ${streamSid}`
-      );
+      // Mark sent silently - removed verbose logs
     } else {
-      console.log(
-        `⚠️ MARK FAILED: Cannot send mark - streamSid: ${streamSid}, wsState: ${twilioWs?.readyState}`
-      );
+      // Mark failed silently - removed verbose logs
     }
   }
 
@@ -673,6 +789,33 @@ export class RealtimeVoiceService {
       console.log(`📋 Transcript finalized and processed for call ${callId}`);
     } catch (error) {
       console.error(`Error finalizing transcript for call ${callId}:`, error);
+    }
+  }
+
+  /**
+   * Send a proactive greeting message to the caller
+   */
+  private sendProactiveGreeting(openaiWs: WebSocket, leadData: LeadRow | null) {
+    try {
+      // Create a greeting message for inbound calls
+      let greetingText = "Hello, this is Sarah from LPT Realty speaking.";
+
+      console.log(`📢 Sending greeting: "${greetingText}"`);
+
+      // Use a more direct approach: create response with the greeting text directly
+      const createResponse = {
+        type: "response.create",
+        response: {
+          instructions: `Say exactly this greeting: "${greetingText}". Be warm and friendly.`,
+        },
+      };
+
+      // Send the response creation request directly
+      openaiWs.send(JSON.stringify(createResponse));
+
+      console.log("✅ Proactive greeting sent successfully");
+    } catch (error) {
+      console.error("❌ Error sending proactive greeting:", error);
     }
   }
 }

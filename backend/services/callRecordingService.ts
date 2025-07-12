@@ -620,40 +620,49 @@ IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. D
     analysis: CallAnalysis
   ): Promise<void> {
     try {
-      // Get call details to extract user_uuid and lead info
+      // Get call details first
       const { data: callData, error: callError } = await supabase
         .from("calls")
-        .select(
-          `
-          id,
-          lead_id,
-          started_at,
-          leads (
-            id,
-            name,
-            user_uuid
-          )
-        `
-        )
+        .select("id, lead_id, started_at")
         .eq("id", callId)
         .single();
 
-      if (callError || !callData?.leads) {
+      if (callError || !callData) {
         console.error(
           `❌ Error getting call data for notifications:`,
-          callError
+          callError || "Call not found"
         );
         return;
       }
 
-      const lead = Array.isArray(callData.leads)
-        ? callData.leads[0]
-        : callData.leads;
-      const userUuid = lead?.user_uuid;
-
-      if (!userUuid || !lead) {
+      // Skip if no lead_id (e.g., call from unknown number)
+      if (!callData.lead_id) {
         console.log(
-          `⚠️ No user_uuid or lead found for call ${callId}, skipping notifications`
+          `⚠️ No lead_id found for call ${callId}, skipping notifications`
+        );
+        return;
+      }
+
+      // Get lead details separately
+      const { data: leadData, error: leadError } = await supabase
+        .from("leads")
+        .select("id, name, user_uuid")
+        .eq("id", callData.lead_id)
+        .single();
+
+      if (leadError || !leadData) {
+        console.error(
+          `❌ Error getting lead data for call ${callId}:`,
+          leadError || "Lead not found"
+        );
+        return;
+      }
+
+      const userUuid = leadData.user_uuid;
+
+      if (!userUuid) {
+        console.log(
+          `⚠️ No user_uuid found for lead ${leadData.id}, skipping notifications`
         );
         return;
       }
@@ -662,9 +671,9 @@ IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. D
       if (analysis.action_items && analysis.action_items.length > 0) {
         await createNotification({
           user_uuid: userUuid,
-          lead_id: lead.id,
+          lead_id: leadData.id,
           type: "action_item",
-          title: `Action Items from Call: ${lead.name}`,
+          title: `Action Items from Call: ${leadData.name}`,
           message: `${analysis.action_items.length} action item${
             analysis.action_items.length > 1 ? "s" : ""
           } identified from recent call. Review call details to prioritize follow-up.`,
@@ -681,9 +690,9 @@ IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. D
       if (analysis.commitment_details && analysis.commitment_details.trim()) {
         await createNotification({
           user_uuid: userUuid,
-          lead_id: lead.id,
+          lead_id: leadData.id,
           type: "commitment",
-          title: `Commitment Made: ${lead.name}`,
+          title: `Commitment Made: ${leadData.name}`,
           message: `Client made commitments during the call. Review call details for specific commitments and follow-up actions.`,
           is_read: false,
           created_at: new Date().toISOString(),
