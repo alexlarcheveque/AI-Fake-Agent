@@ -623,7 +623,7 @@ IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. D
       // Get call details first
       const { data: callData, error: callError } = await supabase
         .from("calls")
-        .select("id, lead_id, started_at")
+        .select("id, lead_id, started_at, duration, is_voicemail")
         .eq("id", callId)
         .single();
 
@@ -639,6 +639,21 @@ IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. D
       if (!callData.lead_id) {
         console.log(
           `⚠️ No lead_id found for call ${callId}, skipping notifications`
+        );
+        return;
+      }
+
+      // Skip notifications for very short calls (likely voicemail greetings) or voicemail calls
+      if (callData.duration && callData.duration < 10) {
+        console.log(
+          `⚠️ Skipping notifications for call ${callId} - too short (${callData.duration}s) for meaningful conversation`
+        );
+        return;
+      }
+
+      if (callData.is_voicemail) {
+        console.log(
+          `⚠️ Skipping notifications for call ${callId} - marked as voicemail`
         );
         return;
       }
@@ -667,38 +682,93 @@ IMPORTANT: Base your analysis ONLY on what was actually discussed in the call. D
         return;
       }
 
+      // Check for existing notifications within the last 24 hours to prevent duplicates
+      const twentyFourHoursAgo = new Date(
+        Date.now() - 24 * 60 * 60 * 1000
+      ).toISOString();
+
       // Create notification for action items (if any exist)
       if (analysis.action_items && analysis.action_items.length > 0) {
-        await createNotification({
-          user_uuid: userUuid,
-          lead_id: leadData.id,
-          type: "action_item",
-          title: `Action Items from Call: ${leadData.name}`,
-          message: `${analysis.action_items.length} action item${
-            analysis.action_items.length > 1 ? "s" : ""
-          } identified from recent call. Review call details to prioritize follow-up.`,
-          is_read: false,
-          created_at: new Date().toISOString(),
-        });
+        // Check for existing action item notifications for this lead in the last 24 hours
+        const { data: existingActionNotifications, error: actionCheckError } =
+          await supabase
+            .from("notifications")
+            .select("id")
+            .eq("lead_id", leadData.id)
+            .eq("type", "action_item")
+            .gte("created_at", twentyFourHoursAgo)
+            .limit(1);
 
-        console.log(
-          `📋 Created action items notification for call ${callId} (${analysis.action_items.length} items)`
-        );
+        if (actionCheckError) {
+          console.error(
+            `❌ Error checking existing action notifications:`,
+            actionCheckError
+          );
+        } else if (
+          existingActionNotifications &&
+          existingActionNotifications.length > 0
+        ) {
+          console.log(
+            `⚠️ Skipping action item notification for call ${callId} - similar notification already exists for lead ${leadData.id} within 24 hours`
+          );
+        } else {
+          await createNotification({
+            user_uuid: userUuid,
+            lead_id: leadData.id,
+            type: "action_item",
+            title: `Action Items from Call: ${leadData.name}`,
+            message: `${analysis.action_items.length} action item${
+              analysis.action_items.length > 1 ? "s" : ""
+            } identified from recent call. Review call details to prioritize follow-up.`,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+
+          console.log(
+            `📋 Created action items notification for call ${callId} (${analysis.action_items.length} items)`
+          );
+        }
       }
 
       // Create notification for commitments made during the call
       if (analysis.commitment_details && analysis.commitment_details.trim()) {
-        await createNotification({
-          user_uuid: userUuid,
-          lead_id: leadData.id,
-          type: "commitment",
-          title: `Commitment Made: ${leadData.name}`,
-          message: `Client made commitments during the call. Review call details for specific commitments and follow-up actions.`,
-          is_read: false,
-          created_at: new Date().toISOString(),
-        });
+        // Check for existing commitment notifications for this lead in the last 24 hours
+        const {
+          data: existingCommitmentNotifications,
+          error: commitmentCheckError,
+        } = await supabase
+          .from("notifications")
+          .select("id")
+          .eq("lead_id", leadData.id)
+          .eq("type", "commitment")
+          .gte("created_at", twentyFourHoursAgo)
+          .limit(1);
 
-        console.log(`🤝 Created commitment notification for call ${callId}`);
+        if (commitmentCheckError) {
+          console.error(
+            `❌ Error checking existing commitment notifications:`,
+            commitmentCheckError
+          );
+        } else if (
+          existingCommitmentNotifications &&
+          existingCommitmentNotifications.length > 0
+        ) {
+          console.log(
+            `⚠️ Skipping commitment notification for call ${callId} - similar notification already exists for lead ${leadData.id} within 24 hours`
+          );
+        } else {
+          await createNotification({
+            user_uuid: userUuid,
+            lead_id: leadData.id,
+            type: "commitment",
+            title: `Commitment Made: ${leadData.name}`,
+            message: `Client made commitments during the call. Review call details for specific commitments and follow-up actions.`,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+
+          console.log(`🤝 Created commitment notification for call ${callId}`);
+        }
       }
 
       console.log(

@@ -7,7 +7,7 @@
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend/app && npm run dev",
     "dev:ngrok": "ngrok http --url=wanted-husky-scarcely.ngrok-free.app 3000",
-    "start": "npm run dev",
+    "start": "npm cache clean --force && npm run dev",
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend/app && npm run build",

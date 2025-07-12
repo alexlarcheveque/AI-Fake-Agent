@@ -16,6 +16,7 @@ import {
   getCallStats,
   getAvailableVoices,
   testVoice,
+  handleVoicemailDetection,
 } from "../controllers/callController.ts";
 
 const router = express.Router();
@@ -33,6 +34,11 @@ router.post("/incoming", handleIncomingCall);
  * Twilio webhook for call status updates
  */
 router.post("/status-callback", handleCallStatusCallback);
+
+/**
+ * Twilio webhook for voicemail detection response
+ */
+router.post("/voicemail-detection", handleVoicemailDetection);
 
 /**
  * Get available voices for voice calling (public - just returns config)

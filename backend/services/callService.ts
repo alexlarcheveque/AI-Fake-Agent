@@ -175,12 +175,21 @@ export const handleCallCompletion = async (
       return;
     }
 
-    // For new lead calls, immediately trigger Call #2 if Call #1 failed (voicemail or no answer)
+    // For new lead calls, decide whether to make Call #2
     if (call.call_type === "new_lead" && call.attempt_number === 1) {
+      // If Call #1 was definitively voicemail, skip Call #2 since it will hit the same voicemail
+      if (isVoicemail) {
+        logger.info(
+          `Call #1 (${callId}) hit voicemail for lead ${call.lead_id} - skipping Call #2 since it would hit the same voicemail. Scheduling fallback text instead.`
+        );
+        // Go directly to fallback text instead of making a second call
+        await scheduleFallbackText(call.lead_id, true);
+        return;
+      }
+
+      // For non-voicemail failures (busy, no answer, failed), make Call #2
       logger.info(
-        `Call #1 failed for lead ${call.lead_id} (${
-          isVoicemail ? "voicemail detected" : "no answer"
-        }), immediately making Call #2`
+        `Call #1 failed for lead ${call.lead_id} (${status}) - making Call #2`
       );
       await makeImmediateCall(call.lead_id, 2);
       return;
@@ -190,7 +199,7 @@ export const handleCallCompletion = async (
     if (call.attempt_number === 2) {
       logger.info(
         `Call #2 completed for lead ${call.lead_id} (${
-          isVoicemail ? "voicemail detected" : "no answer"
+          isVoicemail ? "voicemail detected" : status
         }), scheduling fallback text`
       );
 
@@ -198,18 +207,8 @@ export const handleCallCompletion = async (
       await scheduleFallbackText(call.lead_id, isVoicemail);
     }
 
-    // Update lead status based on all communication attempts (messages + calls)
-    try {
-      await updateLeadStatusBasedOnCommunications(call.lead_id);
-      logger.info(
-        `Updated lead status for lead ${call.lead_id} after call completion`
-      );
-    } catch (statusError) {
-      logger.error(
-        `Error updating lead status for lead ${call.lead_id}: ${statusError.message}`
-      );
-      // Don't throw to avoid disrupting the main call processing flow
-    }
+    // For other call types, just update and return
+    logger.info(`Call ${callId} completed with status: ${status}`);
   } catch (error) {
     logger.error(`Error handling call completion for call ${callId}:`, error);
   }

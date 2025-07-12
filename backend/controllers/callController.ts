@@ -229,12 +229,15 @@ function generateRealtimeTwiML(req: Request, callId?: number): string {
       answeredBy &&
       (answeredBy.includes("machine") || answeredBy === "fax")
     ) {
-      // VOICEMAIL DETECTED: Just hang up (no voicemail left)
+      // POSSIBLE VOICEMAIL DETECTED: Silent listen for human speech first
+      // If human speaks within 3 seconds, connect to AI. Otherwise hang up silently.
       console.log(
-        `📞 Voicemail detected (${answeredBy}): Hanging up immediately`
+        `🤖 Possible voicemail detected (${answeredBy}): Starting silent detection for human speech`
       );
       return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
+  <Gather timeout="5" speechTimeout="1" action="${ngrokUrl}/api/calls/voicemail-detection?callId=${callId}&amp;leadId=${leadId}">
+  </Gather>
   <Hangup/>
 </Response>`;
     } else {
@@ -300,9 +303,13 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
         callId = parameters.callId || "unknown";
         leadId = parseInt(parameters.leadId) || 0;
         callMode = parameters.mode || "ai";
+        const possibleVoicemail = parameters.possibleVoicemail === "true";
+        const humanDetected = parameters.humanDetected === "true";
 
         console.log(
-          `🚀 WEBSOCKET: Stream started for call ${callId} with mode: ${callMode}, leadId: ${leadId}`
+          `🚀 WEBSOCKET: Stream started for call ${callId} with mode: ${callMode}, leadId: ${leadId}${
+            possibleVoicemail ? ", possibleVoicemail: true" : ""
+          }${humanDetected ? ", humanDetected: true" : ""}`
         );
 
         // Look up call record to get lead information
@@ -381,7 +388,9 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
         console.log(
           `Starting Realtime voice call for lead ${leadId} (${
             leadData?.name || "Unknown"
-          }) with mode: ${callMode}`
+          }) with mode: ${callMode}${
+            possibleVoicemail ? ", possible voicemail detected" : ""
+          }${humanDetected ? ", human speech detected" : ""}`
         );
 
         // Start the Realtime voice service with stream info
@@ -393,6 +402,8 @@ export const handleRealtimeWebSocket = async (ws: any, req: any) => {
           streamSid: data.start.streamSid,
           initialStreamData: data.start,
           callMode: callMode, // Pass the call mode
+          possibleVoicemail: possibleVoicemail, // Pass the possible voicemail flag
+          humanDetected: humanDetected, // Pass the human detected flag
         });
       }
     } catch (error) {
@@ -453,22 +464,38 @@ export const initiateAICall = async (req: Request, res: Response) => {
       return;
     }
 
-    // Get the call record to find the call ID
+    // Create a new call record for this AI call
+    const callData = {
+      lead_id: leadId,
+      direction: "outbound",
+      status: "queued",
+      to_number: lead.phone_number.toString(),
+      from_number: process.env.TWILIO_PHONE_NUMBER!,
+      call_type: "follow_up",
+      call_mode: "ai", // AI calls
+      attempt_number: 1,
+      is_voicemail: false,
+    };
+
+    console.log("Creating new AI call with data:", callData);
+
+    // Create call record
     const { data: callRecord, error: callError } = await supabase
       .from("calls")
-      .select("*")
-      .eq("lead_id", leadId)
-      .eq("status", "queued")
-      .order("created_at", { ascending: false })
-      .limit(1)
+      .insert(callData)
+      .select()
       .single();
 
     if (callError || !callRecord) {
-      const message = `No queued call found for lead ${leadId}`;
+      const message = `Failed to create call record for lead ${leadId}`;
       console.error(`❌ ${message}:`, callError);
-      if (res) return res.status(404).json({ error: message });
+      if (res) return res.status(500).json({ error: message });
       return;
     }
+
+    console.log(
+      `✅ Created call record ${callRecord.id} for AI call to lead ${leadId}`
+    );
 
     const baseUrl = process.env.NGROK_URL || process.env.BACKEND_URL;
 
@@ -495,11 +522,7 @@ export const initiateAICall = async (req: Request, res: Response) => {
       statusCallback: `${baseUrl}/api/voice/status-callback`,
       statusCallbackMethod: "POST",
       statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
-      machineDetection: "Enable", // Faster machine detection (vs DetectMessageEnd)
-      machineDetectionTimeout: 10, // Reduced from 30 seconds
-      machineDetectionSpeechThreshold: 1200, // Reduced from 2400ms (how long to wait for speech)
-      machineDetectionSpeechEndThreshold: 800, // Reduced from 1200ms (silence after speech to confirm machine)
-      machineDetectionSilenceTimeout: 3000, // Reduced from 5000ms (total silence before giving up)
+      machineDetection: "Enable",
       record: true,
       recordingStatusCallback: `${baseUrl}/api/recordings/callback`,
       recordingStatusCallbackMethod: "POST",
@@ -1099,6 +1122,75 @@ function detectVoicemail(
   // Better to err on the side of not making a second call
   return false;
 }
+
+/**
+ * Handle voicemail detection response - if human speech detected, connect to AI
+ */
+export const handleVoicemailDetection = async (req: Request, res: Response) => {
+  try {
+    const { callId, leadId } = req.query;
+    const speechResult = req.body.SpeechResult || "";
+    const digits = req.body.Digits || "";
+
+    console.log(
+      `🎙️ Voicemail detection result for call ${callId}: speechResult="${speechResult}", digits="${digits}"`
+    );
+
+    // If we detected speech or digits, it's likely a human - connect to AI
+    if (speechResult.trim().length > 0 || digits.length > 0) {
+      console.log(
+        `✅ Human speech detected - connecting to AI for call ${callId}`
+      );
+
+      const ngrokUrl =
+        process.env.NGROK_URL || "https://wanted-husky-scarcely.ngrok-free.app";
+      const websocketUrl = `wss://${ngrokUrl.replace(
+        "https://",
+        ""
+      )}/twilio-websocket`;
+
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${websocketUrl}">
+      <Parameter name="callId" value="${callId || "unknown"}" />
+      <Parameter name="leadId" value="${leadId || "unknown"}" />
+      <Parameter name="isOutbound" value="true" />
+      <Parameter name="mode" value="ai" />
+      <Parameter name="humanDetected" value="true" />
+    </Stream>
+  </Connect>
+</Response>`;
+
+      res.type("text/xml");
+      return res.send(twiml);
+    } else {
+      // No speech detected - likely actual voicemail, hang up silently
+      console.log(
+        `🤖 No speech detected - hanging up (likely actual voicemail) for call ${callId}`
+      );
+
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Hangup/>
+</Response>`;
+
+      res.type("text/xml");
+      return res.send(twiml);
+    }
+  } catch (error) {
+    console.error("Error handling voicemail detection:", error);
+
+    // On error, hang up safely
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Hangup/>
+</Response>`;
+
+    res.type("text/xml");
+    return res.send(twiml);
+  }
+};
 
 /**
  * Get call statistics for the current user

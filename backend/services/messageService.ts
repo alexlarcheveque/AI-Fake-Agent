@@ -3,24 +3,8 @@ import { MessageInsert, MessageRow } from "../models/Message.ts";
 import { updateLeadStatusBasedOnCommunications } from "./leadService.ts";
 import logger from "../utils/logger.ts";
 
-// Utility function to clean phone numbers
-const cleanPhoneNumber = (phoneNumber: string): string => {
-  // Remove all non-digit characters
-  const digitsOnly = phoneNumber.replace(/\D/g, "");
-
-  // If the number starts with '1' and is 11 digits, remove the '1'
-  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
-    return digitsOnly.slice(1);
-  }
-
-  // If it's already 10 digits, return as is
-  if (digitsOnly.length === 10) {
-    return digitsOnly;
-  }
-
-  // If we can't clean it properly, return the original digits
-  return digitsOnly;
-};
+// Import the consistent phone normalization function
+import { normalizePhoneToNumeric } from "../utils/phoneUtils.ts";
 
 export const createMessage = async (
   settings: MessageInsert
@@ -172,8 +156,8 @@ export const deleteMessage = async (messageId: number): Promise<void> => {
 };
 
 export const receiveIncomingMessage = async (messageData): Promise<void> => {
-  const to = cleanPhoneNumber(messageData.To);
-  const from = cleanPhoneNumber(messageData.From);
+  const to = normalizePhoneToNumeric(messageData.To);
+  const from = normalizePhoneToNumeric(messageData.From);
   const text = messageData.Body;
   const twilio_sid = messageData.MessageSid;
 

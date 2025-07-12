@@ -23,6 +23,8 @@ interface VoiceCallOptions {
   streamSid?: string;
   initialStreamData?: any;
   callMode?: string; // Add call mode parameter
+  possibleVoicemail?: boolean; // Add possible voicemail parameter
+  humanDetected?: boolean; // Add human detected parameter
 }
 
 interface CallTranscript {
@@ -90,14 +92,6 @@ export class RealtimeVoiceService {
       let responseStartTimestamp: number | null = null;
       let userHasSpoken = false; // Track if user has started speaking
 
-      // Buffer for initial audio packets while OpenAI is setting up
-      let audioBuffer: Array<{ timestamp: number; payload: string }> = [];
-      let isOpenAIReady = false;
-      const maxBufferSize = 100; // Increase buffer to 100 packets (~2 seconds)
-      const maxBufferTimeMs = 3000; // Max 3 seconds of buffering
-      let firstAudioTimestamp: number | null = null;
-      let openaiReadyDelay = false; // Track if we need to wait after OpenAI becomes ready
-
       console.log(
         `🚀 STREAM STARTED: Using stream ID ${streamSid} from options`
       );
@@ -144,9 +138,30 @@ export class RealtimeVoiceService {
           );
         }
 
-        // Add instructions based on call mode
+        // Add instructions based on call mode and voicemail detection
         const callMode = options.callMode || "ai";
-        // No special voicemail handling - all calls are live conversations
+        const isPossibleVoicemail = options.possibleVoicemail || false;
+
+        // If possible voicemail, add special instructions to be extra patient
+        if (isPossibleVoicemail) {
+          promptInstructions += `\n\nIMPORTANT: Twilio detected this might be voicemail, but it could be wrong and this might be a real person who just answered. Be EXTRA PATIENT and give the person several seconds to respond before saying anything. If you hear a person's voice at any point, respond normally. If it's clearly a voicemail greeting, politely hang up after the beep.`;
+          console.log(
+            `🤖 POSSIBLE VOICEMAIL: Adding extra patience instructions to AI`
+          );
+        }
+
+        // Adjust VAD settings based on possible voicemail detection
+        const vadSettings = isPossibleVoicemail
+          ? {
+              threshold: 0.25, // More sensitive to detect quiet speech
+              prefix_padding_ms: 300, // More padding to capture speech start
+              silence_duration_ms: 1200, // Much longer silence before AI responds (give person time)
+            }
+          : {
+              threshold: 0.35, // Normal sensitivity
+              prefix_padding_ms: 200, // Normal padding
+              silence_duration_ms: 700, // Normal response time
+            };
 
         // Send session configuration - Pure Speech-to-Speech approach
         const sessionUpdate = {
@@ -154,9 +169,9 @@ export class RealtimeVoiceService {
           session: {
             turn_detection: {
               type: "server_vad",
-              threshold: 0.35, // Slightly more sensitive for better detection
-              prefix_padding_ms: 200, // Increase padding to capture more speech start
-              silence_duration_ms: 700, // Slightly shorter to be more responsive
+              threshold: vadSettings.threshold,
+              prefix_padding_ms: vadSettings.prefix_padding_ms,
+              silence_duration_ms: vadSettings.silence_duration_ms,
             },
             input_audio_format: "g711_ulaw",
             output_audio_format: "g711_ulaw",
@@ -172,11 +187,12 @@ export class RealtimeVoiceService {
         };
 
         console.log("📤 Sending session configuration to OpenAI");
-        console.log("🎙️ VAD Settings:", {
-          threshold: 0.4,
-          prefix_padding_ms: 150,
-          silence_duration_ms: 800,
-        });
+        console.log("🎙️ VAD Settings:", vadSettings);
+        if (isPossibleVoicemail) {
+          console.log(
+            "⏳ EXTRA PATIENT MODE: Configured for possible voicemail detection"
+          );
+        }
         if (leadData?.context) {
           console.log(
             `🎯 Including lead context in AI prompt: ${leadData.context.substring(
@@ -205,56 +221,16 @@ export class RealtimeVoiceService {
               console.log(
                 `🎵 Audio packet received: timestamp ${latestMediaTimestamp}, payload length: ${
                   data.media.payload?.length || 0
-                }, OpenAI ready: ${isOpenAIReady}`
+                }`
               );
             }
 
-            if (isOpenAIReady) {
-              // OpenAI is ready, send audio directly
-              const audioAppend = {
-                type: "input_audio_buffer.append",
-                audio: data.media.payload,
-              };
-              openaiWs.send(JSON.stringify(audioAppend));
-            } else {
-              // OpenAI not ready yet, buffer the audio
-              if (firstAudioTimestamp === null) {
-                firstAudioTimestamp = latestMediaTimestamp;
-              }
-
-              // Check if we've been buffering too long
-              const bufferDuration = latestMediaTimestamp - firstAudioTimestamp;
-              if (bufferDuration > maxBufferTimeMs) {
-                console.log(
-                  `⚠️ OpenAI taking too long (${bufferDuration}ms), marking as ready and processing audio directly`
-                );
-                isOpenAIReady = true;
-
-                // Process this packet and future ones directly
-                const audioAppend = {
-                  type: "input_audio_buffer.append",
-                  audio: data.media.payload,
-                };
-                openaiWs.send(JSON.stringify(audioAppend));
-              } else {
-                // Buffer the audio packet
-                audioBuffer.push({
-                  timestamp: latestMediaTimestamp,
-                  payload: data.media.payload,
-                });
-
-                // Prevent buffer overflow
-                if (audioBuffer.length > maxBufferSize) {
-                  audioBuffer.shift(); // Remove oldest packet
-                }
-
-                if (audioBuffer.length <= 10) {
-                  console.log(
-                    `📦 Buffering audio packet #${audioBuffer.length}, waiting for OpenAI...`
-                  );
-                }
-              }
-            }
+            // Send audio directly to OpenAI
+            const audioAppend = {
+              type: "input_audio_buffer.append",
+              audio: data.media.payload,
+            };
+            openaiWs.send(JSON.stringify(audioAppend));
           } else if (data.event === "start") {
             if (!streamSid) {
               streamSid = data.start.streamSid;
@@ -360,37 +336,6 @@ export class RealtimeVoiceService {
             console.log("🔗 OpenAI session created:", response.session.id);
           } else if (response.type === "session.updated") {
             console.log("🔧 OpenAI session updated successfully");
-
-            // Mark OpenAI as ready and replay buffered audio
-            if (!isOpenAIReady) {
-              console.log(
-                `🎬 OpenAI ready! Replaying ${audioBuffer.length} buffered audio packets...`
-              );
-
-              // Replay all buffered audio packets
-              for (const bufferedAudio of audioBuffer) {
-                const audioAppend = {
-                  type: "input_audio_buffer.append",
-                  audio: bufferedAudio.payload,
-                };
-                openaiWs.send(JSON.stringify(audioAppend));
-              }
-
-              if (audioBuffer.length > 0) {
-                console.log(
-                  `✅ Replayed ${audioBuffer.length} audio packets from buffer`
-                );
-              }
-
-              // Clear the buffer
-              audioBuffer = [];
-
-              // Add a small delay before marking as ready to ensure OpenAI is fully processing
-              setTimeout(() => {
-                isOpenAIReady = true;
-                console.log("🎯 OpenAI fully ready for speech processing");
-              }, 100); // 100ms delay
-            }
 
             // Check if this is an inbound call and send proactive greeting only for inbound calls
             const isInbound =

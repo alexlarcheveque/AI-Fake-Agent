@@ -50,25 +50,25 @@ const MessagingSettings: React.FC<MessagingSettingsProps> = ({
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="mb-4">
               <h3 className="text-lg font-medium text-gray-900">New Lead</h3>
-              <p className="text-gray-500 text-sm">First interaction</p>
+              <p className="text-gray-500 text-sm">First-time outreach</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Follow-up Interval (hours)
+                Follow-up Interval (days)
               </label>
               <input
                 type="number"
                 name="newLeadInterval"
-                value={settings?.new_lead_interval || ""}
+                value={settings?.follow_up_interval_new || ""}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 min="1"
-                max="168"
-                placeholder="24"
+                max="30"
+                placeholder="2"
                 required
               />
               <p className="text-xs text-gray-500 mt-1">
-                Time between first contact and first follow-up
+                Days between adding a lead and first outreach message
               </p>
             </div>
           </div>
@@ -83,21 +83,21 @@ const MessagingSettings: React.FC<MessagingSettingsProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Follow-up Interval (hours)
+                Follow-up Interval (days)
               </label>
               <input
                 type="number"
                 name="inConversationInterval"
-                value={settings?.in_conversation_interval || ""}
+                value={settings?.follow_up_interval_in_converesation || ""}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 min="1"
-                max="168"
-                placeholder="48"
+                max="30"
+                placeholder="5"
                 required
               />
               <p className="text-xs text-gray-500 mt-1">
-                Time between messages during active conversations
+                Days between messages during active conversations
               </p>
             </div>
           </div>
@@ -110,21 +110,21 @@ const MessagingSettings: React.FC<MessagingSettingsProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Follow-up Interval (hours)
+                Follow-up Interval (days)
               </label>
               <input
                 type="number"
                 name="inactiveInterval"
-                value={settings?.inactive_interval || ""}
+                value={settings?.follow_up_interval_inactive || ""}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 min="1"
-                max="168"
-                placeholder="72"
+                max="365"
+                placeholder="180"
                 required
               />
               <p className="text-xs text-gray-500 mt-1">
-                Time before attempting to re-engage inactive leads
+                Days before attempting to re-engage inactive leads
               </p>
             </div>
           </div>

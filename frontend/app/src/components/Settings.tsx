@@ -222,7 +222,7 @@ const Settings: React.FC = () => {
         agentName: "agent_name",
         companyName: "company_name",
         agentState: "agent_state",
-        followUpIntervalNew: "follow_up_interval_new",
+        newLeadInterval: "follow_up_interval_new",
         followUpIntervalInConversation: "follow_up_interval_in_converesation",
         followUpIntervalInactive: "follow_up_interval_inactive",
         voiceCallingEnabled: "voice_calling_enabled",
